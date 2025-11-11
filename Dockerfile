@@ -6,9 +6,10 @@ WORKDIR /build
 # Copy source code
 COPY . .
 
-#
+# Tidy and verify Go module dependencies
 RUN go mod tidy && go mod verify
 
+# Build binary
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o adapter ./cmd/adapter
 
 # Runtime stage

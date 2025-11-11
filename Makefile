@@ -6,6 +6,20 @@ VERSION ?= 0.0.1
 IMAGE_REGISTRY ?= quay.io/openshift-hyperfleet
 IMAGE_TAG ?= latest
 
+# Build metadata
+GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+GIT_TAG := $(shell git describe --tags --exact-match 2>/dev/null || echo "")
+BUILD_DATE := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
+
+# LDFLAGS for build
+LDFLAGS := -w -s
+LDFLAGS += -X github.com/openshift-hyperfleet/hyperfleet-adapter/cmd/adapter.version=$(VERSION)
+LDFLAGS += -X github.com/openshift-hyperfleet/hyperfleet-adapter/cmd/adapter.commit=$(GIT_COMMIT)
+LDFLAGS += -X github.com/openshift-hyperfleet/hyperfleet-adapter/cmd/adapter.buildDate=$(BUILD_DATE)
+ifneq ($(GIT_TAG),)
+LDFLAGS += -X github.com/openshift-hyperfleet/hyperfleet-adapter/cmd/adapter.tag=$(GIT_TAG)
+endif
+
 # Go parameters
 GOCMD := go
 GOBUILD := $(GOCMD) build
@@ -96,8 +110,9 @@ mod-tidy: ## Tidy Go module dependencies
 .PHONY: build
 build: ## Build binary
 	@echo "Building $(PROJECT_NAME)..."
+	@echo "Version: $(VERSION), Commit: $(GIT_COMMIT), BuildDate: $(BUILD_DATE)"
 	@mkdir -p bin
-	CGO_ENABLED=0 $(GOBUILD) -ldflags="-w -s" -o bin/$(PROJECT_NAME) ./cmd/adapter
+	CGO_ENABLED=0 $(GOBUILD) -ldflags="$(LDFLAGS)" -o bin/$(PROJECT_NAME) ./cmd/adapter
 
 .PHONY: clean
 clean: ## Clean build artifacts and test coverage files
@@ -106,10 +121,8 @@ clean: ## Clean build artifacts and test coverage files
 	rm -f $(COVERAGE_OUT) $(COVERAGE_HTML)
 
 .PHONY: docker-build
-docker-build: ## Build Docker image
-	@echo "Building Docker image..."
-	docker build -t $(IMAGE_REGISTRY)/$(PROJECT_NAME):$(IMAGE_TAG) .
-	@echo "Docker image built: $(IMAGE_REGISTRY)/$(PROJECT_NAME):$(IMAGE_TAG)"
+docker-build: ## Build docker image
+	docker build -t $(PROJECT_NAME):$(VERSION) .
 
 .PHONY: docker-push
 docker-push: ## Push Docker image

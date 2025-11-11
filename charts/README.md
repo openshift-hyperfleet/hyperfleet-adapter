@@ -39,8 +39,6 @@ The following table lists the configurable parameters and their default values:
 | `image.repository` | Image repository | `hyperfleet-adapter` |
 | `image.tag` | Image tag | `latest` |
 | `image.pullPolicy` | Image pull policy | `Always` |
-| `service.type` | Service type | `ClusterIP` |
-| `service.port` | Service port | `8080` |
 | `config.enabled` | Enable ConfigMap for adapter config | `true` |
 | `config.configMapName` | Custom ConfigMap name (optional) | `""` |
 | `config.adapter` | Adapter configuration (YAML) | `{}` |
