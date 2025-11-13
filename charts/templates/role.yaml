@@ -1,0 +1,83 @@
+{{- if .Values.rbac.create }}
+{{- range $adapterName, $adapter := .Values.adapters }}
+{{- if $adapter.enabled }}
+---
+{{- if $.Values.rbac.clusterRole }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "hyperfleet-adapter.serviceAccountName" (merge (dict "adapterType" $adapterName) $) }}
+  labels:
+    {{- include "hyperfleet-adapter.adapterLabels" (merge (dict "adapterType" $adapterName) $) | nindent 4 }}
+{{- else }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "hyperfleet-adapter.serviceAccountName" (merge (dict "adapterType" $adapterName) $) }}
+  namespace: {{ $.Values.global.namespace }}
+  labels:
+    {{- include "hyperfleet-adapter.adapterLabels" (merge (dict "adapterType" $adapterName) $) | nindent 4 }}
+{{- end }}
+rules:
+  # Namespaces - for creating cluster namespaces
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  
+  # Core resources
+  - apiGroups: [""]
+    resources:
+      - pods
+      - services
+      - configmaps
+      - secrets
+      - serviceaccounts
+      - persistentvolumeclaims
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  
+  # Read pod logs for status checking
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get", "list"]
+  
+  # Apps resources
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - statefulsets
+      - daemonsets
+      - replicasets
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  
+  # Batch resources (Jobs, CronJobs)
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+      - cronjobs
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  
+  # RBAC resources (if adapter creates roles/rolebindings)
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources:
+      - roles
+      - rolebindings
+      - clusterroles
+      - clusterrolebindings
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  
+  # Networking resources
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - ingresses
+      - networkpolicies
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  
+  # Storage resources
+  - apiGroups: ["storage.k8s.io"]
+    resources:
+      - storageclasses
+    verbs: ["get", "list", "watch"]
+{{- end }}
+{{- end }}
+{{- end }}
+

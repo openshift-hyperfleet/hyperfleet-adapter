@@ -1,0 +1,49 @@
+# Staging environment overrides
+
+environment: staging
+
+image:
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+
+observability:
+  logLevel: "info"
+  traceEnabled: true
+
+adapters:
+  validation:
+    enabled: true
+    replicas: 2
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+  dns:
+    enabled: true
+    replicas: 2
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+  placement:
+    enabled: true
+    replicas: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+broker:
+  maxConcurrency: 50
+

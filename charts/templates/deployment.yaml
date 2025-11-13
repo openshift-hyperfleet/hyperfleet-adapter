@@ -1,105 +1,121 @@
+{{- range $adapterName, $adapter := .Values.adapters }}
+{{- if $adapter.enabled }}
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "hyperfleet-adapter.fullname" . }}
+  name: {{ include "hyperfleet-adapter.fullname" $ }}-{{ $adapterName }}
+  namespace: {{ $.Values.global.namespace }}
   labels:
-    {{- include "hyperfleet-adapter.labels" . | nindent 4 }}
+    {{- include "hyperfleet-adapter.adapterLabels" (merge (dict "adapterType" $adapterName) $) | nindent 4 }}
 spec:
-  {{- if not .Values.autoscaling.enabled }}
-  replicas: {{ .Values.replicaCount }}
+  {{- if not $adapter.autoscaling.enabled }}
+  replicas: {{ $adapter.replicas }}
   {{- end }}
   selector:
     matchLabels:
-      {{- include "hyperfleet-adapter.selectorLabels" . | nindent 6 }}
+      {{- include "hyperfleet-adapter.adapterSelectorLabels" (merge (dict "adapterType" $adapterName) $) | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.podAnnotations }}
       annotations:
+        checksum/environment-config: {{ include (print $.Template.BasePath "/configmap-environment.yaml") $ | sha256sum }}
+        {{- with $adapter.podAnnotations }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}
       labels:
-        {{- include "hyperfleet-adapter.selectorLabels" . | nindent 8 }}
+        {{- include "hyperfleet-adapter.adapterSelectorLabels" (merge (dict "adapterType" $adapterName) $) | nindent 8 }}
     spec:
-      {{- with .Values.imagePullSecrets }}
+      {{- with $.Values.image.pullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "hyperfleet-adapter.serviceAccountName" . }}
+      serviceAccountName: {{ include "hyperfleet-adapter.serviceAccountName" (merge (dict "adapterType" $adapterName) $) }}
       securityContext:
-        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        {{- toYaml $.Values.podSecurityContext | nindent 8 }}
       containers:
-      - name: {{ .Chart.Name }}
+      - name: adapter
+        image: {{ include "hyperfleet-adapter.image" $ }}
+        imagePullPolicy: {{ $.Values.image.pullPolicy }}
+        args:
+          - --config=/etc/adapter/config/adapter-config.yaml
         securityContext:
-          {{- toYaml .Values.securityContext | nindent 10 }}
-        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
-        imagePullPolicy: {{ .Values.image.pullPolicy }}
-        command: ["/app/adapter"]
-        args: ["serve"]
-        ports:
-        - name: http
-          containerPort: 8080
-          protocol: TCP
+          {{- toYaml $.Values.securityContext | nindent 10 }}
         env:
-        {{- if .Values.env }}
-        {{- range .Values.env }}
-        - name: {{ .name }}
-          value: {{ .value | quote }}
-        {{- end }}
-        {{- end }}
-        {{- if .Values.config.enabled }}
-        {{- if .Values.config.env }}
-        # Environment variables from adapter ConfigMap
-        {{- range $key, $value := .Values.config.env }}
-        - name: {{ $key }}
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "hyperfleet-adapter.configMapName" $ }}
-              key: {{ $key }}
-        {{- end }}
-        {{- end }}
-        {{- if .Values.config.adapterType }}
-        - name: ADAPTER_TYPE
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "hyperfleet-adapter.configMapName" $ }}
-              key: ADAPTER_TYPE
-        {{- end }}
-        {{- if .Values.config.adapterYaml }}
-        # YAML config file path
-        - name: CONFIG_FILE
-          value: /etc/adapter/config/adapter.yaml
-        {{- end }}
-        {{- end }}
-        {{- if .Values.broker.configMapName }}
-        {{- if .Values.broker.mountAsEnv }}
-        # Broker configuration from broker ConfigMap as environment variables
-        # Matching adapther-configmap-template.yaml structure
-        {{- if .Values.broker.envKeys }}
-        # Mount specific keys from broker ConfigMap as environment variables
-        {{- range .Values.broker.envKeys }}
-        - name: {{ . }}
-          valueFrom:
-            configMapKeyRef:
-              name: {{ $.Values.broker.configMapName }}
-              key: {{ . }}
-        {{- end }}
-        {{- end }}
-        {{- else }}
-        # Mount broker ConfigMap as file (alternative approach)
-        - name: BROKER_CONFIG_FILE
-          value: /etc/adapter/config/broker.yaml
-        {{- end }}
-        {{- end }}
-        {{- if and .Values.broker.configMapName .Values.broker.mountAsEnv (not .Values.broker.envKeys) }}
-        # Mount entire broker ConfigMap as environment variables using envFrom
-        envFrom:
-        - configMapRef:
-            name: {{ .Values.broker.configMapName }}
-        {{- end }}
+          # Environment configuration
+          - name: ENVIRONMENT
+            valueFrom:
+              configMapKeyRef:
+                name: {{ include "hyperfleet-adapter.environmentConfigMapName" $ }}
+                key: ENVIRONMENT
+          - name: HYPERFLEET_API_BASE_URL
+            valueFrom:
+              configMapKeyRef:
+                name: {{ include "hyperfleet-adapter.environmentConfigMapName" $ }}
+                key: HYPERFLEET_API_BASE_URL
+          - name: HYPERFLEET_API_VERSION
+            valueFrom:
+              configMapKeyRef:
+                name: {{ include "hyperfleet-adapter.environmentConfigMapName" $ }}
+                key: HYPERFLEET_API_VERSION
+          - name: LOG_LEVEL
+            valueFrom:
+              configMapKeyRef:
+                name: {{ include "hyperfleet-adapter.environmentConfigMapName" $ }}
+                key: LOG_LEVEL
+          - name: METRICS_PORT
+            valueFrom:
+              configMapKeyRef:
+                name: {{ include "hyperfleet-adapter.environmentConfigMapName" $ }}
+                key: METRICS_PORT
+          - name: HEALTH_PORT
+            valueFrom:
+              configMapKeyRef:
+                name: {{ include "hyperfleet-adapter.environmentConfigMapName" $ }}
+                key: HEALTH_PORT
+          - name: TRACE_ENABLED
+            valueFrom:
+              configMapKeyRef:
+                name: {{ include "hyperfleet-adapter.environmentConfigMapName" $ }}
+                key: TRACE_ENABLED
+          - name: KUBERNETES_QPS
+            valueFrom:
+              configMapKeyRef:
+                name: {{ include "hyperfleet-adapter.environmentConfigMapName" $ }}
+                key: KUBERNETES_QPS
+          - name: KUBERNETES_BURST
+            valueFrom:
+              configMapKeyRef:
+                name: {{ include "hyperfleet-adapter.environmentConfigMapName" $ }}
+                key: KUBERNETES_BURST
+          # HyperFleet API token
+          - name: HYPERFLEET_API_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: {{ $.Values.hyperfleetApi.tokenSecretName }}
+                key: token
+          # Adapter-specific subscription name
+          - name: SUBSCRIPTION_NAME
+            value: {{ $adapter.subscriptionName | quote }}
+          # Adapter type identifier
+          - name: ADAPTER_TYPE
+            value: {{ $adapterName | quote }}
+          # Broker configuration
+          {{- include "hyperfleet-adapter.brokerEnvVars" $ | nindent 10 }}
+          # Additional adapter-specific env vars
+          {{- with $adapter.env }}
+          {{- toYaml . | nindent 10 }}
+          {{- end }}
+        ports:
+        - name: metrics
+          containerPort: {{ $.Values.observability.metricsPort }}
+          protocol: TCP
+        - name: health
+          containerPort: {{ $.Values.observability.healthPort }}
+          protocol: TCP
         livenessProbe:
           httpGet:
             path: /healthz
-            port: http
+            port: health
           initialDelaySeconds: 30
           periodSeconds: 10
           timeoutSeconds: 5
@@ -107,66 +123,32 @@ spec:
         readinessProbe:
           httpGet:
             path: /readyz
-            port: http
-          initialDelaySeconds: 5
+            port: health
+          initialDelaySeconds: 10
           periodSeconds: 5
           timeoutSeconds: 3
           failureThreshold: 3
         resources:
-          {{- toYaml .Values.resources | nindent 10 }}
+          {{- toYaml $adapter.resources | nindent 10 }}
         volumeMounts:
-        {{- if .Values.config.enabled }}
-        {{- if .Values.config.adapterYaml }}
-        # Mount adapter ConfigMap as file if using YAML format
         - name: adapter-config
-          mountPath: /etc/adapter/config/adapter.yaml
-          subPath: adapter.yaml
+          mountPath: /etc/adapter/config
           readOnly: true
-        {{- end }}
-        {{- end }}
-        {{- if and .Values.broker.configMapName (not .Values.broker.mountAsEnv) }}
-        # Mount broker ConfigMap as file (when mountAsEnv=false)
-        - name: broker-config
-          mountPath: /etc/adapter/config/broker.yaml
-          subPath: {{ .Values.broker.configMapKey }}
-          readOnly: true
-        {{- end }}
-        {{- if .Values.extraVolumeMounts }}
-        {{- toYaml .Values.extraVolumeMounts | nindent 8 }}
-        {{- end }}
-      {{- if and .Values.broker.configMapName .Values.broker.mountAsEnv (not .Values.broker.envKeys) }}
-      # Mount entire broker ConfigMap as environment variables
-      envFrom:
-      - configMapRef:
-          name: {{ .Values.broker.configMapName }}
-      {{- end }}
       volumes:
-      {{- if .Values.config.enabled }}
       - name: adapter-config
         configMap:
-          name: {{ include "hyperfleet-adapter.configMapName" . }}
-      {{- end }}
-      {{- if .Values.broker.configMapName }}
-      - name: broker-config
-        configMap:
-          name: {{ .Values.broker.configMapName }}
-          items:
-          - key: {{ .Values.broker.configMapKey }}
-            path: broker.yaml
-      {{- end }}
-      {{- if .Values.extraVolumes }}
-      {{- toYaml .Values.extraVolumes | nindent 6 }}
-      {{- end }}
-      {{- with .Values.nodeSelector }}
+          name: {{ include "hyperfleet-adapter.adapterConfigMapName" (merge (dict "adapterType" $adapterName) $) }}
+      {{- with $adapter.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.affinity }}
+      {{- with $adapter.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.tolerations }}
+      {{- with $adapter.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-
+{{- end }}
+{{- end }}

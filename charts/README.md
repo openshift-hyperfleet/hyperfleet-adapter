@@ -1,163 +1,399 @@
-# hyperfleet-adapter
+# HyperFleet Adapter Helm Chart
 
-HyperFleet Adapter - Event-driven adapter services for HyperFleet cluster provisioning. Handles CloudEvents consumption, AdapterConfig CRD integration, precondition evaluation, Kubernetes Job creation/monitoring, and status reporting via API. Supports GCP Pub/Sub, RabbitMQ broker abstraction.
+This Helm chart deploys HyperFleet Adapter Framework services to Kubernetes.
 
-## Introduction
+## Features
 
-This chart deploys the HyperFleet Adapter component on a Kubernetes cluster using the Helm package manager.
+- **Single Image, Multiple Adapters**: One container image, multiple adapter types (validation, dns, placement)
+- **Config-Driven**: Each adapter runs with its own configuration
+- **ServiceAccount Authentication**: Automatic in-cluster Kubernetes authentication
+- **RBAC Support**: Per-adapter service accounts and permissions
+- **Autoscaling**: Horizontal Pod Autoscaling per adapter type
+- **Observability**: Prometheus metrics, health checks, optional tracing
+- **Multi-Environment**: Dev, staging, and production configurations
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    HyperFleet Adapter                        │
+│                    (Single Container Image)                  │
+└────────────┬────────────────┬────────────────┬──────────────┘
+             │                │                │
+    ┌────────▼────────┐ ┌────▼─────────┐ ┌───▼──────────┐
+    │   Validation    │ │     DNS      │ │  Placement   │
+    │    Adapter      │ │   Adapter    │ │   Adapter    │
+    │                 │ │              │ │              │
+    │  • Config       │ │  • Config    │ │  • Config    │
+    │  • ServiceAccount│ │  • ServiceAccount│ │  • ServiceAccount│
+    │  • RBAC         │ │  • RBAC      │ │  • RBAC      │
+    │  • Metrics      │ │  • Metrics   │ │  • Metrics   │
+    └─────────────────┘ └──────────────┘ └──────────────┘
+```
 
 ## Prerequisites
 
-- Kubernetes 1.19+
-- Helm 3.0+
-- Broker ConfigMap (if using broker configuration from ConfigMap)
+- Kubernetes 1.23+
+- Helm 3.8+
+- HyperFleet API deployed
+- Message broker (RabbitMQ, Pub/Sub, or SQS) configured
 
-## Installing the Chart
+## Installation
 
-To install the chart with the release name `hyperfleet-adapter`:
+### Quick Start
 
 ```bash
-helm install hyperfleet-adapter ./charts/
+# Create namespace
+kubectl create namespace hyperfleet-system
+
+# Create API token secret
+kubectl create secret generic hyperfleet-api-token \
+  --from-literal=token=<YOUR_API_TOKEN> \
+  -n hyperfleet-system
+
+# Create broker credentials (for RabbitMQ)
+kubectl create secret generic rabbitmq-credentials \
+  --from-literal=password=<RABBITMQ_PASSWORD> \
+  -n hyperfleet-system
+
+# Install chart (development)
+helm install hyperfleet-adapter ./charts \
+  -f charts/values-dev.yaml \
+  --namespace hyperfleet-system
 ```
 
-## Uninstalling the Chart
+### Environment-Specific Installations
 
-To uninstall/delete the `hyperfleet-adapter` deployment:
-
+#### Development
 ```bash
-helm delete hyperfleet-adapter
+helm install hyperfleet-adapter ./charts \
+  -f charts/values-dev.yaml \
+  --namespace hyperfleet-system \
+  --create-namespace
+```
+
+#### Staging
+```bash
+helm install hyperfleet-adapter ./charts \
+  -f charts/values-staging.yaml \
+  --namespace hyperfleet-system
+```
+
+#### Production
+```bash
+helm install hyperfleet-adapter ./charts \
+  -f charts/values-prod.yaml \
+  --namespace hyperfleet-system
 ```
 
 ## Configuration
 
-The following table lists the configurable parameters and their default values:
+### Values Files
 
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `replicaCount` | Number of replicas | `1` |
-| `image.registry` | Image registry | `quay.io/openshift-hyperfleet` |
-| `image.repository` | Image repository | `hyperfleet-adapter` |
-| `image.tag` | Image tag | `latest` |
-| `image.pullPolicy` | Image pull policy | `Always` |
-| `config.enabled` | Enable ConfigMap for adapter config | `true` |
-| `config.configMapName` | Custom ConfigMap name (optional) | `""` |
-| `config.adapter` | Adapter configuration (YAML) | `{}` |
-| `broker.configMapName` | Broker ConfigMap name (required if using broker ConfigMap) | `""` |
-| `broker.configMapKey` | Broker ConfigMap key | `broker.yaml` |
-| `resources.limits.cpu` | CPU limit | `500m` |
-| `resources.limits.memory` | Memory limit | `512Mi` |
-| `resources.requests.cpu` | CPU request | `100m` |
-| `resources.requests.memory` | Memory request | `128Mi` |
+- `values.yaml` - Default values
+- `values-dev.yaml` - Development overrides (debug logging, 1 replica)
+- `values-staging.yaml` - Staging overrides (info logging, 2 replicas)
+- `values-prod.yaml` - Production overrides (warn logging, 3+ replicas, autoscaling)
 
-## Configuration Files
+### Key Configuration Sections
 
-### Adapter Configuration
-
-The adapter configuration can be provided in multiple ways:
-
-1. **Via ConfigMap with environment variables** (recommended): Set `config.enabled: true` and provide:
-   - `config.adapterType`: Adapter type identifier (e.g., "example", "gcp", "aws")
-   - `config.env`: Environment variables matching the structure in `adapther-configmap-template.yaml`
-
-2. **Via ConfigMap with YAML file**: Set `config.enabled: true` and provide `config.adapterYaml` with YAML content
-
-3. **Packaged in image**: Set `config.enabled: false` to use the default config packaged in the image
-
-The application checks for configuration in this order:
-1. `CONFIG_FILE` environment variable (if set)
-2. `/etc/adapter/config/adapter.yaml` (ConfigMap mount point, if using YAML format)
-3. `/app/configs/adapter.yaml` (packaged default)
-
-### Broker Configuration
-
-Broker configuration must be provided via a Kubernetes ConfigMap that exists in the cluster. The ConfigMap structure should match `adapther-configmap-template.yaml` with environment variables like:
-- `BROKER_TYPE`: Broker type (pubsub, awsSqs, rabbitmq, kafka)
-- `BROKER_HOST`, `BROKER_PORT`: Connection details (for RabbitMQ)
-- `BROKER_QUEUE_NAME`, `BROKER_EXCHANGE`: Queue/exchange names
-- `BROKER_MAX_CONCURRENCY`: Concurrency settings
-- And other broker-specific settings
-
-**Recommended approach** (matching template): Mount broker ConfigMap as environment variables:
-
+#### Global Settings
 ```yaml
-broker:
-  configMapName: broker-config
-  mountAsEnv: true  # Mount all keys as environment variables
-  envKeys: []  # Empty = mount all keys, or specify list like [BROKER_TYPE, BROKER_HOST]
+global:
+  imageRegistry: quay.io/openshift-hyperfleet
+  namespace: hyperfleet-system
+
+environment: production
 ```
 
-**Alternative approach**: Mount broker ConfigMap as file:
-
+#### Image Configuration
 ```yaml
-broker:
-  configMapName: broker-config
-  mountAsEnv: false
-  configMapKey: broker.yaml  # Key name in ConfigMap
+image:
+  repository: hyperfleet-adapter
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
 ```
 
-The broker config will be available as:
-- Environment variables (if `mountAsEnv: true`) - matches template structure
-- File at `/etc/adapter/config/broker.yaml` (if `mountAsEnv: false`)
+#### HyperFleet API
+```yaml
+hyperfleetApi:
+  baseUrl: "http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080"
+  version: "v1"
+  tokenSecretName: "hyperfleet-api-token"
+```
+
+#### Broker Configuration
+```yaml
+broker:
+  type: "rabbitmq"  # or "pubsub", "awsSqs"
+  maxConcurrency: 100
+  rabbitmq:
+    host: "rabbitmq.hyperfleet-system.svc.cluster.local"
+    port: "5672"
+    queueName: "hyperfleet-cluster-events"
+    username: "hyperfleet"
+    passwordSecretName: "rabbitmq-credentials"
+```
+
+#### Adapter Definitions
+```yaml
+adapters:
+  validation:
+    enabled: true
+    replicas: 2
+    subscriptionName: "validation-adapter-sub"
+    configFile: "validation-adapter-config.yaml"
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 10
+```
+
+### Adapter Configuration Files
+
+Place adapter-specific YAML configurations in one of two ways:
+
+#### Option 1: External Files (Recommended)
+Create `configs/` directory with adapter configuration files:
+
+```bash
+charts/
+  configs/
+    validation-adapter-config.yaml
+    dns-adapter-config.yaml
+    placement-adapter-config.yaml
+```
+
+#### Option 2: Inline in Values
+```yaml
+adapterConfigs:
+  validation: |
+    adapterName: validation-adapter
+    filters:
+      eventTypes:
+        - "cluster.created"
+        - "cluster.updated"
+    # ... rest of config
+```
+
+## RBAC
+
+The chart automatically creates:
+- ServiceAccount per adapter
+- ClusterRole with required permissions
+- ClusterRoleBinding connecting ServiceAccount to ClusterRole
+
+### Permissions Granted
+
+- **Namespaces**: create, get, list, watch, update, patch, delete
+- **Core Resources**: pods, services, configmaps, secrets, serviceaccounts
+- **Apps**: deployments, statefulsets, daemonsets, replicasets
+- **Batch**: jobs, cronjobs
+- **Networking**: ingresses, networkpolicies
+- **RBAC**: roles, rolebindings (if adapter creates them)
+
+### Switching to Namespaced RBAC
+
+To use Role instead of ClusterRole:
+
+```yaml
+rbac:
+  create: true
+  clusterRole: false  # Uses Role instead of ClusterRole
+```
+
+## Autoscaling
+
+Enable Horizontal Pod Autoscaling per adapter:
+
+```yaml
+adapters:
+  validation:
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 20
+      targetCPUUtilizationPercentage: 70
+      targetMemoryUtilizationPercentage: 80
+```
+
+## Monitoring
+
+### Prometheus Metrics
+
+Metrics are exposed on port 8080 at `/metrics`:
+
+```
+adapter_events_processed_total
+adapter_event_processing_duration_seconds
+adapter_api_calls_total
+adapter_k8s_operations_total
+go_memstats_alloc_bytes
+```
+
+### ServiceMonitor
+
+Automatically created when `serviceMonitor.enabled: true`:
+
+```yaml
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  scrapeTimeout: 10s
+```
+
+### Health Checks
+
+- **Liveness**: `GET /healthz` on port 8081
+- **Readiness**: `GET /readyz` on port 8081
+
+## Upgrading
+
+```bash
+# Upgrade with new values
+helm upgrade hyperfleet-adapter ./charts \
+  -f charts/values-prod.yaml \
+  --namespace hyperfleet-system
+
+# Upgrade adapter config only
+kubectl create configmap hyperfleet-adapter-validation-config \
+  --from-file=adapter-config.yaml=./configs/validation-adapter-config.yaml \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl rollout restart deployment/hyperfleet-adapter-validation -n hyperfleet-system
+```
+
+## Rollback
+
+```bash
+# List releases
+helm history hyperfleet-adapter --namespace hyperfleet-system
+
+# Rollback to previous
+helm rollback hyperfleet-adapter --namespace hyperfleet-system
+
+# Rollback to specific revision
+helm rollback hyperfleet-adapter 3 --namespace hyperfleet-system
+```
+
+## Uninstalling
+
+```bash
+helm uninstall hyperfleet-adapter --namespace hyperfleet-system
+```
+
+## Troubleshooting
+
+### Check Pod Status
+```bash
+kubectl get pods -n hyperfleet-system -l app.kubernetes.io/name=hyperfleet-adapter
+```
+
+### View Logs
+```bash
+# Validation adapter logs
+kubectl logs -n hyperfleet-system -l hyperfleet.io/adapter-type=validation --tail=100 -f
+
+# DNS adapter logs
+kubectl logs -n hyperfleet-system -l hyperfleet.io/adapter-type=dns --tail=100 -f
+```
+
+### Check Configuration
+```bash
+# View environment ConfigMap
+kubectl get cm hyperfleet-adapter-environment -n hyperfleet-system -o yaml
+
+# View adapter config
+kubectl get cm hyperfleet-adapter-validation-config -n hyperfleet-system -o yaml
+```
+
+### Verify RBAC
+```bash
+# Check ServiceAccount
+kubectl get sa -n hyperfleet-system -l app.kubernetes.io/name=hyperfleet-adapter
+
+# Check ClusterRole
+kubectl get clusterrole -l app.kubernetes.io/name=hyperfleet-adapter
+
+# Test permissions
+kubectl auth can-i create namespaces \
+  --as=system:serviceaccount:hyperfleet-system:hyperfleet-adapter-validation
+```
+
+### Check Metrics
+```bash
+# Port-forward to metrics endpoint
+kubectl port-forward -n hyperfleet-system \
+  service/hyperfleet-adapter-validation 8080:8080
+
+# View metrics
+curl http://localhost:8080/metrics
+```
+
+## Advanced Configuration
+
+### Custom Resource Limits
+```yaml
+adapters:
+  validation:
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: 2000m
+        memory: 2Gi
+```
+
+### Node Affinity
+```yaml
+adapters:
+  validation:
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+          - matchExpressions:
+            - key: workload-type
+              operator: In
+              values:
+              - adapters
+```
+
+### Additional Environment Variables
+```yaml
+adapters:
+  validation:
+    env:
+    - name: CUSTOM_VAR
+      value: "custom-value"
+    - name: SECRET_VAR
+      valueFrom:
+        secretKeyRef:
+          name: my-secret
+          key: secret-key
+```
 
 ## Examples
 
-### Basic Installation
+See the `examples/` directory for:
+- Complete deployment examples
+- Sample adapter configurations
+- Integration test scripts
 
-```bash
-helm install hyperfleet-adapter ./charts/
-```
+## Support
 
-### With Custom Adapter Configuration (Environment Variables)
+For issues and questions:
+- GitHub: https://github.com/openshift-hyperfleet/hyperfleet-adapter
+- Documentation: See `/docs` directory
 
-```bash
-helm install hyperfleet-adapter ./charts/ \
-  --set config.adapterType=example \
-  --set config.env.BROKER_TYPE=rabbitmq \
-  --set config.env.BROKER_HOST=rabbitmq.hyperfleet-system.svc.cluster.local \
-  --set config.env.BROKER_PORT=5672 \
-  --set config.env.BROKER_QUEUE_NAME=hyperfleet-cluster-events
-```
+## License
 
-### With Broker ConfigMap (Environment Variables - Recommended)
-
-```bash
-helm install hyperfleet-adapter ./charts/ \
-  --set broker.configMapName=broker-config \
-  --set broker.mountAsEnv=true
-```
-
-This will mount all keys from the broker ConfigMap as environment variables, matching the `adapther-configmap-template.yaml` structure.
-
-### With Broker ConfigMap (File Mount)
-
-```bash
-helm install hyperfleet-adapter ./charts/ \
-  --set broker.configMapName=broker-config \
-  --set broker.mountAsEnv=false \
-  --set broker.configMapKey=broker.yaml
-```
-
-### Using Custom Image
-
-```bash
-helm install hyperfleet-adapter ./charts/ \
-  --set image.registry=my-registry.io \
-  --set image.repository=my-adapter \
-  --set image.tag=v1.0.0
-```
-
-### With Environment Variables
-
-```bash
-helm install hyperfleet-adapter ./charts/ \
-  --set env[0].name=CONFIG_FILE \
-  --set env[0].value=/custom/path/config.yaml
-```
-
-## Notes
-
-- The chart uses a non-root user (UID 65532) for security
-- Health checks are configured at `/healthz` and `/readyz` endpoints
-- Both adapter and broker ConfigMaps mount to the same directory (`/etc/adapter/config`) with different file names
-- The default image uses `distroless` base image for minimal attack surface
-
+Apache 2.0 - See LICENSE file

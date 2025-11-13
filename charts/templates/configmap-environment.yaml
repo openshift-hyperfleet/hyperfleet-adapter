@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hyperfleet-adapter.environmentConfigMapName" . }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "hyperfleet-adapter.labels" . | nindent 4 }}
+data:
+  ENVIRONMENT: {{ .Values.environment | quote }}
+  HYPERFLEET_API_BASE_URL: {{ .Values.hyperfleetApi.baseUrl | quote }}
+  HYPERFLEET_API_VERSION: {{ .Values.hyperfleetApi.version | quote }}
+  LOG_LEVEL: {{ .Values.observability.logLevel | quote }}
+  METRICS_PORT: {{ .Values.observability.metricsPort | quote }}
+  HEALTH_PORT: {{ .Values.observability.healthPort | quote }}
+  TRACE_ENABLED: {{ .Values.observability.traceEnabled | quote }}
+  KUBERNETES_QPS: {{ .Values.kubernetes.qps | quote }}
+  KUBERNETES_BURST: {{ .Values.kubernetes.burst | quote }}
+
