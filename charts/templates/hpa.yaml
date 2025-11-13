@@ -1,0 +1,37 @@
+{{- range $adapterName, $adapter := .Values.adapters }}
+{{- if and $adapter.enabled $adapter.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "hyperfleet-adapter.fullname" $ }}-{{ $adapterName }}
+  namespace: {{ $.Values.global.namespace }}
+  labels:
+    {{- include "hyperfleet-adapter.adapterLabels" (merge (dict "adapterType" $adapterName) $) | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "hyperfleet-adapter.fullname" $ }}-{{ $adapterName }}
+  minReplicas: {{ $adapter.autoscaling.minReplicas }}
+  maxReplicas: {{ $adapter.autoscaling.maxReplicas }}
+  metrics:
+  {{- if $adapter.autoscaling.targetCPUUtilizationPercentage }}
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ $adapter.autoscaling.targetCPUUtilizationPercentage }}
+  {{- end }}
+  {{- if $adapter.autoscaling.targetMemoryUtilizationPercentage }}
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: {{ $adapter.autoscaling.targetMemoryUtilizationPercentage }}
+  {{- end }}
+{{- end }}
+{{- end }}
+

@@ -1,0 +1,74 @@
+# Dockerfile.integration - For running integration tests with envtest
+# This Dockerfile sets up a complete environment for running k8s-client integration tests
+
+FROM golang:1.24-alpine AS builder
+
+# Install required tools
+RUN apk add --no-cache \
+    git \
+    make \
+    bash \
+    curl \
+    tar \
+    gzip
+
+# Set working directory
+WORKDIR /workspace
+
+# Copy go mod files first for better caching
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Install setup-envtest tool
+RUN go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+
+# Download and setup envtest binaries (Kubernetes API server components)
+# This downloads etcd and kube-apiserver for testing
+RUN setup-envtest use 1.31.x --bin-dir /usr/local/kubebuilder/bin
+
+# Verify binaries are installed
+RUN ls -la /usr/local/kubebuilder/bin/ && \
+    /usr/local/kubebuilder/bin/kube-apiserver --version
+
+# Copy the entire project
+COPY . .
+
+# Build the application (optional, for validation)
+RUN go build -o /tmp/hyperfleet-adapter ./cmd/adapter
+
+# Set environment variable for envtest
+ENV KUBEBUILDER_ASSETS=/usr/local/kubebuilder/bin
+
+# Default command: run all tests
+CMD ["make", "test-all"]
+
+###############################################################################
+# Usage Examples:
+###############################################################################
+#
+# Build the integration test image:
+#   docker build -f Dockerfile.integration -t hyperfleet-adapter-test:latest .
+#
+# Run all tests (unit + integration):
+#   docker run --rm hyperfleet-adapter-test:latest
+#
+# Run only integration tests:
+#   docker run --rm hyperfleet-adapter-test:latest make test-integration
+#
+# Run only unit tests:
+#   docker run --rm hyperfleet-adapter-test:latest make test
+#
+# Run with verbose output:
+#   docker run --rm hyperfleet-adapter-test:latest go test -v -tags=integration ./test/integration/...
+#
+# Run a specific test:
+#   docker run --rm hyperfleet-adapter-test:latest go test -v -tags=integration -run TestIntegration_CreateResource ./test/integration/k8s-client
+#
+# Interactive shell for debugging:
+#   docker run --rm -it hyperfleet-adapter-test:latest sh
+#
+# Generate coverage report:
+#   docker run --rm -v $(pwd)/coverage:/workspace/coverage hyperfleet-adapter-test:latest make test-coverage
+#
+###############################################################################
+

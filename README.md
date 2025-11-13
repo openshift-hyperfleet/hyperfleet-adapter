@@ -100,15 +100,18 @@ hyperfleet-adapter/
 |--------|-------------|
 | `make build` | Build binary |
 | `make test` | Run unit tests |
+| `make test-integration` | Run integration tests (requires envtest) |
+| `make test-all` | Run all tests (unit + integration) |
+| `make test-coverage` | Generate test coverage report |
 | `make lint` | Run golangci-lint |
 | `make docker-build` | Build Docker image |
 | `make docker-push` | Push Docker image |
-| `make test-integration` | Run integration tests |
-| `make test-coverage` | Generate test coverage report |
 | `make fmt` | Format code |
 | `make mod-tidy` | Tidy Go module dependencies |
 | `make clean` | Clean build artifacts |
 | `make verify` | Run lint and test |
+
+💡 **Tip:** Use `make help` to see all available targets with descriptions
 
 ### Configuration
 
@@ -173,6 +176,7 @@ Default image: `quay.io/openshift-hyperfleet/hyperfleet-adapter:latest`
 ### Unit Tests
 
 ```bash
+# Run unit tests (fast, no dependencies)
 make test
 ```
 
@@ -180,14 +184,37 @@ Unit tests include:
 - Logger functionality and context handling
 - Error handling and error codes
 - Operation ID middleware
+- Template rendering and parsing
+- Kubernetes client logic
+
+**Coverage:** ~26% (focused on business logic)
 
 ### Integration Tests
 
+Integration tests use `envtest` to spin up a local Kubernetes API server.
+
+<details>
+<summary>Click to expand: Setup and run integration tests</summary>
+
 ```bash
+# Install envtest binaries (one-time setup)
+go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+setup-envtest use 1.31.x
+export KUBEBUILDER_ASSETS=$(setup-envtest use -i -p path 1.31.x)
+
+# Run integration tests
 make test-integration
+
+# Run all tests (unit + integration)
+make test-all
+
+# Generate coverage report
+make test-coverage
 ```
 
-Integration tests use `testcontainers` and work in both local and Prow CI environments.
+</details>
+
+📖 **Full guide:** [`test/integration/k8s-client/README.md`](test/integration/k8s-client/README.md)
 
 ### Test Coverage
 
@@ -198,6 +225,10 @@ make test-coverage
 # Generate HTML coverage report
 make test-coverage-html
 ```
+
+**Expected Total Coverage:** ~65-75% (unit + integration tests)
+
+📊 **Test Status:** See [`TEST_STATUS.md`](TEST_STATUS.md) for detailed coverage analysis
 
 ## Logging
 

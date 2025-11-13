@@ -166,4 +166,6 @@ const (
 	AdapterIDKey = "adapter_id"
 	// ClusterIDKey is the context key for cluster ID
 	ClusterIDKey = "cluster_id"
+	// OpIDKey is the context key for operation ID
+	OpIDKey = "opid"
 )

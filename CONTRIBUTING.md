@@ -284,6 +284,3 @@ If you have questions or need help:
 1. Check existing issues and pull requests
 2. Open a new issue with the `question` label
 3. Reach out to maintainers
-
-Thank you for contributing to HyperFleet Adapter! 🎉
-

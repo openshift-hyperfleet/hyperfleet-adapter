@@ -62,24 +62,55 @@ test-coverage-html: test-coverage ## Generate HTML coverage report
 	@echo "HTML coverage report generated: $(COVERAGE_HTML)"
 
 .PHONY: test-integration
-test-integration: ## Run integration tests with testcontainers (works in both Prow and local environments)
-	@echo "Running integration tests with testcontainers..."
-	@if command -v podman > /dev/null && [ -z "$$DOCKER_HOST" ]; then \
-		echo "Detected podman environment (likely Prow), setting up podman system service..."; \
-		podman system service --time=0 & || true; \
-		sleep 2; \
-		DOCKER_HOST=$$(podman info --format 'unix://{{.Host.RemoteSocket.Path}}'); \
-		export DOCKER_HOST; \
-		export TESTCONTAINERS_RYUK_DISABLED=true; \
-		echo "DOCKER_HOST set to: $$DOCKER_HOST"; \
-		$(GOTEST) -v -tags=integration ./test/integration/... -timeout $(TEST_TIMEOUT); \
+test-integration: ## 🔧 Run integration tests (requires envtest binaries)
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "🔧 Running Integration Tests with envtest"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo ""
+	@echo "ℹ️  Integration tests require Kubernetes API binaries (etcd, kube-apiserver)"
+	@echo ""
+	@if [ -z "$$KUBEBUILDER_ASSETS" ] && ! command -v setup-envtest > /dev/null; then \
+		echo "❌ ERROR: envtest binaries not found"; \
+		echo ""; \
+		echo "To install:"; \
+		echo "  1. go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest"; \
+		echo "  2. setup-envtest use 1.31.x"; \
+		echo "  3. export KUBEBUILDER_ASSETS=\$$(setup-envtest use -i -p path 1.31.x)"; \
+		echo ""; \
+		echo "For detailed setup instructions, see:"; \
+		echo "  📖 test/integration/k8s-client/SETUP_INTEGRATION_TESTS.md"; \
+		echo ""; \
+		exit 1; \
+	fi; \
+	if [ -z "$$KUBEBUILDER_ASSETS" ] && command -v setup-envtest > /dev/null; then \
+		echo "🔍 KUBEBUILDER_ASSETS not set, detecting automatically..."; \
+		KUBEBUILDER_ASSETS=$$(setup-envtest use -i -p path 2>/dev/null); \
+		if [ -z "$$KUBEBUILDER_ASSETS" ]; then \
+			echo "❌ No envtest binaries found. Installing..."; \
+			setup-envtest use 1.31.x; \
+			KUBEBUILDER_ASSETS=$$(setup-envtest use -i -p path 1.31.x); \
+		fi; \
+		export KUBEBUILDER_ASSETS; \
+		echo "✅ Using KUBEBUILDER_ASSETS=$$KUBEBUILDER_ASSETS"; \
+		echo "🚀 Starting integration tests..."; \
+		echo ""; \
+		KUBEBUILDER_ASSETS=$$KUBEBUILDER_ASSETS $(GOTEST) -v -tags=integration ./test/integration/... -timeout $(TEST_TIMEOUT) || exit 1; \
 	else \
-		echo "Using existing Docker/Podman setup..."; \
-		$(GOTEST) -v -tags=integration ./test/integration/... -timeout $(TEST_TIMEOUT); \
-	fi
+		echo "✅ Using KUBEBUILDER_ASSETS=$$KUBEBUILDER_ASSETS"; \
+		echo "🚀 Starting integration tests..."; \
+		echo ""; \
+		$(GOTEST) -v -tags=integration ./test/integration/... -timeout $(TEST_TIMEOUT) || exit 1; \
+	fi; \
+	echo ""; \
+	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
+	echo "✅ Integration tests passed!"; \
+	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 .PHONY: test-all
-test-all: test test-integration ## Run both unit and integration tests
+test-all: test test-integration ## ✅ Run ALL tests (unit + integration)
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "✅ All tests completed successfully!"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 .PHONY: lint
 lint: ## Run golangci-lint

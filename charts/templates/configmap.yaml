@@ -1,25 +1,28 @@
-{{- if .Values.config.enabled }}
+{{- range $adapterName, $adapter := .Values.adapters }}
+{{- if $adapter.enabled }}
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "hyperfleet-adapter.configMapName" . }}
+  name: {{ include "hyperfleet-adapter.adapterConfigMapName" (merge (dict "adapterType" $adapterName) $) }}
+  namespace: {{ $.Values.global.namespace }}
   labels:
-    {{- include "hyperfleet-adapter.labels" . | nindent 4 }}
-    app.kubernetes.io/component: adapter
+    {{- include "hyperfleet-adapter.adapterLabels" (merge (dict "adapterType" $adapterName) $) | nindent 4 }}
 data:
-  {{- if .Values.config.adapterType }}
-  # Adapter type identifier (framework uses this to select the right client)
-  ADAPTER_TYPE: {{ .Values.config.adapterType | quote }}
-  {{- end }}
-  {{- if .Values.config.env }}
-  {{- range $key, $value := .Values.config.env }}
-  {{ $key }}: {{ $value | quote }}
-  {{- end }}
-  {{- end }}
-  {{- if .Values.config.adapterYaml }}
-  # YAML format configuration (alternative to env vars)
-  adapter.yaml: |
-{{ .Values.config.adapterYaml | indent 4 }}
-  {{- end }}
+  adapter-config.yaml: |-
+{{- if hasKey $.Values.adapterConfigs $adapterName }}
+{{ index $.Values.adapterConfigs $adapterName | nindent 4 }}
+{{- else if $adapter.configFile }}
+{{ $.Files.Get (printf "configs/%s" $adapter.configFile) | default (printf "# Configuration for %s adapter\n# Please provide adapter-config.yaml content\n" $adapterName) | nindent 4 }}
+{{- else }}
+    # Configuration for {{ $adapterName }} adapter
+    # Please provide adapter-config.yaml content in values.adapterConfigs.{{ $adapterName }}
+    # or create configs/{{ $adapter.configFile }} file
+    adapterName: {{ $adapterName }}-adapter
+    filters:
+      eventTypes:
+        - "cluster.created"
+        - "cluster.updated"
 {{- end }}
-
+{{- end }}
+{{- end }}

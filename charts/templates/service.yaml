@@ -1,0 +1,26 @@
+{{- range $adapterName, $adapter := .Values.adapters }}
+{{- if $adapter.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "hyperfleet-adapter.fullname" $ }}-{{ $adapterName }}
+  namespace: {{ $.Values.global.namespace }}
+  labels:
+    {{- include "hyperfleet-adapter.adapterLabels" (merge (dict "adapterType" $adapterName) $) | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+  - name: metrics
+    port: {{ $.Values.observability.metricsPort }}
+    targetPort: metrics
+    protocol: TCP
+  - name: health
+    port: {{ $.Values.observability.healthPort }}
+    targetPort: health
+    protocol: TCP
+  selector:
+    {{- include "hyperfleet-adapter.adapterSelectorLabels" (merge (dict "adapterType" $adapterName) $) | nindent 4 }}
+{{- end }}
+{{- end }}
+

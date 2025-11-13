@@ -1,0 +1,41 @@
+# Development environment overrides
+
+environment: development
+
+image:
+  tag: "latest"
+  pullPolicy: Always
+
+observability:
+  logLevel: "debug"
+  traceEnabled: true
+
+adapters:
+  validation:
+    enabled: true
+    replicas: 1
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+  dns:
+    enabled: true
+    replicas: 1
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+  placement:
+    enabled: false
+
+broker:
+  maxConcurrency: 10
+

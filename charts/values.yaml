@@ -1,34 +1,101 @@
 # Default values for hyperfleet-adapter
 # This is a YAML-formatted file.
 
-replicaCount: 1
+# Global settings
+global:
+  # Image registry for all adapter images
+  imageRegistry: quay.io/openshift-hyperfleet
+  # Namespace where adapters will be deployed
+  namespace: hyperfleet-system
 
+# Environment identifier
+environment: development
+
+# Image settings (shared by all adapters)
 image:
-  registry: quay.io/openshift-hyperfleet
   repository: hyperfleet-adapter
-  pullPolicy: Always
-  tag: "latest"
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+  pullSecrets: []
 
-imagePullSecrets: []
-nameOverride: ""
-fullnameOverride: ""
+# HyperFleet API configuration
+hyperfleetApi:
+  # Base URL of the HyperFleet API
+  baseUrl: "http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080"
+  # API version
+  version: "v1"
+  # Secret name containing API token (key: token)
+  tokenSecretName: "hyperfleet-api-token"
 
-serviceAccount:
-  # Specifies whether a service account should be created
+# Message broker configuration (shared)
+broker:
+  # Broker type: pubsub, awsSqs, rabbitmq
+  type: "rabbitmq"
+  # Maximum concurrent event processing
+  maxConcurrency: 100
+  
+  # Google Cloud Pub/Sub configuration
+  pubsub:
+    projectId: "my-gcp-project"
+    subscriptionId: "hyperfleet-events"
+  
+  # AWS SQS configuration
+  awsSqs:
+    region: "us-east-1"
+    queueUrl: "https://sqs.us-east-1.amazonaws.com/123456789012/hyperfleet-events"
+  
+  # RabbitMQ configuration
+  rabbitmq:
+    host: "rabbitmq.hyperfleet-system.svc.cluster.local"
+    port: "5672"
+    queueName: "hyperfleet-cluster-events"
+    exchange: "hyperfleet-events"
+    username: "hyperfleet"
+    # Password is stored in secret
+    passwordSecretName: "rabbitmq-credentials"
+    passwordSecretKey: "password"
+
+# Kubernetes client configuration
+kubernetes:
+  # QPS rate limiter for K8s API
+  qps: 100.0
+  # Burst rate limiter for K8s API
+  burst: 200
+
+# Observability settings
+observability:
+  # Log level: debug, info, warn, error
+  logLevel: "info"
+  # Metrics port (Prometheus)
+  metricsPort: 8080
+  # Health check port
+  healthPort: 8081
+  # Enable distributed tracing
+  traceEnabled: false
+
+# RBAC settings
+rbac:
+  # Create RBAC resources (ServiceAccount, Role, RoleBinding)
   create: true
-  # Annotations to add to the service account
-  annotations: {}
-  # The name of the service account to use.
-  # If not set and create is true, a name is generated using the fullname template
-  name: ""
+  # Use ClusterRole instead of Role (for cluster-scoped operations)
+  clusterRole: true
 
-podAnnotations: {}
+# ServiceMonitor for Prometheus Operator
+serviceMonitor:
+  # Enable ServiceMonitor creation
+  enabled: true
+  # Scrape interval
+  interval: 30s
+  # Scrape timeout
+  scrapeTimeout: 10s
 
+# Pod security context
 podSecurityContext:
-  fsGroup: 65532
   runAsNonRoot: true
   runAsUser: 65532
+  fsGroup: 65532
 
+# Container security context
 securityContext:
   allowPrivilegeEscalation: false
   capabilities:
@@ -38,76 +105,113 @@ securityContext:
   seccompProfile:
     type: RuntimeDefault
 
-resources:
-  limits:
-    cpu: 500m
-    memory: 512Mi
-  requests:
-    cpu: 100m
-    memory: 128Mi
-
+# Node selector
 nodeSelector: {}
 
+# Tolerations
 tolerations: []
 
+# Affinity
 affinity: {}
 
-autoscaling:
-  enabled: false
-  minReplicas: 1
-  maxReplicas: 10
-  targetCPUUtilizationPercentage: 80
-  targetMemoryUtilizationPercentage: 80
+# Adapter definitions
+adapters:
+  # Validation Adapter
+  validation:
+    # Enable this adapter
+    enabled: true
+    # Number of replicas
+    replicas: 2
+    # Subscription name (for broker)
+    subscriptionName: "validation-adapter-sub"
+    # Adapter configuration file (will be mounted from ConfigMap)
+    # This file should exist in configs/ directory or be provided
+    configFile: "validation-adapter-config.yaml"
+    # Resource limits
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    # Additional environment variables
+    env: []
+    # Pod annotations
+    podAnnotations: {}
+    # Node selector
+    nodeSelector: {}
+    # Tolerations
+    tolerations: []
+    # Affinity
+    affinity: {}
+    # Autoscaling
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 70
+      targetMemoryUtilizationPercentage: 80
 
-# Adapter configuration
-config:
-  # Use ConfigMap for adapter config
-  # If enabled, creates a ConfigMap and mounts it
-  # If disabled, uses packaged config from image
-  enabled: true
-  # ConfigMap name (if different from default)
-  configMapName: ""
-  # Adapter type identifier (e.g., "example", "gcp", "aws")
-  adapterType: ""
-  # Environment variables for ConfigMap (matching adapther-configmap-template.yaml structure)
-  # Example for RabbitMQ:
-  #   BROKER_TYPE: "rabbitmq"
-  #   BROKER_HOST: "rabbitmq.hyperfleet-system.svc.cluster.local"
-  #   BROKER_PORT: "5672"
-  #   BROKER_QUEUE_NAME: "hyperfleet-cluster-events"
-  #   BROKER_EXCHANGE: "hyperfleet-events"
-  #   BROKER_MAX_CONCURRENCY: "100"
-  env: {}
-  # Alternative: YAML format configuration file (if adapter reads from adapter.yaml file)
-  # This will create adapter.yaml key in ConfigMap
-  adapterYaml: ""
+  # DNS Adapter
+  dns:
+    enabled: true
+    replicas: 3
+    subscriptionName: "dns-adapter-sub"
+    configFile: "dns-adapter-config.yaml"
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    env: []
+    podAnnotations: {}
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    autoscaling:
+      enabled: false
+      minReplicas: 3
+      maxReplicas: 15
+      targetCPUUtilizationPercentage: 70
+      targetMemoryUtilizationPercentage: 80
 
-# Broker configuration
-broker:
-  # Broker ConfigMap name (must exist in cluster)
-  # This ConfigMap contains BROKER_TYPE, BROKER_HOST, BROKER_PORT, etc. as env vars
-  # See adapther-configmap-template.yaml for structure
-  configMapName: ""
-  # Mount broker ConfigMap as environment variables (recommended, matches template)
-  # If false, mounts as file at /etc/adapter/config/broker.yaml
-  mountAsEnv: true
-  # List of environment variable keys to mount from broker ConfigMap
-  # If empty and mountAsEnv=true, all keys will be available via envFrom
-  # Common keys: BROKER_TYPE, BROKER_HOST, BROKER_PORT, BROKER_QUEUE_NAME, etc.
-  envKeys: []
-  # ConfigMap key name (used only if mountAsEnv=false, default: broker.yaml)
-  configMapKey: broker.yaml
+  # Placement Adapter
+  placement:
+    enabled: false
+    replicas: 2
+    subscriptionName: "placement-adapter-sub"
+    configFile: "placement-adapter-config.yaml"
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    env: []
+    podAnnotations: {}
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 70
+      targetMemoryUtilizationPercentage: 80
 
-# Environment variables
-env: []
-  # - name: CONFIG_FILE
-  #   value: /path/to/custom/config.yaml
-  # - name: BROKER_CONFIG_FILE
-  #   value: /path/to/custom/broker-config.yaml
-
-# Volume mounts for additional configs
-extraVolumeMounts: []
-
-# Additional volumes
-extraVolumes: []
-
+# Adapter configurations
+# These will be mounted as ConfigMaps
+# Add your adapter YAML configurations here
+adapterConfigs:
+  # Example: validation adapter config
+  # validation: |
+  #   adapterName: validation-adapter
+  #   filters:
+  #     eventTypes:
+  #       - "cluster.created"
+  #       - "cluster.updated"
+  #   ...

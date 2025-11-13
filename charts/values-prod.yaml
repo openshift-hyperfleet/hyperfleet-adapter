@@ -1,0 +1,71 @@
+# Production environment overrides
+
+environment: production
+
+image:
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+
+observability:
+  logLevel: "warn"
+  traceEnabled: false
+
+adapters:
+  validation:
+    enabled: true
+    replicas: 3
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+    autoscaling:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 20
+      targetCPUUtilizationPercentage: 70
+      targetMemoryUtilizationPercentage: 80
+
+  dns:
+    enabled: true
+    replicas: 5
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+    autoscaling:
+      enabled: true
+      minReplicas: 5
+      maxReplicas: 30
+      targetCPUUtilizationPercentage: 70
+      targetMemoryUtilizationPercentage: 80
+
+  placement:
+    enabled: true
+    replicas: 3
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+    autoscaling:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 15
+      targetCPUUtilizationPercentage: 70
+      targetMemoryUtilizationPercentage: 80
+
+broker:
+  maxConcurrency: 100
+
+kubernetes:
+  qps: 200.0
+  burst: 400
+

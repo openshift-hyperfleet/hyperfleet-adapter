@@ -1,0 +1,25 @@
+{{- if .Values.serviceMonitor.enabled }}
+{{- range $adapterName, $adapter := .Values.adapters }}
+{{- if $adapter.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "hyperfleet-adapter.fullname" $ }}-{{ $adapterName }}
+  namespace: {{ $.Values.global.namespace }}
+  labels:
+    {{- include "hyperfleet-adapter.adapterLabels" (merge (dict "adapterType" $adapterName) $) | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "hyperfleet-adapter.adapterSelectorLabels" (merge (dict "adapterType" $adapterName) $) | nindent 6 }}
+  endpoints:
+  - port: metrics
+    interval: {{ $.Values.serviceMonitor.interval }}
+    scrapeTimeout: {{ $.Values.serviceMonitor.scrapeTimeout }}
+    path: /metrics
+    scheme: http
+{{- end }}
+{{- end }}
+{{- end }}
+
