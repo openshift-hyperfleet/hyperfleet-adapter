@@ -35,8 +35,8 @@ COVERAGE_OUT := coverage.out
 COVERAGE_HTML := coverage.html
 
 # Container runtime detection
-DOCKER_AVAILABLE := $(shell docker info >/dev/null 2>&1 && echo "true" || echo "false")
-PODMAN_AVAILABLE := $(shell podman info >/dev/null 2>&1 && echo "true" || echo "false")
+DOCKER_AVAILABLE := $(shell if docker info >/dev/null 2>&1; then echo "true"; else echo "false"; fi)
+PODMAN_AVAILABLE := $(shell if podman info >/dev/null 2>&1; then echo "true"; else echo "false"; fi)
 
 ifeq ($(DOCKER_AVAILABLE),true)
     CONTAINER_RUNTIME := docker
@@ -60,7 +60,7 @@ endif
 
 # Directories
 # Find all Go packages, excluding vendor and test directories
-PKG_DIRS := $(shell $(GOCMD) list ./... 2>/dev/null | grep -v /vendor/ | grep -v /test/ || echo "./...")
+PKG_DIRS := $(shell $(GOCMD) list ./... 2>/dev/null | grep -v /vendor/ | grep -v /test/)
 
 .PHONY: help
 help: ## Display this help message
