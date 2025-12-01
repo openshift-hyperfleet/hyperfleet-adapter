@@ -277,7 +277,7 @@ See `pkg/errors/error.go` for error handling implementation.
 
 ## Contributing
 
-We welcome contributions! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines on:
+Welcome contributions! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines on:
 
 - Code style and standards
 - Testing requirements
