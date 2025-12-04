@@ -8,23 +8,20 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/errors"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewClient(t *testing.T) {
 	// NewClient requires base URL - test with explicit base URL
 	client, err := NewClient(WithBaseURL("http://localhost:8080"))
-	if err != nil {
-		t.Fatalf("NewClient returned error: %v", err)
-	}
-	if client == nil {
-		t.Fatal("NewClient returned nil")
-	}
+	require.NoError(t, err)
+	require.NotNil(t, client)
 }
 
 func TestNewClientMissingBaseURL(t *testing.T) {
@@ -46,12 +43,8 @@ func TestNewClientMissingBaseURL(t *testing.T) {
 	}
 
 	_, err := NewClient()
-	if err == nil {
-		t.Fatal("expected error when base URL not configured")
-	}
-	if !strings.Contains(err.Error(), "base URL") {
-		t.Errorf("error should mention base URL, got: %v", err)
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "base URL")
 }
 
 func TestNewClientWithOptions(t *testing.T) {
@@ -149,16 +142,12 @@ func TestClientGet(t *testing.T) {
 
 	// Use server URL as base URL for testing
 	client, err := NewClient(WithBaseURL(server.URL))
-	if err != nil {
-		t.Fatalf("failed to create client: %v", err)
-	}
+	require.NoError(t, err, "failed to create client")
 	ctx := context.Background()
 
 	// Use relative path - base URL will be prepended
 	resp, err := client.Get(ctx, "/test")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err, "unexpected error")
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected status 200, got %d", resp.StatusCode)
@@ -186,16 +175,12 @@ func TestClientPost(t *testing.T) {
 	defer server.Close()
 
 	client, err := NewClient(WithBaseURL(server.URL))
-	if err != nil {
-		t.Fatalf("failed to create client: %v", err)
-	}
+	require.NoError(t, err, "failed to create client")
 	ctx := context.Background()
 	body := []byte(`{"key":"value"}`)
 
 	resp, err := client.Post(ctx, "/test", body, WithHeader("Content-Type", "application/json"))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err, "unexpected error")
 
 	if resp.StatusCode != http.StatusCreated {
 		t.Errorf("expected status 201, got %d", resp.StatusCode)
@@ -222,18 +207,14 @@ func TestClientWithHeaders(t *testing.T) {
 	defer server.Close()
 
 	client, err := NewClient(WithBaseURL(server.URL), WithDefaultHeader("Authorization", "Bearer default-token"))
-	if err != nil {
-		t.Fatalf("failed to create client: %v", err)
-	}
+	require.NoError(t, err, "failed to create client")
 	ctx := context.Background()
 
 	// Test with additional header
 	_, err = client.Get(ctx, "/test",
 		WithHeader("X-Custom-Header", "custom-value"),
 	)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err, "unexpected error")
 
 	if receivedAuth != "Bearer default-token" {
 		t.Errorf("expected Authorization header 'Bearer default-token', got %q", receivedAuth)
@@ -265,15 +246,11 @@ func TestClientRetry(t *testing.T) {
 	config.BaseDelay = 10 * time.Millisecond // Short delay for tests
 
 	client, err := NewClient(WithConfig(config))
-	if err != nil {
-		t.Fatalf("failed to create client: %v", err)
-	}
+	require.NoError(t, err, "failed to create client")
 	ctx := context.Background()
 
 	resp, err := client.Get(ctx, "/test")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err, "unexpected error")
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected status 200, got %d", resp.StatusCode)
@@ -304,19 +281,13 @@ func TestClientRetryExhausted(t *testing.T) {
 	config.BaseDelay = 10 * time.Millisecond
 
 	client, err := NewClient(WithConfig(config))
-	if err != nil {
-		t.Fatalf("failed to create client: %v", err)
-	}
+	require.NoError(t, err, "failed to create client")
 	ctx := context.Background()
 
 	resp, err := client.Get(ctx, "/test")
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
+	require.Error(t, err, "expected error, got nil")
 
-	if resp == nil {
-		t.Fatal("expected response even on error")
-	}
+	require.NotNil(t, resp, "expected response even on error")
 
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Errorf("expected status 503, got %d", resp.StatusCode)
@@ -341,15 +312,11 @@ func TestClientNoRetryOn4xx(t *testing.T) {
 	config.RetryAttempts = 3
 
 	client, err := NewClient(WithConfig(config))
-	if err != nil {
-		t.Fatalf("failed to create client: %v", err)
-	}
+	require.NoError(t, err, "failed to create client")
 	ctx := context.Background()
 
 	resp, err := client.Get(ctx, "/test")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err, "unexpected error")
 
 	// Should not retry on 400
 	if atomic.LoadInt32(&attemptCount) != 1 {
@@ -375,15 +342,11 @@ func TestClientTimeout(t *testing.T) {
 	config.RetryAttempts = 1
 
 	client, err := NewClient(WithConfig(config))
-	if err != nil {
-		t.Fatalf("failed to create client: %v", err)
-	}
+	require.NoError(t, err, "failed to create client")
 	ctx := context.Background()
 
 	_, err = client.Get(ctx, "/test")
-	if err == nil {
-		t.Fatal("expected timeout error, got nil")
-	}
+	require.Error(t, err, "expected timeout error, got nil")
 }
 
 func TestClientContextCancellation(t *testing.T) {
@@ -394,16 +357,12 @@ func TestClientContextCancellation(t *testing.T) {
 	defer server.Close()
 
 	client, err := NewClient(WithBaseURL(server.URL))
-	if err != nil {
-		t.Fatalf("failed to create client: %v", err)
-	}
+	require.NoError(t, err, "failed to create client")
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
 	_, err = client.Get(ctx, "/test")
-	if err == nil {
-		t.Fatal("expected context cancellation error, got nil")
-	}
+	require.Error(t, err, "expected context cancellation error, got nil")
 }
 
 func TestResponseHelpers(t *testing.T) {
@@ -501,15 +460,11 @@ func TestClientPut(t *testing.T) {
 	defer server.Close()
 
 	client, err := NewClient(WithBaseURL(server.URL))
-	if err != nil {
-		t.Fatalf("failed to create client: %v", err)
-	}
+	require.NoError(t, err, "failed to create client")
 	ctx := context.Background()
 
 	resp, err := client.Put(ctx, "/test", []byte(`{"id":"123"}`))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err, "unexpected error")
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected status 200, got %d", resp.StatusCode)
@@ -526,15 +481,11 @@ func TestClientPatch(t *testing.T) {
 	defer server.Close()
 
 	client, err := NewClient(WithBaseURL(server.URL))
-	if err != nil {
-		t.Fatalf("failed to create client: %v", err)
-	}
+	require.NoError(t, err, "failed to create client")
 	ctx := context.Background()
 
 	resp, err := client.Patch(ctx, "/test", []byte(`{"field":"value"}`))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err, "unexpected error")
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected status 200, got %d", resp.StatusCode)
@@ -551,15 +502,11 @@ func TestClientDelete(t *testing.T) {
 	defer server.Close()
 
 	client, err := NewClient(WithBaseURL(server.URL))
-	if err != nil {
-		t.Fatalf("failed to create client: %v", err)
-	}
+	require.NoError(t, err, "failed to create client")
 	ctx := context.Background()
 
 	resp, err := client.Delete(ctx, "/test")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err, "unexpected error")
 
 	if resp.StatusCode != http.StatusNoContent {
 		t.Errorf("expected status 204, got %d", resp.StatusCode)
@@ -580,15 +527,9 @@ func TestAPIError(t *testing.T) {
 
 	// Test Error() method
 	errStr := err.Error()
-	if !strings.Contains(errStr, "POST") {
-		t.Errorf("error string should contain method, got: %s", errStr)
-	}
-	if !strings.Contains(errStr, "503") {
-		t.Errorf("error string should contain status code, got: %s", errStr)
-	}
-	if !strings.Contains(errStr, "3 attempt") {
-		t.Errorf("error string should contain attempts, got: %s", errStr)
-	}
+	assert.Contains(t, errStr, "POST", "error string should contain method, got: %s")
+	assert.Contains(t, errStr, "503", "error string should contain status code, got: %s")
+	assert.Contains(t, errStr, "3 attempt", "error string should contain attempts, got: %s")
 
 	// Test helper methods
 	if !err.IsServerError() {
@@ -603,9 +544,7 @@ func TestAPIError(t *testing.T) {
 
 	// Test ResponseBodyString
 	bodyStr := err.ResponseBodyString()
-	if !strings.Contains(bodyStr, "backend is down") {
-		t.Errorf("expected response body string to contain error message, got: %s", bodyStr)
-	}
+	assert.Contains(t, bodyStr, "backend is down", "expected response body string to contain error message, got: %s")
 }
 
 func TestAPIErrorStatusHelpers(t *testing.T) {
@@ -693,15 +632,11 @@ func TestAPIErrorInRetryExhausted(t *testing.T) {
 	config.BaseDelay = 10 * time.Millisecond
 
 	client, err := NewClient(WithConfig(config))
-	if err != nil {
-		t.Fatalf("failed to create client: %v", err)
-	}
+	require.NoError(t, err, "failed to create client")
 	ctx := context.Background()
 
 	_, err = client.Get(ctx, "/test")
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
+	require.Error(t, err, "expected error, got nil")
 
 	// Check if it's an APIError with proper details
 	apiErr, ok := errors.IsAPIError(err)
@@ -718,9 +653,7 @@ func TestAPIErrorInRetryExhausted(t *testing.T) {
 	if apiErr.Attempts != 2 {
 		t.Errorf("expected 2 attempts, got %d", apiErr.Attempts)
 	}
-	if !strings.Contains(apiErr.ResponseBodyString(), "backend overloaded") {
-		t.Errorf("expected response body to contain error message, got: %s", apiErr.ResponseBodyString())
-	}
+	assert.Contains(t, apiErr.ResponseBodyString(), "backend overloaded", "expected response body to contain error message, got: %s")
 	if !apiErr.IsServerError() {
 		t.Error("expected IsServerError to return true")
 	}

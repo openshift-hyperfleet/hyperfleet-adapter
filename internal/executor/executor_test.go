@@ -1,0 +1,856 @@
+package executor
+
+import (
+	"context"
+	"encoding/json"
+	"testing"
+
+	"github.com/cloudevents/sdk-go/v2/event"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleet_api"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// mockLogger implements logger.Logger for testing
+type mockLogger struct{}
+
+func (m *mockLogger) V(level int32) logger.Logger                       { return m }
+func (m *mockLogger) Infof(format string, args ...interface{})          {}
+func (m *mockLogger) Warningf(format string, args ...interface{})       {}
+func (m *mockLogger) Errorf(format string, args ...interface{})         {}
+func (m *mockLogger) Extra(key string, value interface{}) logger.Logger { return m }
+func (m *mockLogger) Info(message string)                               {}
+func (m *mockLogger) Warning(message string)                            {}
+func (m *mockLogger) Error(message string)                              {}
+func (m *mockLogger) Fatal(message string)                              {}
+
+// mockAPIClient implements hyperfleet_api.Client for testing
+type mockAPIClient struct {
+	getResponse *hyperfleet_api.Response
+	getError    error
+}
+
+func (m *mockAPIClient) Do(ctx context.Context, req *hyperfleet_api.Request) (*hyperfleet_api.Response, error) {
+	return m.getResponse, m.getError
+}
+
+func (m *mockAPIClient) Get(ctx context.Context, url string, opts ...hyperfleet_api.RequestOption) (*hyperfleet_api.Response, error) {
+	return m.getResponse, m.getError
+}
+
+func (m *mockAPIClient) Post(ctx context.Context, url string, body []byte, opts ...hyperfleet_api.RequestOption) (*hyperfleet_api.Response, error) {
+	return m.getResponse, m.getError
+}
+
+func (m *mockAPIClient) Put(ctx context.Context, url string, body []byte, opts ...hyperfleet_api.RequestOption) (*hyperfleet_api.Response, error) {
+	return m.getResponse, m.getError
+}
+
+func (m *mockAPIClient) Patch(ctx context.Context, url string, body []byte, opts ...hyperfleet_api.RequestOption) (*hyperfleet_api.Response, error) {
+	return m.getResponse, m.getError
+}
+
+func (m *mockAPIClient) Delete(ctx context.Context, url string, opts ...hyperfleet_api.RequestOption) (*hyperfleet_api.Response, error) {
+	return m.getResponse, m.getError
+}
+
+func (m *mockAPIClient) BaseURL() string {
+	return "http://mock-api.example.com"
+}
+
+func TestNewExecutor(t *testing.T) {
+	tests := []struct {
+		name        string
+		config      *ExecutorConfig
+		expectError bool
+	}{
+		{
+			name:        "nil config",
+			config:      nil,
+			expectError: true,
+		},
+		{
+			name: "missing adapter config",
+			config: &ExecutorConfig{
+				APIClient: &mockAPIClient{},
+				Logger:    &mockLogger{},
+			},
+			expectError: true,
+		},
+		{
+			name: "missing API client",
+			config: &ExecutorConfig{
+				AdapterConfig: &config_loader.AdapterConfig{},
+				Logger:        &mockLogger{},
+			},
+			expectError: true,
+		},
+		{
+			name: "missing logger",
+			config: &ExecutorConfig{
+				AdapterConfig: &config_loader.AdapterConfig{},
+				APIClient:     &mockAPIClient{},
+			},
+			expectError: true,
+		},
+		{
+			name: "valid config",
+			config: &ExecutorConfig{
+				AdapterConfig: &config_loader.AdapterConfig{},
+				APIClient:     &mockAPIClient{},
+				Logger:        &mockLogger{},
+			},
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewExecutor(tt.config)
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestExecutorBuilder(t *testing.T) {
+	config := &config_loader.AdapterConfig{
+		Metadata: config_loader.Metadata{
+			Name:      "test-adapter",
+			Namespace: "test-ns",
+		},
+	}
+
+	exec, err := NewBuilder().
+		WithAdapterConfig(config).
+		WithAPIClient(&mockAPIClient{}).
+		WithLogger(&mockLogger{}).
+		WithDryRun(true).
+		Build()
+
+	require.NoError(t, err)
+	require.NotNil(t, exec)
+	assert.True(t, exec.config.DryRun)
+}
+
+func TestExecutionContext(t *testing.T) {
+	ctx := context.Background()
+	evt := event.New()
+	evt.SetID("test-123")
+
+	execCtx := NewExecutionContext(ctx, &evt, make(map[string]interface{}))
+
+	assert.Equal(t, "test-123", execCtx.Event.ID())
+	assert.Empty(t, execCtx.Params)
+	assert.Empty(t, execCtx.Responses)
+	assert.Empty(t, execCtx.Resources)
+	assert.Equal(t, string(StatusSuccess), execCtx.Adapter.ExecutionStatus)
+}
+
+func TestExecutionContext_SetError(t *testing.T) {
+	ctx := context.Background()
+	evt := event.New()
+
+	execCtx := NewExecutionContext(ctx, &evt, make(map[string]interface{}))
+	execCtx.SetError("TestReason", "Test message")
+
+	assert.Equal(t, string(StatusFailed), execCtx.Adapter.ExecutionStatus)
+	assert.Equal(t, "TestReason", execCtx.Adapter.ErrorReason)
+	assert.Equal(t, "Test message", execCtx.Adapter.ErrorMessage)
+}
+
+func TestExecutionContext_EvaluationTracking(t *testing.T) {
+	ctx := context.Background()
+	evt := event.New()
+	evt.SetID("test-123")
+
+	execCtx := NewExecutionContext(ctx, &evt, make(map[string]interface{}))
+
+	// Verify evaluations are empty initially
+	assert.Empty(t, execCtx.Evaluations, "expected empty evaluations initially")
+
+	// Add a CEL evaluation
+	execCtx.AddCELEvaluation(PhasePreconditions, "check-status", "status == 'active'", true)
+
+	require.Len(t, execCtx.Evaluations, 1, "evaluation")
+
+	eval := execCtx.Evaluations[0]
+	assert.Equal(t, PhasePreconditions, eval.Phase)
+	assert.Equal(t, "check-status", eval.Name)
+	assert.Equal(t, EvaluationTypeCEL, eval.EvaluationType)
+	assert.Equal(t, "status == 'active'", eval.Expression)
+	assert.True(t, eval.Matched)
+
+	// Add a conditions evaluation with field results (using criteria.EvaluationResult)
+	fieldResults := map[string]criteria.EvaluationResult{
+		"status.phase": {
+			Field:         "status.phase",
+			Operator:      criteria.OperatorEquals,
+			ExpectedValue: "Running",
+			FieldValue:    "Running",
+			Matched:       true,
+		},
+		"replicas": {
+			Field:         "replicas",
+			Operator:      criteria.OperatorGreaterThan,
+			ExpectedValue: 0,
+			FieldValue:    3,
+			Matched:       true,
+		},
+	}
+	execCtx.AddConditionsEvaluation(PhasePreconditions, "check-replicas", true, fieldResults)
+
+	require.Len(t, execCtx.Evaluations, 2, "evaluations")
+
+	condEval := execCtx.Evaluations[1]
+	assert.Equal(t, EvaluationTypeConditions, condEval.EvaluationType)
+	assert.Len(t, condEval.FieldResults, 2)
+
+	// Verify lookup by field name works
+	assert.Contains(t, condEval.FieldResults, "status.phase")
+	assert.Equal(t, "Running", condEval.FieldResults["status.phase"].FieldValue)
+
+	assert.Contains(t, condEval.FieldResults, "replicas")
+	assert.Equal(t, 3, condEval.FieldResults["replicas"].FieldValue)
+}
+
+func TestExecutionContext_GetEvaluationsByPhase(t *testing.T) {
+	ctx := context.Background()
+	evt := event.New()
+
+	execCtx := NewExecutionContext(ctx, &evt, make(map[string]interface{}))
+
+	// Add evaluations in different phases
+	execCtx.AddCELEvaluation(PhasePreconditions, "precond-1", "true", true)
+	execCtx.AddCELEvaluation(PhasePreconditions, "precond-2", "false", false)
+	execCtx.AddCELEvaluation(PhasePostActions, "post-1", "true", true)
+
+	// Get preconditions evaluations
+	precondEvals := execCtx.GetEvaluationsByPhase(PhasePreconditions)
+	require.Len(t, precondEvals, 2, "precondition evaluations")
+
+	// Get post actions evaluations
+	postEvals := execCtx.GetEvaluationsByPhase(PhasePostActions)
+	require.Len(t, postEvals, 1, "post action evaluation")
+
+	// Get resources evaluations (none)
+	resourceEvals := execCtx.GetEvaluationsByPhase(PhaseResources)
+	require.Len(t, resourceEvals, 0, "resource evaluations")
+}
+
+func TestExecutionContext_GetFailedEvaluations(t *testing.T) {
+	ctx := context.Background()
+	evt := event.New()
+
+	execCtx := NewExecutionContext(ctx, &evt, make(map[string]interface{}))
+
+	// Add mixed evaluations
+	execCtx.AddCELEvaluation(PhasePreconditions, "passed-1", "true", true)
+	execCtx.AddCELEvaluation(PhasePreconditions, "failed-1", "false", false)
+	execCtx.AddCELEvaluation(PhasePreconditions, "passed-2", "true", true)
+	execCtx.AddCELEvaluation(PhasePostActions, "failed-2", "false", false)
+
+	failedEvals := execCtx.GetFailedEvaluations()
+	require.Len(t, failedEvals, 2, "failed evaluations")
+
+	// Verify the failed ones are correct
+	names := make(map[string]bool)
+	for _, eval := range failedEvals {
+		names[eval.Name] = true
+	}
+	assert.True(t, names["failed-1"], "failed-1")
+	assert.True(t, names["failed-2"], "failed-2")
+}
+
+func TestExecutorError(t *testing.T) {
+	err := NewExecutorError(PhasePreconditions, "test-step", "test message", nil)
+
+	expected := "[preconditions] test-step: test message"
+	if err.Error() != expected {
+		t.Errorf("expected '%s', got '%s'", expected, err.Error())
+	}
+
+	// With wrapped error
+	wrappedErr := NewExecutorError(PhaseResources, "create", "failed to create", context.Canceled)
+	assert.Equal(t, context.Canceled, wrappedErr.Unwrap())
+}
+
+func TestExecute_ParamExtraction(t *testing.T) {
+	// Set up environment variable for test
+	t.Setenv("TEST_VAR", "test-value")
+
+	config := &config_loader.AdapterConfig{
+		Metadata: config_loader.Metadata{
+			Name:      "test-adapter",
+			Namespace: "test-ns",
+		},
+		Spec: config_loader.AdapterConfigSpec{
+			Params: []config_loader.Parameter{
+				{
+					Name:     "testParam",
+					Source:   "env.TEST_VAR",
+					Required: true,
+				},
+				{
+					Name:     "eventParam",
+					Source:   "event.cluster_id",
+					Required: true,
+				},
+			},
+		},
+	}
+
+	exec, err := NewBuilder().
+		WithAdapterConfig(config).
+		WithAPIClient(&mockAPIClient{}).
+		WithLogger(&mockLogger{}).
+		WithDryRun(true).
+		Build()
+
+	if err != nil {
+		t.Fatalf("unexpected error creating executor: %v", err)
+	}
+
+	// Create event with data
+	evt := event.New()
+	evt.SetID("test-event-123")
+	eventData := map[string]interface{}{
+		"cluster_id": "cluster-456",
+	}
+	eventDataBytes, _ := json.Marshal(eventData)
+	_ = evt.SetData(event.ApplicationJSON, eventDataBytes)
+
+	// Execute
+	result := exec.Execute(context.Background(), &evt)
+
+	// Check result
+	if result.EventID != "test-event-123" {
+		t.Errorf("expected event ID 'test-event-123', got '%s'", result.EventID)
+	}
+
+	// Check extracted params
+	if result.Params["testParam"] != "test-value" {
+		t.Errorf("expected testParam to be 'test-value', got '%v'", result.Params["testParam"])
+	}
+
+	if result.Params["eventParam"] != "cluster-456" {
+		t.Errorf("expected eventParam to be 'cluster-456', got '%v'", result.Params["eventParam"])
+	}
+}
+
+func TestParamExtractor(t *testing.T) {
+	t.Setenv("TEST_ENV", "env-value")
+
+	evt := event.New()
+	eventData := map[string]interface{}{
+		"cluster_id": "test-cluster",
+		"nested": map[string]interface{}{
+			"value": "nested-value",
+		},
+	}
+	eventDataBytes, _ := json.Marshal(eventData)
+	_ = evt.SetData(event.ApplicationJSON, eventDataBytes)
+
+	tests := []struct {
+		name        string
+		params      []config_loader.Parameter
+		expectKey   string
+		expectValue interface{}
+		expectError bool
+	}{
+		{
+			name: "extract from env",
+			params: []config_loader.Parameter{
+				{Name: "envVar", Source: "env.TEST_ENV"},
+			},
+			expectKey:   "envVar",
+			expectValue: "env-value",
+		},
+		{
+			name: "extract from event",
+			params: []config_loader.Parameter{
+				{Name: "clusterId", Source: "event.cluster_id"},
+			},
+			expectKey:   "clusterId",
+			expectValue: "test-cluster",
+		},
+		{
+			name: "extract nested from event",
+			params: []config_loader.Parameter{
+				{Name: "nestedVal", Source: "event.nested.value"},
+			},
+			expectKey:   "nestedVal",
+			expectValue: "nested-value",
+		},
+		{
+			name: "use default for missing optional",
+			params: []config_loader.Parameter{
+				{Name: "optional", Source: "env.MISSING", Default: "default-val"},
+			},
+			expectKey:   "optional",
+			expectValue: "default-val",
+		},
+		{
+			name: "fail on missing required",
+			params: []config_loader.Parameter{
+				{Name: "required", Source: "env.MISSING", Required: true},
+			},
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create fresh context for each test
+			execCtx := NewExecutionContext(context.Background(), &evt, eventData)
+			
+			// Create config with test params
+			config := &config_loader.AdapterConfig{
+				Metadata: config_loader.Metadata{
+					Name:      "test",
+					Namespace: "default",
+				},
+				Spec: config_loader.AdapterConfigSpec{
+					Params: tt.params,
+				},
+			}
+
+			// Extract params using pure function
+			err := extractConfigParams(config, execCtx)
+
+			if tt.expectError {
+			assert.Error(t, err)
+			return
+		}
+
+			require.NoError(t, err)
+
+			if tt.expectKey != "" {
+				if execCtx.Params[tt.expectKey] != tt.expectValue {
+					t.Errorf("expected %s=%v, got %v", tt.expectKey, tt.expectValue, execCtx.Params[tt.expectKey])
+				}
+			}
+		})
+	}
+}
+
+func TestRenderTemplate(t *testing.T) {
+	tests := []struct {
+		name        string
+		template    string
+		data        map[string]interface{}
+		expected    string
+		expectError bool
+	}{
+		{
+			name:     "simple variable",
+			template: "Hello {{ .name }}!",
+			data:     map[string]interface{}{"name": "World"},
+			expected: "Hello World!",
+		},
+		{
+			name:     "no template",
+			template: "plain text",
+			data:     map[string]interface{}{},
+			expected: "plain text",
+		},
+		{
+			name:     "nested variable",
+			template: "{{ .cluster.id }}",
+			data: map[string]interface{}{
+				"cluster": map[string]interface{}{"id": "test-123"},
+			},
+			expected: "test-123",
+		},
+		{
+			name:        "missing variable",
+			template:    "{{ .missing }}",
+			data:        map[string]interface{}{},
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := renderTemplate(tt.template, tt.data)
+
+			if tt.expectError {
+			assert.Error(t, err)
+			return
+		}
+
+			require.NoError(t, err)
+
+			if result != tt.expected {
+				t.Errorf("expected '%s', got '%s'", tt.expected, result)
+			}
+		})
+	}
+}
+
+// TestSequentialExecution_Preconditions tests that preconditions stop on first failure
+func TestSequentialExecution_Preconditions(t *testing.T) {
+	tests := []struct {
+		name              string
+		preconditions     []config_loader.Precondition
+		expectedResults   int // number of results before stopping
+		expectError       bool
+		expectNotMet      bool
+		expectedLastName  string
+	}{
+		{
+			name: "all pass - all executed",
+			preconditions: []config_loader.Precondition{
+				{Name: "precond1", Expression: "true"},
+				{Name: "precond2", Expression: "true"},
+				{Name: "precond3", Expression: "true"},
+			},
+			expectedResults:  3,
+			expectError:      false,
+			expectNotMet:     false,
+			expectedLastName: "precond3",
+		},
+		{
+			name: "first fails - stops immediately",
+			preconditions: []config_loader.Precondition{
+				{Name: "precond1", Expression: "false"},
+				{Name: "precond2", Expression: "true"},
+				{Name: "precond3", Expression: "true"},
+			},
+			expectedResults:  1,
+			expectError:      false,
+			expectNotMet:     true,
+			expectedLastName: "precond1",
+		},
+		{
+			name: "second fails - first executes, stops at second",
+			preconditions: []config_loader.Precondition{
+				{Name: "precond1", Expression: "true"},
+				{Name: "precond2", Expression: "false"},
+				{Name: "precond3", Expression: "true"},
+			},
+			expectedResults:  2,
+			expectError:      false,
+			expectNotMet:     true,
+			expectedLastName: "precond2",
+		},
+		{
+			name: "third fails - first two execute, stops at third",
+			preconditions: []config_loader.Precondition{
+				{Name: "precond1", Expression: "true"},
+				{Name: "precond2", Expression: "true"},
+				{Name: "precond3", Expression: "false"},
+			},
+			expectedResults:  3,
+			expectError:      false,
+			expectNotMet:     true,
+			expectedLastName: "precond3",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := &config_loader.AdapterConfig{
+				Metadata: config_loader.Metadata{
+					Name:      "test-adapter",
+					Namespace: "test-ns",
+				},
+				Spec: config_loader.AdapterConfigSpec{
+					Preconditions: tt.preconditions,
+				},
+			}
+
+			exec, err := NewBuilder().
+				WithAdapterConfig(config).
+				WithAPIClient(&mockAPIClient{}).
+				WithLogger(&mockLogger{}).
+				WithDryRun(true).
+				Build()
+
+			if err != nil {
+				t.Fatalf("unexpected error creating executor: %v", err)
+			}
+
+			evt := event.New()
+			evt.SetID("test-event-seq")
+			
+			result := exec.Execute(context.Background(), &evt)
+
+			// Verify number of precondition results
+			if len(result.PreconditionResults) != tt.expectedResults {
+				t.Errorf("expected %d precondition results, got %d",
+					tt.expectedResults, len(result.PreconditionResults))
+			}
+
+			// Verify last executed precondition name
+			if len(result.PreconditionResults) > 0 {
+				lastResult := result.PreconditionResults[len(result.PreconditionResults)-1]
+				if lastResult.Name != tt.expectedLastName {
+					t.Errorf("expected last precondition to be '%s', got '%s'",
+						tt.expectedLastName, lastResult.Name)
+				}
+			}
+
+			// Verify error/not met status
+			if tt.expectNotMet {
+				// Precondition not met is a successful execution, just with resources skipped
+				assert.Equal(t, StatusSuccess, result.Status, "expected status Success (precondition not met is valid outcome)")
+				assert.True(t, result.ResourcesSkipped, "ResourcesSkipped")
+				assert.NotEmpty(t, result.SkipReason, "expected SkipReason to be set")
+			}
+
+			if !tt.expectNotMet && !tt.expectError {
+				assert.Equal(t, StatusSuccess, result.Status, "expected status Success")
+			}
+		})
+	}
+}
+
+// TestSequentialExecution_Resources tests that resources stop on first failure
+func TestSequentialExecution_Resources(t *testing.T) {
+	// Note: This test uses dry-run mode and focuses on the sequential logic
+	// without requiring a real K8s cluster. Resource sequential execution is better
+	// tested in integration tests with real K8s API.
+	
+	tests := []struct {
+		name             string
+		resources        []config_loader.Resource
+		expectedResults  int
+		expectFailure    bool
+	}{
+		{
+			name: "single resource with valid manifest",
+			resources: []config_loader.Resource{
+				{
+					Name: "resource1",
+					Manifest: map[string]interface{}{
+						"apiVersion": "v1",
+						"kind":       "ConfigMap",
+						"metadata": map[string]interface{}{
+							"name": "test-cm",
+						},
+					},
+				},
+			},
+			expectedResults: 1,
+			expectFailure:   false,
+		},
+		{
+			name: "first resource invalid - stops immediately",
+			resources: []config_loader.Resource{
+				{Name: "resource1", Manifest: map[string]interface{}{"kind": "ConfigMap"}}, // Missing apiVersion
+				{
+					Name: "resource2",
+					Manifest: map[string]interface{}{
+						"apiVersion": "v1",
+						"kind":       "ConfigMap",
+						"metadata": map[string]interface{}{
+							"name": "test-cm2",
+						},
+					},
+				},
+			},
+			expectedResults: 1, // Stops at first failure
+			expectFailure:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := &config_loader.AdapterConfig{
+				Metadata: config_loader.Metadata{
+					Name:      "test-adapter",
+					Namespace: "test-ns",
+				},
+				Spec: config_loader.AdapterConfigSpec{
+					Resources: tt.resources,
+				},
+			}
+
+			exec, err := NewBuilder().
+				WithAdapterConfig(config).
+				WithAPIClient(&mockAPIClient{}).
+				WithLogger(&mockLogger{}).
+				WithDryRun(true).
+				Build()
+
+			if err != nil {
+				t.Fatalf("unexpected error creating executor: %v", err)
+			}
+
+			evt := event.New()
+			evt.SetID("test-event-resources")
+			
+			result := exec.Execute(context.Background(), &evt)
+
+			// Verify sequential stop-on-failure: number of results should match expected
+			if len(result.ResourceResults) != tt.expectedResults {
+				t.Errorf("expected %d resource results, got %d (sequential execution should stop at failure)",
+					tt.expectedResults, len(result.ResourceResults))
+			}
+
+			// Verify failure status
+			if tt.expectFailure {
+				if result.Status == StatusSuccess {
+					t.Error("expected execution to fail but got success")
+				}
+			}
+		})
+	}
+}
+
+// TestSequentialExecution_PostActions tests that post actions stop on first failure
+func TestSequentialExecution_PostActions(t *testing.T) {
+	tests := []struct {
+		name            string
+		postActions     []config_loader.PostAction
+		mockResponse    *hyperfleet_api.Response
+		mockError       error
+		expectedResults int
+		expectError     bool
+	}{
+		{
+			name: "all log actions succeed",
+			postActions: []config_loader.PostAction{
+				{Name: "log1", Log: &config_loader.LogAction{Message: "msg1"}},
+				{Name: "log2", Log: &config_loader.LogAction{Message: "msg2"}},
+				{Name: "log3", Log: &config_loader.LogAction{Message: "msg3"}},
+			},
+			expectedResults: 3,
+			expectError:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			postConfig := &config_loader.PostConfig{
+				PostActions: tt.postActions,
+			}
+
+			config := &config_loader.AdapterConfig{
+				Metadata: config_loader.Metadata{
+					Name:      "test-adapter",
+					Namespace: "test-ns",
+				},
+				Spec: config_loader.AdapterConfigSpec{
+					Post: postConfig,
+				},
+			}
+
+			mockClient := &mockAPIClient{
+				getResponse: tt.mockResponse,
+				getError:    tt.mockError,
+			}
+
+			exec, err := NewBuilder().
+				WithAdapterConfig(config).
+				WithAPIClient(mockClient).
+				WithLogger(&mockLogger{}).
+				WithDryRun(true).
+				Build()
+
+			if err != nil {
+				t.Fatalf("unexpected error creating executor: %v", err)
+			}
+
+			evt := event.New()
+			evt.SetID("test-event-post")
+			
+			result := exec.Execute(context.Background(), &evt)
+
+			// Verify number of post action results
+			if len(result.PostActionResults) != tt.expectedResults {
+				t.Errorf("expected %d post action results, got %d",
+					tt.expectedResults, len(result.PostActionResults))
+			}
+
+			// Verify error expectation
+			if tt.expectError && result.Error == nil {
+				t.Error("expected error but got nil")
+			}
+		})
+	}
+}
+
+// TestSequentialExecution_SkipReasonCapture tests that SkipReason captures which precondition wasn't met
+func TestSequentialExecution_SkipReasonCapture(t *testing.T) {
+	tests := []struct {
+		name           string
+		preconditions  []config_loader.Precondition
+		expectedStatus ExecutionStatus
+		expectSkipped  bool
+	}{
+		{
+			name: "first precondition not met",
+			preconditions: []config_loader.Precondition{
+				{Name: "check1", Expression: "false"},
+				{Name: "check2", Expression: "true"},
+				{Name: "check3", Expression: "true"},
+			},
+			expectedStatus: StatusSuccess, // Successful execution, just resources skipped
+			expectSkipped:  true,
+		},
+		{
+			name: "second precondition not met",
+			preconditions: []config_loader.Precondition{
+				{Name: "check1", Expression: "true"},
+				{Name: "check2", Expression: "false"},
+				{Name: "check3", Expression: "true"},
+			},
+			expectedStatus: StatusSuccess, // Successful execution, just resources skipped
+			expectSkipped:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := &config_loader.AdapterConfig{
+				Metadata: config_loader.Metadata{
+					Name:      "test-adapter",
+					Namespace: "test-ns",
+				},
+				Spec: config_loader.AdapterConfigSpec{
+					Preconditions: tt.preconditions,
+				},
+			}
+
+			exec, err := NewBuilder().
+				WithAdapterConfig(config).
+				WithAPIClient(&mockAPIClient{}).
+				WithLogger(&mockLogger{}).
+				WithDryRun(true).
+				Build()
+
+			if err != nil {
+				t.Fatalf("unexpected error creating executor: %v", err)
+			}
+
+			evt := event.New()
+			evt.SetID("test-event-skip")
+			
+			result := exec.Execute(context.Background(), &evt)
+
+			// Verify execution status is success (adapter executed successfully)
+			if result.Status != tt.expectedStatus {
+				t.Errorf("expected status %s, got %s", tt.expectedStatus, result.Status)
+			}
+
+			// Verify resources were skipped
+			if tt.expectSkipped {
+				assert.True(t, result.ResourcesSkipped, "ResourcesSkipped")
+				assert.NotEmpty(t, result.SkipReason, "expected SkipReason to be set")
+				// Verify execution context captures skip information
+				if result.ExecutionContext != nil {
+					assert.True(t, result.ExecutionContext.Adapter.ResourcesSkipped, "adapter.ResourcesSkipped")
+				}
+			}
+		})
+	}
+}
+

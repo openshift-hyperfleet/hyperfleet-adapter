@@ -32,7 +32,7 @@ func BuiltinVariables() []string {
 // - Built-in variables (metadata, now, date)
 // - Parameters from spec.params
 // - Captured variables from preconditions
-// - Post params
+// - Post payloads
 // - Resource aliases (resources.<name>)
 func (c *AdapterConfig) GetDefinedVariables() map[string]bool {
 	vars := make(map[string]bool)

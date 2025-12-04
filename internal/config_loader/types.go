@@ -46,8 +46,8 @@ type KubernetesConfig struct {
 	APIVersion string `yaml:"apiVersion"`
 }
 
-// Parameter represents a static parameter extraction configuration.
-// Parameters are inputs extracted from external sources (event data, env vars).
+// Parameter represents a parameter extraction configuration.
+// Parameters are extracted from external sources (event data, env vars) using Source.
 type Parameter struct {
 	Name        string      `yaml:"name"`
 	Source      string      `yaml:"source,omitempty"`
@@ -101,6 +101,7 @@ type Precondition struct {
 	Capture    []CaptureField `yaml:"capture,omitempty"`
 	Conditions []Condition    `yaml:"conditions,omitempty"`
 	Expression string         `yaml:"expression,omitempty"`
+	Log        *LogAction     `yaml:"log,omitempty"`
 }
 
 // APICall represents an API call configuration
@@ -196,8 +197,15 @@ type PostConfig struct {
 
 // PostAction represents a post-processing action
 type PostAction struct {
-	Name    string   `yaml:"name"`
-	APICall *APICall `yaml:"apiCall,omitempty"`
+	Name    string     `yaml:"name"`
+	APICall *APICall   `yaml:"apiCall,omitempty"`
+	Log     *LogAction `yaml:"log,omitempty"`
+}
+
+// LogAction represents a logging action that can be configured in the adapter config
+type LogAction struct {
+	Message string `yaml:"message"`
+	Level   string `yaml:"level,omitempty"` // debug, info, warning, error (default: info)
 }
 
 // ManifestRef represents a manifest reference

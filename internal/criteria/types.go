@@ -96,6 +96,16 @@ func (c *EvaluationContext) Merge(other *EvaluationContext) {
 	}
 }
 
+// SetVariablesFromMap sets all key-value pairs from the provided map as evaluation variables
+func (c *EvaluationContext) SetVariablesFromMap(data map[string]interface{}) {
+	if data == nil {
+		return
+	}
+	for k, v := range data {
+		c.Data[k] = v
+	}
+}
+
 // EvaluationError represents an error during criteria evaluation
 type EvaluationError struct {
 	Field   string

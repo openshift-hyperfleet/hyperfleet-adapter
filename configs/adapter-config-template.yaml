@@ -387,3 +387,9 @@ spec:
           method: "POST"
           url: "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}/status"
           body: "{{ .clusterStatusPayload }}"
+          timeout: 30s
+          retryAttempts: 3
+          retryBackoff: "exponential"
+          headers:
+            - name: "Content-Type"
+              value: "application/json"
