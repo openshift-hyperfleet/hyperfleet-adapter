@@ -164,12 +164,12 @@ func TestLoggerContextValues(t *testing.T) {
 			expectedValue: "cluster-1",
 		},
 		{
-			name: "context_with_opid",
+			name: "context_with_evtid",
 			ctxSetup: func() context.Context {
-				return context.WithValue(context.Background(), OpIDKey, "op-12345")
+				return context.WithValue(context.Background(), EvtIDKey, "evt-12345")
 			},
-			expectedKey:   OpIDKey,
-			expectedValue: "op-12345",
+			expectedKey:   EvtIDKey,
+			expectedValue: "evt-12345",
 		},
 	}
 
@@ -287,9 +287,9 @@ func TestLoggerConstants(t *testing.T) {
 			expected: "cluster_id",
 		},
 		{
-			name:     "OpIDKey",
-			constant: OpIDKey,
-			expected: "opid",
+			name:     "EvtIDKey",
+			constant: EvtIDKey,
+			expected: "evt_id",
 		},
 	}
 

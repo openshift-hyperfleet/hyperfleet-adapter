@@ -125,9 +125,16 @@ func (c *Client) CreateResource(ctx context.Context, obj *unstructured.Unstructu
 	err := c.client.Create(ctx, obj)
 	if err != nil {
 		if apierrors.IsAlreadyExists(err) {
-		return nil, err
-	}
-		return nil, errors.KubernetesError("failed to create resource %s/%s (namespace: %s): %v", gvk.Kind, name, namespace, err)
+			return nil, err
+		}
+		return nil, &K8sOperationError{
+			Operation: "create",
+			Resource:  name,
+			Kind:      gvk.Kind,
+			Namespace: namespace,
+			Message:   err.Error(),
+			Err:       err,
+		}
 	}
 
 	c.log.Infof("Successfully created resource: %s/%s", gvk.Kind, name)
@@ -152,7 +159,14 @@ func (c *Client) GetResource(ctx context.Context, gvk schema.GroupVersionKind, n
 		if apierrors.IsNotFound(err) {
 			return nil, err
 		}
-		return nil, errors.KubernetesError("failed to get resource %s/%s (namespace: %s): %v", gvk.Kind, name, namespace, err)
+		return nil, &K8sOperationError{
+			Operation: "get",
+			Resource:  name,
+			Kind:      gvk.Kind,
+			Namespace: namespace,
+			Message:   err.Error(),
+			Err:       err,
+		}
 	}
 
 	c.log.Infof("Successfully retrieved resource: %s/%s", gvk.Kind, name)
@@ -191,7 +205,14 @@ func (c *Client) ListResources(ctx context.Context, gvk schema.GroupVersionKind,
 
 	err := c.client.List(ctx, list, opts...)
 	if err != nil {
-		return nil, errors.KubernetesError("failed to list resources %s (namespace: %s, labelSelector: %s): %v", gvk.Kind, namespace, labelSelector, err)
+		return nil, &K8sOperationError{
+			Operation: "list",
+			Resource:  gvk.Kind,
+			Kind:      gvk.Kind,
+			Namespace: namespace,
+			Message:   err.Error(),
+			Err:       err,
+		}
 	}
 
 	c.log.Infof("Successfully listed resources: %s (found %d items)", gvk.Kind, len(list.Items))
@@ -230,7 +251,14 @@ func (c *Client) UpdateResource(ctx context.Context, obj *unstructured.Unstructu
 		if apierrors.IsConflict(err) {
 			return nil, err
 		}
-		return nil, errors.KubernetesError("failed to update resource %s/%s (namespace: %s): %v", gvk.Kind, name, namespace, err)
+		return nil, &K8sOperationError{
+			Operation: "update",
+			Resource:  name,
+			Kind:      gvk.Kind,
+			Namespace: namespace,
+			Message:   err.Error(),
+			Err:       err,
+		}
 	}
 
 	c.log.Infof("Successfully updated resource: %s/%s", gvk.Kind, name)
@@ -252,7 +280,14 @@ func (c *Client) DeleteResource(ctx context.Context, gvk schema.GroupVersionKind
 			c.log.Infof("Resource already deleted: %s/%s", gvk.Kind, name)
 			return nil
 		}
-		return errors.KubernetesError("failed to delete resource %s/%s (namespace: %s): %v", gvk.Kind, name, namespace, err)
+		return &K8sOperationError{
+			Operation: "delete",
+			Resource:  name,
+			Kind:      gvk.Kind,
+			Namespace: namespace,
+			Message:   err.Error(),
+			Err:       err,
+		}
 	}
 
 	c.log.Infof("Successfully deleted resource: %s/%s", gvk.Kind, name)
@@ -308,7 +343,14 @@ func (c *Client) PatchResource(ctx context.Context, gvk schema.GroupVersionKind,
 		if apierrors.IsNotFound(err) {
 			return nil, err
 		}
-		return nil, errors.KubernetesError("failed to patch resource %s/%s (namespace: %s): %v", gvk.Kind, name, namespace, err)
+		return nil, &K8sOperationError{
+			Operation: "patch",
+			Resource:  name,
+			Kind:      gvk.Kind,
+			Namespace: namespace,
+			Message:   err.Error(),
+			Err:       err,
+		}
 	}
 
 	c.log.Infof("Successfully patched resource: %s/%s", gvk.Kind, name)

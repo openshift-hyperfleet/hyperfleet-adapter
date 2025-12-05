@@ -3,10 +3,9 @@ package config_loader
 import (
 	"testing"
 
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
 )
 
 func TestValidateConditionOperators(t *testing.T) {

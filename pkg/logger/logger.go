@@ -57,8 +57,8 @@ func (l *logger) prepareLogPrefix(message string, extra extra) string {
 		prefix = fmt.Sprintf("[cluster_id=%s]%s", clusterID, prefix)
 	}
 
-	if opid, ok := l.context.Value(OpIDKey).(string); ok {
-		prefix = fmt.Sprintf("[opid=%s]%s", opid, prefix)
+	if evtid, ok := l.context.Value(EvtIDKey).(string); ok {
+		prefix = fmt.Sprintf("[%s=%s]%s", EvtIDKey, evtid, prefix)
 	}
 
 	var args []string
@@ -89,18 +89,30 @@ func (l *logger) prepareLogPrefixf(format string, args ...interface{}) string {
 		prefix = fmt.Sprintf("[cluster_id=%s]%s", clusterID, prefix)
 	}
 
-	if opid, ok := l.context.Value(OpIDKey).(string); ok {
-		prefix = fmt.Sprintf("[opid=%s]%s", opid, prefix)
+	if evtid, ok := l.context.Value(EvtIDKey).(string); ok {
+		prefix = fmt.Sprintf("[%s=%s]%s", EvtIDKey, evtid, prefix)
 	}
 
 	return fmt.Sprintf("%s%s", prefix, orig)
+}
+
+// copyExtra creates a deep copy of the extra map to avoid shared state bugs
+func copyExtra(e extra) extra {
+	if e == nil {
+		return make(extra)
+	}
+	newExtra := make(extra, len(e))
+	for k, v := range e {
+		newExtra[k] = v
+	}
+	return newExtra
 }
 
 func (l *logger) V(level int32) Logger {
 	return &logger{
 		context: l.context,
 		level:   level,
-		extra:   l.extra,
+		extra:   copyExtra(l.extra),
 	}
 }
 
@@ -151,6 +163,23 @@ const (
 	AdapterIDKey contextKey = "adapter_id"
 	// ClusterIDKey is the context key for cluster ID
 	ClusterIDKey contextKey = "cluster_id"
-	// OpIDKey is the context key for operation ID
-	OpIDKey contextKey = "opid"
+	// EvtIDKey is the context key for event ID
+	EvtIDKey contextKey = "evt_id"
 )
+
+// WithEventID wraps a logger to add event ID to all log messages as evtid.
+// This works with any Logger implementation (including test loggers).
+func WithEventID(log Logger, eventID string) Logger {
+	// If the logger is our internal logger type, create a new one with updated context
+	if l, ok := log.(*logger); ok {
+		ctx := context.WithValue(l.context, EvtIDKey, eventID)
+		return &logger{
+			context: ctx,
+			level:   l.level,
+			extra:   copyExtra(l.extra),
+		}
+	}
+	// For other logger implementations (like test loggers), return as-is
+	// They should extract event ID from context if needed
+	return log
+}
