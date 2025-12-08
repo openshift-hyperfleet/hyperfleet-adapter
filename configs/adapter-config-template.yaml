@@ -82,13 +82,6 @@ spec:
       description: "API version to use"
       required: true
     
-    - name: "hyperfleetApiToken"
-      source: "env.HYPERFLEET_API_TOKEN"
-      type: "string"
-      description: "Authentication token for API access"
-      required: true
-      # Recommended: use Secret instead: "secret.hyperfleet-adapter-token.token"
-    
     # Extract from CloudEvent data
     - name: "clusterId"
       source: "event.cluster_id"
@@ -250,27 +243,8 @@ spec:
             hyperfleet.io/cluster-id: "{{ .clusterId }}"
             hyperfleet.io/resource-type: "configmap"
     # ==========================================================================
-    # Resource 3: Secret
+    # Resource 3: Validation Job
     # ==========================================================================
-    - name: "clusterSecret"
-      manifest:
-        apiVersion: v1
-        kind: Secret
-        metadata:
-          name: "cluster-credentials-{{ .clusterId }}"
-          namespace: "cluster-{{ .clusterId }}"
-          labels:
-            hyperfleet.io/cluster-id: "{{ .clusterId }}"
-            hyperfleet.io/resource-type: "secret"
-            hyperfleet.io/managed-by: "{{ .metadata.name }}"
-        type: Opaque
-        stringData:
-          api-token: "{{ .hyperfleetApiToken }}"
-          cluster-id: "{{ .clusterId }}"
-      discovery:
-        namespace: "cluster-{{ .clusterId }}"
-        byName: "cluster-credentials-{{ .clusterId }}"
-
     - name: "validationJob"
       recreateOnChange: true # Recreate the job if the generationId changes
       manifest:
