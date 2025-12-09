@@ -13,10 +13,50 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
+# Deployment configuration
+deploymentLabels: {}
+deploymentAnnotations: {}
+
+# Pod labels (in addition to selector labels)
+podLabels: {}
+
+# Deployment strategy
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+
+# Minimum number of seconds for which a newly created pod should be ready
+minReadySeconds: 0
+
+# The number of old ReplicaSets to retain for rollback
+revisionHistoryLimit: 10
+
+# Container ports (optional, only needed if adapter exposes HTTP endpoints)
+# Set to empty if no ports are needed
+containerPorts: []
+  # - name: http
+  #   containerPort: 8080
+  #   protocol: TCP
+  # - name: metrics
+  #   containerPort: 9090
+  #   protocol: TCP
+
+# Override default command
+command:
+  - /app/adapter
+
+# Override default args
+args:
+  - serve
+
 serviceAccount:
   # Specifies whether a service account should be created
   create: true
   # Annotations to add to the service account
+  # For GCP Workload Identity Federation (WIF), add:
+  #   iam.gke.io/gcp-service-account: GSA_NAME@PROJECT_ID.iam.gserviceaccount.com
   annotations: {}
   # The name of the service account to use.
   # If not set and create is true, a name is generated using the fullname template
@@ -33,7 +73,7 @@ securityContext:
   allowPrivilegeEscalation: false
   capabilities:
     drop:
-    - ALL
+      - ALL
   readOnlyRootFilesystem: true
   seccompProfile:
     type: RuntimeDefault
@@ -46,11 +86,103 @@ resources:
     cpu: 100m
     memory: 128Mi
 
+# Liveness probe configuration
+# Disabled by default - adapter doesn't expose HTTP health endpoints
+# Enable and configure if you add health endpoints to the adapter
+livenessProbe:
+  enabled: false
+  # httpGet:
+  #   path: /healthz
+  #   port: 8080
+  # initialDelaySeconds: 30
+  # periodSeconds: 10
+  # timeoutSeconds: 5
+  # failureThreshold: 3
+  # successThreshold: 1
+
+# Readiness probe configuration
+# Disabled by default - adapter doesn't expose HTTP health endpoints
+readinessProbe:
+  enabled: false
+  # httpGet:
+  #   path: /readyz
+  #   port: 8080
+  # initialDelaySeconds: 5
+  # periodSeconds: 5
+  # timeoutSeconds: 3
+  # failureThreshold: 3
+  # successThreshold: 1
+
+# Startup probe configuration (useful for slow-starting containers)
+startupProbe:
+  enabled: false
+  # httpGet:
+  #   path: /healthz
+  #   port: 8080
+  # initialDelaySeconds: 10
+  # periodSeconds: 10
+  # timeoutSeconds: 5
+  # failureThreshold: 30
+  # successThreshold: 1
+
+# Lifecycle hooks
+lifecycle: {}
+  # preStop:
+  #   exec:
+  #     command:
+  #       - /bin/sh
+  #       - -c
+  #       - sleep 10
+
+# Priority class name for pod scheduling
+priorityClassName: ""
+
+# Termination grace period in seconds
+terminationGracePeriodSeconds: 30
+
+# Use host network
+hostNetwork: false
+
+# DNS policy for the pod
+dnsPolicy: ""
+
+# Custom DNS configuration
+dnsConfig: {}
+  # nameservers:
+  #   - 8.8.8.8
+  # searches:
+  #   - default.svc.cluster.local
+  # options:
+  #   - name: ndots
+  #     value: "5"
+
+# Init containers
+initContainers: []
+  # - name: init-myservice
+  #   image: busybox:1.28
+  #   command: ['sh', '-c', 'until nslookup myservice; do echo waiting; sleep 2; done']
+
+# Sidecar containers
+sidecarContainers: []
+  # - name: sidecar
+  #   image: nginx:1.19
+  #   ports:
+  #     - containerPort: 80
+
 nodeSelector: {}
 
 tolerations: []
 
 affinity: {}
+
+# Topology spread constraints for pod distribution
+topologySpreadConstraints: []
+  # - maxSkew: 1
+  #   topologyKey: topology.kubernetes.io/zone
+  #   whenUnsatisfiable: DoNotSchedule
+  #   labelSelector:
+  #     matchLabels:
+  #       app.kubernetes.io/name: hyperfleet-adapter
 
 autoscaling:
   enabled: false
@@ -69,7 +201,7 @@ config:
   configMapName: ""
   # Adapter type identifier (e.g., "example", "gcp", "aws")
   adapterType: ""
-  # Environment variables for ConfigMap (matching adapther-configmap-template.yaml structure)
+  # Environment variables for ConfigMap (matching adapter-configmap-template.yaml structure)
   # Example for RabbitMQ:
   #   BROKER_TYPE: "rabbitmq"
   #   BROKER_HOST: "rabbitmq.hyperfleet-system.svc.cluster.local"
@@ -84,30 +216,83 @@ config:
 
 # Broker configuration
 broker:
-  # Broker ConfigMap name (must exist in cluster)
-  # This ConfigMap contains BROKER_TYPE, BROKER_HOST, BROKER_PORT, etc. as env vars
-  # See adapther-configmap-template.yaml for structure
+  # Create a broker ConfigMap (if false, you must provide an existing configMapName)
+  create: false
+  # Broker ConfigMap name
+  # If create=true and configMapName is empty, generates name from release
+  # If create=false, this must be an existing ConfigMap name
   configMapName: ""
-  # Mount broker ConfigMap as environment variables (recommended, matches template)
-  # If false, mounts as file at /etc/adapter/config/broker.yaml
+  # Broker type identifier (googlepubsub, rabbitmq, etc.) - used as label
+  type: ""
+  # Subscription ID for the adapter to consume from (BROKER_SUBSCRIPTION_ID env var)
+  subscriptionId: ""
+  # Topic for the adapter to consume from (BROKER_TOPIC env var)
+  topic: ""
+  # Additional broker environment variables to add to ConfigMap
+  # Example:
+  #   BROKER_GOOGLEPUBSUB_PROJECT_ID: "my-gcp-project"
+  #   SUBSCRIBER_PARALLELISM: "10"
+  env: {}
+  # Broker YAML configuration file content
+  # When set, creates broker.yaml key in ConfigMap, mounts at /etc/broker/broker.yaml,
+  # and sets BROKER_CONFIG_FILE=/etc/broker/broker.yaml
+  # Example for Google Pub/Sub:
+  # yaml: |
+  #   broker:
+  #     type: googlepubsub
+  #     googlepubsub:
+  #       project_id: "my-gcp-project"
+  #       max_outstanding_messages: 1000
+  #       num_goroutines: 10
+  #   subscriber:
+  #     parallelism: 10
+  yaml: ""
+  # Mount broker ConfigMap env vars (BROKER_SUBSCRIPTION_ID, BROKER_TOPIC, etc.) via envFrom
+  # Set to false if you only need the broker.yaml file mounted
   mountAsEnv: true
-  # List of environment variable keys to mount from broker ConfigMap
+  # List of specific environment variable keys to mount from broker ConfigMap
   # If empty and mountAsEnv=true, all keys will be available via envFrom
-  # Common keys: BROKER_TYPE, BROKER_HOST, BROKER_PORT, BROKER_QUEUE_NAME, etc.
   envKeys: []
-  # ConfigMap key name (used only if mountAsEnv=false, default: broker.yaml)
-  configMapKey: broker.yaml
+
+# HyperFleet API configuration
+hyperfleetApi:
+  # Base URL for HyperFleet API (HYPERFLEET_API_BASE_URL)
+  baseUrl: ""
+  # API version (HYPERFLEET_API_VERSION), default: v1
+  version: "v1"
 
 # Environment variables
 env: []
-  # - name: CONFIG_FILE
+  # - name: ADAPTER_CONFIG_PATH
   #   value: /path/to/custom/config.yaml
-  # - name: BROKER_CONFIG_FILE
-  #   value: /path/to/custom/broker-config.yaml
+  # - name: MY_SECRET
+  #   valueFrom:
+  #     secretKeyRef:
+  #       name: my-secret
+  #       key: secret-key
+
+# envFrom for loading entire ConfigMaps/Secrets as environment variables
+envFrom: []
+  # - configMapRef:
+  #     name: my-configmap
+  # - secretRef:
+  #     name: my-secret
 
 # Volume mounts for additional configs
 extraVolumeMounts: []
+  # - name: custom-config
+  #   mountPath: /etc/custom
+  #   readOnly: true
 
 # Additional volumes
 extraVolumes: []
+  # - name: custom-config
+  #   configMap:
+  #     name: custom-configmap
 
+# Pod Disruption Budget
+podDisruptionBudget:
+  enabled: false
+  # minAvailable: 1
+  # maxUnavailable: 1
+  # unhealthyPodEvictionPolicy: IfHealthyBudget

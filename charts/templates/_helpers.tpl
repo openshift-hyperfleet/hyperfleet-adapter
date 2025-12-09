@@ -72,3 +72,14 @@ Create the name of the ConfigMap to use
 {{- end }}
 {{- end }}
 
+{{/*
+Create the name of the broker ConfigMap to use
+*/}}
+{{- define "hyperfleet-adapter.brokerConfigMapName" -}}
+{{- if .Values.broker.configMapName }}
+{{- .Values.broker.configMapName }}
+{{- else }}
+{{- printf "%s-broker-config" (include "hyperfleet-adapter.fullname" .) }}
+{{- end }}
+{{- end }}
+
