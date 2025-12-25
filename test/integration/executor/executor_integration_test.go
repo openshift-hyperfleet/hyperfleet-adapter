@@ -63,14 +63,14 @@ func createTestEvent(clusterId, resourceId string) *event.Event {
 // createTestConfig loads the test adapter configuration from embedded YAML
 func createTestConfig(apiBaseURL string) *config_loader.AdapterConfig {
 	var config config_loader.AdapterConfig
-	
+
 	if err := yaml.Unmarshal(testAdapterConfigYAML, &config); err != nil {
 		panic(fmt.Sprintf("failed to parse test config: %v", err))
 	}
-	
+
 	// The apiBaseURL parameter is kept for compatibility but not needed
 	// since the config uses env.HYPERFLEET_API_BASE_URL which is set via t.Setenv
-	
+
 	return &config
 }
 
@@ -170,7 +170,7 @@ func TestExecutor_FullFlow_Success(t *testing.T) {
 				if health["status"] != true {
 					t.Errorf("Expected health.status to be true, got %v", health["status"])
 				}
-				
+
 				// Reason should be "Healthy" (default since no adapter.errorReason)
 				if reason, ok := health["reason"].(string); ok {
 					if reason != "Healthy" {
@@ -179,7 +179,7 @@ func TestExecutor_FullFlow_Success(t *testing.T) {
 				} else {
 					t.Error("Expected health.reason to be a string")
 				}
-				
+
 				// Message should be default success message (no adapter.errorMessage)
 				if message, ok := health["message"].(string); ok {
 					if message != "All adapter operations completed successfully" {
@@ -279,7 +279,7 @@ func TestExecutor_PreconditionNotMet(t *testing.T) {
 				if health["status"] != false {
 					t.Errorf("Expected health.status to be false for precondition not met, got %v", health["status"])
 				}
-				
+
 				// Reason should contain error (from adapter.errorReason, not "Healthy")
 				if reason, ok := health["reason"].(string); ok {
 					if reason == "Healthy" {
@@ -287,7 +287,7 @@ func TestExecutor_PreconditionNotMet(t *testing.T) {
 					}
 					t.Logf("Health reason: %s", reason)
 				}
-				
+
 				// Message should contain error explanation (from adapter.errorMessage)
 				if message, ok := health["message"].(string); ok {
 					if message == "All adapter operations completed successfully" {
@@ -302,12 +302,12 @@ func TestExecutor_PreconditionNotMet(t *testing.T) {
 	// Verify execution context shows adapter is healthy (executionStatus = "success", resources skipped)
 	if result.ExecutionContext != nil {
 		if result.ExecutionContext.Adapter.ExecutionStatus != string(executor.StatusSuccess) {
-			t.Errorf("Expected adapter.executionStatus to be 'success', got '%s'", 
+			t.Errorf("Expected adapter.executionStatus to be 'success', got '%s'",
 				result.ExecutionContext.Adapter.ExecutionStatus)
 		}
 		// No executionError should be set - precondition not matching is not an error
 		if result.ExecutionContext.Adapter.ExecutionError != nil {
-			t.Errorf("Expected no executionError for precondition not met, got %+v", 
+			t.Errorf("Expected no executionError for precondition not met, got %+v",
 				result.ExecutionContext.Adapter.ExecutionError)
 		}
 	}
@@ -384,7 +384,7 @@ func TestExecutor_PreconditionAPIFailure(t *testing.T) {
 				if health["status"] != false {
 					t.Errorf("Expected health.status to be false for API error, got %v", health["status"])
 				}
-				
+
 				// Reason should contain error reason (not "Healthy")
 				if reason, ok := health["reason"].(string); ok {
 					if reason == "Healthy" {
@@ -394,7 +394,7 @@ func TestExecutor_PreconditionAPIFailure(t *testing.T) {
 				} else {
 					t.Error("Expected health.reason to be a string")
 				}
-				
+
 				// Message should contain error message (not default success message)
 				if message, ok := health["message"].(string); ok {
 					if message == "All adapter operations completed successfully" {
@@ -748,7 +748,7 @@ func TestExecutor_InvalidEventJSON(t *testing.T) {
 	evt.SetID("invalid-event-123")
 	evt.SetType("com.redhat.hyperfleet.cluster.provision")
 	evt.SetSource("test")
-	
+
 	// Set malformed JSON data that can't be parsed
 	invalidJSON := []byte("this is not valid JSON {{{")
 	_ = evt.SetData(event.ApplicationJSON, invalidJSON)
@@ -765,12 +765,12 @@ func TestExecutor_InvalidEventJSON(t *testing.T) {
 	assert.Empty(t, result.PostActionResults, "Post-actions should not execute for invalid event")
 	assert.Empty(t, result.PreconditionResults, "Preconditions should not execute for invalid event")
 	assert.Empty(t, result.ResourceResults, "Resources should not execute for invalid event")
-	
+
 	// Test handler behavior: should ACK (not NACK) invalid events
 	handler := exec.CreateHandler()
 	err = handler(context.Background(), &evt)
 	assert.Nil(t, err, "Handler should ACK (return nil) for invalid events, not NACK")
-	
+
 	t.Log("Expected behavior: Invalid event is ACKed (not NACKed), all phases skipped")
 }
 
@@ -800,9 +800,9 @@ func TestExecutor_MissingEventFields(t *testing.T) {
 	evt.SetID("missing-field-event")
 	evt.SetType("com.redhat.hyperfleet.cluster.provision")
 	evt.SetSource("test")
-	
+
 	eventData := map[string]interface{}{
-		"resource_id":   "resource-123",
+		"resource_id": "resource-123",
 		// Missing cluster_id (required)
 	}
 	eventDataBytes, _ := json.Marshal(eventData)
@@ -821,12 +821,12 @@ func TestExecutor_MissingEventFields(t *testing.T) {
 	assert.Empty(t, result.PostActionResults, "Post-actions should not execute for missing required field")
 	assert.Empty(t, result.PreconditionResults, "Preconditions should not execute for missing required field")
 	assert.Empty(t, result.ResourceResults, "Resources should not execute for missing required field")
-	
+
 	// Test handler behavior: should ACK (not NACK) events with missing required fields
 	handler := exec.CreateHandler()
 	err = handler(context.Background(), &evt)
 	assert.Nil(t, err, "Handler should ACK (return nil) for missing required fields, not NACK")
-	
+
 	t.Log("Expected behavior: Event with missing required field is ACKed (not NACKed), all phases skipped")
 }
 
@@ -966,13 +966,12 @@ func TestExecutor_LogAction(t *testing.T) {
 	t.Logf("Log action test completed successfully")
 }
 
-
 // TestExecutor_PostActionAPIFailure tests handling of post action API failures (4xx/5xx responses)
 func TestExecutor_PostActionAPIFailure(t *testing.T) {
 	// Setup mock API server that fails post action API calls
 	mockAPI := testutil.NewMockAPIServer(t)
 	defer mockAPI.Close()
-	
+
 	// Preconditions will succeed, but post action API call will fail with 500
 	mockAPI.SetFailPostAction(true)
 
@@ -1020,7 +1019,7 @@ func TestExecutor_PostActionAPIFailure(t *testing.T) {
 		assert.NotNil(t, postResult.Error, "Expected post action error to be set")
 		assert.True(t, postResult.APICallMade, "Expected API call to be made")
 		assert.Equal(t, http.StatusInternalServerError, postResult.HTTPStatus, "Expected 500 status code")
-		
+
 		// Verify error contains status code and response body
 		errStr := postResult.Error.Error()
 		assert.Contains(t, errStr, "500", "Error should contain status code")
@@ -1038,7 +1037,7 @@ func TestExecutor_PostActionAPIFailure(t *testing.T) {
 			assert.Equal(t, "post_actions", execErr.Phase, "Expected error in post_actions phase")
 			assert.Equal(t, "reportClusterStatus", execErr.Step, "Expected error in reportClusterStatus step")
 			assert.Contains(t, execErr.Message, "500", "Expected error message to contain 500 status code")
-			t.Logf("ExecutionError: phase=%s, step=%s, message=%s", 
+			t.Logf("ExecutionError: phase=%s, step=%s, message=%s",
 				execErr.Phase, execErr.Step, execErr.Message)
 		}
 	}
@@ -1049,7 +1048,7 @@ func TestExecutor_PostActionAPIFailure(t *testing.T) {
 	// Verify precondition API was called, but status POST failed
 	requests := mockAPI.GetRequests()
 	assert.GreaterOrEqual(t, len(requests), 2, "Expected at least 2 API calls (GET cluster + POST status)")
-	
+
 	// Find the status POST request
 	var statusPostFound bool
 	for _, req := range requests {
@@ -1214,7 +1213,7 @@ func TestExecutor_ExecutionError_CELAccess(t *testing.T) {
 			assert.Equal(t, "preconditions", reportPayload["errorPhase"], "errorPhase should be 'preconditions'")
 			assert.Equal(t, "clusterStatus", reportPayload["errorStep"], "errorStep should be 'clusterStatus'")
 			assert.NotEqual(t, "no_message", reportPayload["errorMessage"], "errorMessage should contain actual error")
-			
+
 			// Verify other adapter fields still accessible
 			assert.Equal(t, "failed", reportPayload["executionStatus"], "executionStatus should be 'failed'")
 			assert.NotEmpty(t, reportPayload["errorReason"], "errorReason should be populated")
@@ -1359,4 +1358,3 @@ func TestExecutor_PayloadBuildFailure(t *testing.T) {
 
 	t.Logf("Payload build failure test completed: post actions properly blocked, error logged")
 }
-

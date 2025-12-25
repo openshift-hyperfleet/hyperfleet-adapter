@@ -111,4 +111,3 @@ func (c *Client) ExtractFromConfigMap(ctx context.Context, path string) (string,
 
 	return valueStr, nil
 }
-

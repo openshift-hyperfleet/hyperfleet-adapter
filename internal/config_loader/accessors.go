@@ -285,4 +285,3 @@ func normalizeToStringKeyMap(v interface{}) map[string]interface{} {
 		return nil
 	}
 }
-

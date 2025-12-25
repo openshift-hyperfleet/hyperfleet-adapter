@@ -113,8 +113,8 @@ func setupSharedK8sEnvtestEnv() (*K8sTestEnv, error) {
 		Image:        imageName,
 		ExposedPorts: []string{EnvtestAPIServerPort},
 		WaitStrategy: wait.ForAll(
-			wait.ForListeningPort(EnvtestAPIServerPort).WithPollInterval(500 * time.Millisecond),
-			wait.ForLog(EnvtestReadyLog).WithPollInterval(500 * time.Millisecond),
+			wait.ForListeningPort(EnvtestAPIServerPort).WithPollInterval(500*time.Millisecond),
+			wait.ForLog(EnvtestReadyLog).WithPollInterval(500*time.Millisecond),
 		).WithDeadline(120 * time.Second),
 		MaxRetries:     3,
 		StartupTimeout: 3 * time.Minute,
@@ -218,4 +218,3 @@ func waitForAPIServerReady(config *rest.Config, timeout time.Duration) error {
 
 	return fmt.Errorf("timeout waiting for API server to be ready")
 }
-

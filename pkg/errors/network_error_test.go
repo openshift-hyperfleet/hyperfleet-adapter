@@ -332,4 +332,3 @@ func TestIsNetworkError_RealWorldScenarios(t *testing.T) {
 		assert.False(t, IsNetworkError(err))
 	})
 }
-

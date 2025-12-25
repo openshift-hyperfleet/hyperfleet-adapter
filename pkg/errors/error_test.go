@@ -623,4 +623,3 @@ func findInString(s, substr string) bool {
 	}
 	return false
 }
-

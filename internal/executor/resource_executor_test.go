@@ -69,7 +69,6 @@ func TestDeepCopyMap_Slices(t *testing.T) {
 
 	copied := deepCopyMap(context.Background(), original, logger.NewTestLogger())
 
-
 	// Modify copied slice
 	copiedItems := copied["items"].([]interface{})
 	copiedItems[0] = "modified"
@@ -167,11 +166,11 @@ func TestDeepCopyMap_DeepCopyVerification(t *testing.T) {
 	copied := deepCopyMap(context.Background(), original, logger.NewTestLogger())
 
 	assert.Equal(t, "value", copied["string"])
-	
+
 	// Verify deep copy works
 	copiedNested := copied["nested"].(map[string]interface{})
 	copiedNested["key"] = "modified"
-	
+
 	originalNested := original["nested"].(map[string]interface{})
 	assert.Equal(t, "nested_value", originalNested["key"], "Original should not be modified")
 }
@@ -203,7 +202,6 @@ func TestDeepCopyMap_KubernetesManifest(t *testing.T) {
 	}
 
 	copied := deepCopyMap(context.Background(), original, logger.NewTestLogger())
-
 
 	// Modify copied manifest
 	copiedMetadata := copied["metadata"].(map[string]interface{})
@@ -238,4 +236,3 @@ func TestDeepCopyMap_RealWorldContext(t *testing.T) {
 	originalMetadata := manifest["metadata"].(map[string]interface{})
 	assert.Equal(t, "{{ .namespace }}", originalMetadata["name"])
 }
-

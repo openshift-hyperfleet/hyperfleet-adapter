@@ -742,11 +742,11 @@ func TestValidateFileReferences(t *testing.T) {
 	require.NoError(t, os.WriteFile(templateFile, []byte("test: value"), 0644))
 
 	tests := []struct {
-		name      string
-		config    *AdapterConfig
-		baseDir   string
-		wantErr   bool
-		errMsg    string
+		name    string
+		config  *AdapterConfig
+		baseDir string
+		wantErr bool
+		errMsg  string
 	}{
 		{
 			name: "valid payload buildRef",
@@ -1380,4 +1380,3 @@ values:
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "condition has both 'value' and 'values' keys")
 }
-

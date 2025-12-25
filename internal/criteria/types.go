@@ -93,12 +93,12 @@ func (c *EvaluationContext) Version() int64 {
 func (c *EvaluationContext) Set(key string, value interface{}) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	// Check if value actually changed
 	if existing, ok := c.data[key]; ok && reflect.DeepEqual(existing, value) {
 		return // No change, no version increment
 	}
-	
+
 	c.data[key] = value
 	c.version++
 }
@@ -167,7 +167,7 @@ func (c *EvaluationContext) SetVariablesFromMap(data map[string]interface{}) {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	changed := false
 	for k, v := range data {
 		if existing, ok := c.data[k]; !ok || !reflect.DeepEqual(existing, v) {
@@ -175,7 +175,7 @@ func (c *EvaluationContext) SetVariablesFromMap(data map[string]interface{}) {
 			changed = true
 		}
 	}
-	
+
 	if changed {
 		c.version++
 	}
@@ -212,4 +212,3 @@ func (e *EvaluationError) Error() string {
 func (e *EvaluationError) Unwrap() error {
 	return e.Err
 }
-

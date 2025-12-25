@@ -222,4 +222,3 @@ func NewCELTypeMismatchError(expression, expectedType, actualType string) *CELTy
 		ActualType:   actualType,
 	}
 }
-

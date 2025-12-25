@@ -19,13 +19,13 @@ type Metadata struct {
 
 // AdapterConfigSpec contains the adapter specification
 type AdapterConfigSpec struct {
-	Adapter       AdapterInfo       `yaml:"adapter"`
+	Adapter       AdapterInfo         `yaml:"adapter"`
 	HyperfleetAPI HyperfleetAPIConfig `yaml:"hyperfleetApi"`
-	Kubernetes    KubernetesConfig  `yaml:"kubernetes"`
-	Params        []Parameter       `yaml:"params,omitempty"`
-	Preconditions []Precondition    `yaml:"preconditions,omitempty"`
-	Resources     []Resource        `yaml:"resources,omitempty"`
-	Post          *PostConfig       `yaml:"post,omitempty"`
+	Kubernetes    KubernetesConfig    `yaml:"kubernetes"`
+	Params        []Parameter         `yaml:"params,omitempty"`
+	Preconditions []Precondition      `yaml:"preconditions,omitempty"`
+	Resources     []Resource          `yaml:"resources,omitempty"`
+	Post          *PostConfig         `yaml:"post,omitempty"`
 }
 
 // AdapterInfo contains basic adapter information
@@ -35,10 +35,10 @@ type AdapterInfo struct {
 
 // HyperfleetAPIConfig contains HyperFleet API configuration
 type HyperfleetAPIConfig struct {
-	BaseURL        string `yaml:"baseUrl,omitempty"`
-	Timeout        string `yaml:"timeout"`
-	RetryAttempts  int    `yaml:"retryAttempts"`
-	RetryBackoff   string `yaml:"retryBackoff"`
+	BaseURL       string `yaml:"baseUrl,omitempty"`
+	Timeout       string `yaml:"timeout"`
+	RetryAttempts int    `yaml:"retryAttempts"`
+	RetryBackoff  string `yaml:"retryBackoff"`
 }
 
 // KubernetesConfig contains Kubernetes configuration
@@ -169,19 +169,19 @@ func (c *Condition) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 // Resource represents a Kubernetes resource configuration
 type Resource struct {
-	Name             string                   `yaml:"name"`
-	Manifest         interface{}              `yaml:"manifest,omitempty"`
-	RecreateOnChange bool                     `yaml:"recreateOnChange,omitempty"`
-	Discovery        *DiscoveryConfig         `yaml:"discovery,omitempty"`
+	Name             string           `yaml:"name"`
+	Manifest         interface{}      `yaml:"manifest,omitempty"`
+	RecreateOnChange bool             `yaml:"recreateOnChange,omitempty"`
+	Discovery        *DiscoveryConfig `yaml:"discovery,omitempty"`
 	// ManifestItems holds loaded content when manifest.ref is an array (populated by loader)
 	ManifestItems []map[string]interface{} `yaml:"-"`
 }
 
 // DiscoveryConfig represents resource discovery configuration
 type DiscoveryConfig struct {
-	Namespace   string              `yaml:"namespace,omitempty"`
-	ByName      string              `yaml:"byName,omitempty"`
-	BySelectors *SelectorConfig     `yaml:"bySelectors,omitempty"`
+	Namespace   string          `yaml:"namespace,omitempty"`
+	ByName      string          `yaml:"byName,omitempty"`
+	BySelectors *SelectorConfig `yaml:"bySelectors,omitempty"`
 }
 
 // SelectorConfig represents label selector configuration

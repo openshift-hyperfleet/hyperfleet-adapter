@@ -352,7 +352,7 @@ func TestParamExtractor(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create fresh context for each test
 			execCtx := NewExecutionContext(context.Background(), eventData)
-			
+
 			// Create config with test params
 			config := &config_loader.AdapterConfig{
 				Metadata: config_loader.Metadata{
@@ -368,9 +368,9 @@ func TestParamExtractor(t *testing.T) {
 			err := extractConfigParams(config, execCtx, nil)
 
 			if tt.expectError {
-			assert.Error(t, err)
-			return
-		}
+				assert.Error(t, err)
+				return
+			}
 
 			require.NoError(t, err)
 
@@ -424,9 +424,9 @@ func TestRenderTemplate(t *testing.T) {
 			result, err := renderTemplate(tt.template, tt.data)
 
 			if tt.expectError {
-			assert.Error(t, err)
-			return
-		}
+				assert.Error(t, err)
+				return
+			}
 
 			require.NoError(t, err)
 
@@ -440,12 +440,12 @@ func TestRenderTemplate(t *testing.T) {
 // TestSequentialExecution_Preconditions tests that preconditions stop on first failure
 func TestSequentialExecution_Preconditions(t *testing.T) {
 	tests := []struct {
-		name              string
-		preconditions     []config_loader.Precondition
-		expectedResults   int // number of results before stopping
-		expectError       bool
-		expectNotMet      bool
-		expectedLastName  string
+		name             string
+		preconditions    []config_loader.Precondition
+		expectedResults  int // number of results before stopping
+		expectError      bool
+		expectNotMet     bool
+		expectedLastName string
 	}{
 		{
 			name: "all pass - all executed",
@@ -558,12 +558,12 @@ func TestSequentialExecution_Resources(t *testing.T) {
 	// Note: This test uses dry-run mode and focuses on the sequential logic
 	// without requiring a real K8s cluster. Resource sequential execution is better
 	// tested in integration tests with real K8s API.
-	
+
 	tests := []struct {
-		name             string
-		resources        []config_loader.Resource
-		expectedResults  int
-		expectFailure    bool
+		name            string
+		resources       []config_loader.Resource
+		expectedResults int
+		expectFailure   bool
 	}{
 		{
 			name: "single resource with valid manifest",
@@ -789,4 +789,3 @@ func TestSequentialExecution_SkipReasonCapture(t *testing.T) {
 		})
 	}
 }
-

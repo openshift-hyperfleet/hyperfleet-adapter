@@ -126,4 +126,3 @@ func (m *MockK8sClient) ExtractFromConfigMap(ctx context.Context, path string) (
 
 // Ensure MockK8sClient implements K8sClient
 var _ K8sClient = (*MockK8sClient)(nil)
-

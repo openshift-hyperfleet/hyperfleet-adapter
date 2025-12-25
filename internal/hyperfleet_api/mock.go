@@ -46,14 +46,14 @@ func NewMockClient() *MockClient {
 		Status:     "200 OK",
 	}
 	return &MockClient{
-		BaseURLValue: "http://mock-api.example.com",
-		DoResponse:   defaultResponse,
-		GetResponse:  defaultResponse,
-		PostResponse: defaultResponse,
-		PutResponse:  defaultResponse,
-		PatchResponse: defaultResponse,
+		BaseURLValue:   "http://mock-api.example.com",
+		DoResponse:     defaultResponse,
+		GetResponse:    defaultResponse,
+		PostResponse:   defaultResponse,
+		PutResponse:    defaultResponse,
+		PatchResponse:  defaultResponse,
 		DeleteResponse: defaultResponse,
-		Requests:     make([]*Request, 0),
+		Requests:       make([]*Request, 0),
 	}
 }
 
@@ -136,4 +136,3 @@ func (m *MockClient) GetLastRequest() *Request {
 
 // Ensure MockClient implements Client
 var _ Client = (*MockClient)(nil)
-

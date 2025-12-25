@@ -18,7 +18,7 @@ func TestNewEvaluationContext(t *testing.T) {
 
 func TestEvaluationContextSetGet(t *testing.T) {
 	ctx := NewEvaluationContext()
-	
+
 	ctx.Set("key1", "value1")
 	ctx.Set("key2", 42)
 	ctx.Set("key3", map[string]string{"nested": "value"})
@@ -968,10 +968,10 @@ func TestExtractFieldsSafe(t *testing.T) {
 	require.NoError(t, err)
 
 	fields := []string{
-		"cluster.metadata.name",  // exists
-		"cluster.nonexistent",    // missing key
-		"cluster.status.phase",   // null parent
-		"missing.field",          // missing root
+		"cluster.metadata.name", // exists
+		"cluster.nonexistent",   // missing key
+		"cluster.status.phase",  // null parent
+		"missing.field",         // missing root
 	}
 
 	extracted := evaluator.ExtractFieldsSafe(fields)
@@ -1125,4 +1125,3 @@ func TestFieldNotFoundError(t *testing.T) {
 	assert.True(t, IsFieldNotFound(err))
 	assert.False(t, IsFieldNotFound(fmt.Errorf("some other error")))
 }
-

@@ -190,4 +190,3 @@ func IsRetryableDiscoveryError(err error) bool {
 	// Default: treat unknown errors as non-retryable to surface issues early
 	return false
 }
-

@@ -234,9 +234,9 @@ func TestProcessValue(t *testing.T) {
 			expected: "plain string",
 		},
 		{
-			name:   "string with template",
-			value:  "Hello {{ .name }}",
-			params: map[string]interface{}{"name": "World"},
+			name:     "string with template",
+			value:    "Hello {{ .name }}",
+			params:   map[string]interface{}{"name": "World"},
 			expected: "Hello World",
 		},
 		{
@@ -292,9 +292,9 @@ func TestProcessValue(t *testing.T) {
 			expected: 123,
 		},
 		{
-			name:   "slice processing",
-			value:  []interface{}{"a", "b", "c"},
-			params: map[string]interface{}{},
+			name:     "slice processing",
+			value:    []interface{}{"a", "b", "c"},
+			params:   map[string]interface{}{},
 			expected: []interface{}{"a", "b", "c"},
 		},
 		{
@@ -655,4 +655,3 @@ func TestExecuteAPICall(t *testing.T) {
 		})
 	}
 }
-

@@ -88,12 +88,12 @@ func TestValidateAPIResponse_WithError_NonAPIError(t *testing.T) {
 
 func TestValidateAPIResponse_NonSuccessStatusCodes(t *testing.T) {
 	tests := []struct {
-		name          string
-		statusCode    int
-		status        string
-		body          []byte
-		expectError   bool
-		expectBody    bool
+		name        string
+		statusCode  int
+		status      string
+		body        []byte
+		expectError bool
+		expectBody  bool
 	}{
 		{
 			name:        "400 Bad Request",
@@ -618,8 +618,8 @@ func TestAdapterMetadataToMap(t *testing.T) {
 		expected map[string]interface{}
 	}{
 		{
-			name:    "nil adapter",
-			adapter: nil,
+			name:     "nil adapter",
+			adapter:  nil,
 			expected: map[string]interface{}{},
 		},
 		{
@@ -1092,4 +1092,3 @@ func TestGetResourceAsMap(t *testing.T) {
 		})
 	}
 }
-

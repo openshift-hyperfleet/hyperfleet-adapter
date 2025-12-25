@@ -105,7 +105,6 @@ func WithBaseURL(baseURL string) ClientOption {
 	}
 }
 
-
 // NewClient creates a new HyperFleet API client.
 //
 // Base URL resolution order:

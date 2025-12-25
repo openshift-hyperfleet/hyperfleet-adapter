@@ -385,11 +385,11 @@ func TestClientContextCancellation(t *testing.T) {
 
 func TestResponseHelpers(t *testing.T) {
 	tests := []struct {
-		statusCode      int
-		isSuccess       bool
-		isClientError   bool
-		isServerError   bool
-		isRetryable     bool
+		statusCode    int
+		isSuccess     bool
+		isClientError bool
+		isServerError bool
+		isRetryable   bool
 	}{
 		{200, true, false, false, false},
 		{201, true, false, false, false},
@@ -398,8 +398,8 @@ func TestResponseHelpers(t *testing.T) {
 		{401, false, true, false, false},
 		{403, false, true, false, false},
 		{404, false, true, false, false},
-		{408, false, true, false, true},  // Request Timeout is retryable
-		{429, false, true, false, true},  // Too Many Requests is retryable
+		{408, false, true, false, true}, // Request Timeout is retryable
+		{429, false, true, false, true}, // Too Many Requests is retryable
 		{500, false, false, true, true},
 		{502, false, false, true, true},
 		{503, false, false, true, true},
@@ -545,9 +545,9 @@ func TestAPIError(t *testing.T) {
 
 	// Test Error() method
 	errStr := err.Error()
-	assert.Contains(t, errStr, "POST", "error string should contain method, got: %s",errStr)
-	assert.Contains(t, errStr, "503", "error string should contain status code, got: %s",errStr)
-	assert.Contains(t, errStr, "3 attempt", "error string should contain attempts, got: %s",errStr)
+	assert.Contains(t, errStr, "POST", "error string should contain method, got: %s", errStr)
+	assert.Contains(t, errStr, "503", "error string should contain status code, got: %s", errStr)
+	assert.Contains(t, errStr, "3 attempt", "error string should contain attempts, got: %s", errStr)
 
 	// Test helper methods
 	if !err.IsServerError() {
@@ -562,7 +562,7 @@ func TestAPIError(t *testing.T) {
 
 	// Test ResponseBodyString
 	bodyStr := err.ResponseBodyString()
-	assert.Contains(t, bodyStr, "backend is down", "expected response body string to contain error message, got: %s",bodyStr)
+	assert.Contains(t, bodyStr, "backend is down", "expected response body string to contain error message, got: %s", bodyStr)
 }
 
 func TestAPIErrorStatusHelpers(t *testing.T) {
@@ -671,7 +671,7 @@ func TestAPIErrorInRetryExhausted(t *testing.T) {
 	if apiErr.Attempts != 2 {
 		t.Errorf("expected 2 attempts, got %d", apiErr.Attempts)
 	}
-	assert.Contains(t, apiErr.ResponseBodyString(), "backend overloaded", "expected response body to contain error message, got: %s",apiErr.ResponseBodyString())
+	assert.Contains(t, apiErr.ResponseBodyString(), "backend overloaded", "expected response body to contain error message, got: %s", apiErr.ResponseBodyString())
 	if !apiErr.IsServerError() {
 		t.Error("expected IsServerError to return true")
 	}

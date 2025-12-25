@@ -73,4 +73,3 @@ func IsNetworkError(err error) bool {
 
 	return false
 }
-

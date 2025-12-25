@@ -120,4 +120,3 @@ func BuildLabelSelector(labels map[string]string) string {
 	}
 	return strings.Join(pairs, ",")
 }
-

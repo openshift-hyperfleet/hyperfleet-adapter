@@ -109,4 +109,3 @@ const (
 	FieldAPIVersion = "apiVersion"
 	FieldKind       = "kind"
 )
-

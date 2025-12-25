@@ -138,4 +138,3 @@ func addMetadataParams(config *config_loader.AdapterConfig, execCtx *ExecutionCo
 		"labels":    config.Metadata.Labels,
 	}
 }
-

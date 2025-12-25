@@ -17,9 +17,10 @@ import (
 //   - Integration tests (test/integration/k8s_client/*_test.go)
 //
 // Example usage in tests:
-//   ns := &unstructured.Unstructured{...}
-//   ns.SetGroupVersionKind(k8s_client.CommonResourceKinds.Namespace)
-//   _, err := client.CreateResource(ctx, ns)
+//
+//	ns := &unstructured.Unstructured{...}
+//	ns.SetGroupVersionKind(k8s_client.CommonResourceKinds.Namespace)
+//	_, err := client.CreateResource(ctx, ns)
 var CommonResourceKinds = struct {
 	// Core resources (v1)
 	Namespace             schema.GroupVersionKind
@@ -85,4 +86,3 @@ var CommonResourceKinds = struct {
 	// Storage v1
 	StorageClass: schema.GroupVersionKind{Group: "storage.k8s.io", Version: "v1", Kind: "StorageClass"},
 }
-

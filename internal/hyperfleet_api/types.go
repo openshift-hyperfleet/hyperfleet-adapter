@@ -235,4 +235,3 @@ type Client interface {
 	// BaseURL returns the configured base URL for API requests
 	BaseURL() string
 }
-

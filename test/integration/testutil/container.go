@@ -513,4 +513,3 @@ func forceCleanupContainerNoTest(containerID string) {
 
 	println(fmt.Sprintf("⚠️  Could not force-remove container %s. Manual cleanup may be required.", containerID))
 }
-

@@ -13,7 +13,7 @@ import (
 func TestRealWorldScenario(t *testing.T) {
 	// Simulate cluster details from an API response
 	ctx := NewEvaluationContext()
-	
+
 	// Set up cluster details (as would be returned from HyperFleet API)
 	clusterDetails := map[string]interface{}{
 		"metadata": map[string]interface{}{
@@ -35,15 +35,15 @@ func TestRealWorldScenario(t *testing.T) {
 			"node_count": 5,
 		},
 	}
-	
+
 	ctx.Set("clusterDetails", clusterDetails)
-	
+
 	// Extract fields (as done in precondition.extract)
 	ctx.Set("clusterPhase", "Ready")
 	ctx.Set("cloudProvider", "aws")
 	ctx.Set("vpcId", "vpc-12345")
 	ctx.Set("nodeCount", 5)
-	
+
 	evaluator, err := NewEvaluator(context.Background(), ctx, logger.NewTestLogger())
 	require.NoError(t, err)
 
@@ -57,7 +57,7 @@ func TestRealWorldScenario(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, result, "cluster phase should be in valid phases")
 	})
-	
+
 	t.Run("cloudProvider in allowed providers", func(t *testing.T) {
 		result, err := evaluator.EvaluateCondition(
 			"cloudProvider",
@@ -67,7 +67,7 @@ func TestRealWorldScenario(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, result, "cloud provider should be in allowed providers")
 	})
-	
+
 	t.Run("vpcId exists", func(t *testing.T) {
 		result, err := evaluator.EvaluateCondition(
 			"vpcId",
@@ -77,14 +77,14 @@ func TestRealWorldScenario(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, result, "vpcId should exist")
 	})
-	
+
 	t.Run("evaluate all preconditions together", func(t *testing.T) {
 		conditions := []ConditionDef{
 			{Field: "clusterPhase", Operator: OperatorIn, Value: []interface{}{"Provisioning", "Installing", "Ready"}},
 			{Field: "cloudProvider", Operator: OperatorIn, Value: []interface{}{"aws", "gcp", "azure"}},
 			{Field: "vpcId", Operator: OperatorExists, Value: nil},
 		}
-		
+
 		result, err := evaluator.EvaluateConditions(conditions)
 		require.NoError(t, err)
 		assert.True(t, result, "all preconditions should pass")
@@ -94,7 +94,7 @@ func TestRealWorldScenario(t *testing.T) {
 // TestResourceStatusEvaluation tests evaluating resource status conditions
 func TestResourceStatusEvaluation(t *testing.T) {
 	ctx := NewEvaluationContext()
-	
+
 	// Simulate tracked resources after creation
 	resources := map[string]interface{}{
 		"clusterNamespace": map[string]interface{}{
@@ -116,9 +116,9 @@ func TestResourceStatusEvaluation(t *testing.T) {
 			},
 		},
 	}
-	
+
 	ctx.Set("resources", resources)
-	
+
 	evaluator, err := NewEvaluator(context.Background(), ctx, logger.NewTestLogger())
 	require.NoError(t, err)
 
@@ -131,7 +131,7 @@ func TestResourceStatusEvaluation(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, result)
 	})
-	
+
 	t.Run("replicas equal ready replicas", func(t *testing.T) {
 		// Create isolated context for this subtest to avoid shared state mutation
 		localCtx := NewEvaluationContext()
@@ -160,7 +160,7 @@ func TestResourceStatusEvaluation(t *testing.T) {
 // TestComplexNestedConditions tests complex nested field evaluation
 func TestComplexNestedConditions(t *testing.T) {
 	ctx := NewEvaluationContext()
-	
+
 	// Simulate complex nested data
 	ctx.Set("adapter", map[string]interface{}{
 		"executionStatus": "success",
@@ -169,7 +169,7 @@ func TestComplexNestedConditions(t *testing.T) {
 			"failed":  []string{},
 		},
 	})
-	
+
 	evaluator, err := NewEvaluator(context.Background(), ctx, logger.NewTestLogger())
 	require.NoError(t, err)
 
@@ -182,7 +182,7 @@ func TestComplexNestedConditions(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, result)
 	})
-	
+
 	t.Run("resources were created", func(t *testing.T) {
 		result, err := evaluator.EvaluateCondition(
 			"adapter.resources.created",
@@ -262,7 +262,7 @@ func TestTerminatingClusterScenario(t *testing.T) {
 	ctx.Set("clusterPhase", "Terminating")
 	ctx.Set("cloudProvider", "aws")
 	ctx.Set("vpcId", "vpc-12345")
-	
+
 	evaluator, err := NewEvaluator(context.Background(), ctx, logger.NewTestLogger())
 	require.NoError(t, err)
 
@@ -276,7 +276,7 @@ func TestTerminatingClusterScenario(t *testing.T) {
 		require.NoError(t, err)
 		assert.False(t, result, "terminating cluster should not pass preconditions")
 	})
-	
+
 	t.Run("notIn blocks terminating cluster", func(t *testing.T) {
 		// Precondition: clusterPhase notIn ["Terminating", "Failed"]
 		// Since clusterPhase IS "Terminating", this should return false (blocked)

@@ -121,8 +121,8 @@ func setupSharedTestEnv() (*TestEnvPrebuilt, error) {
 			"NO_PROXY":    noProxy,
 		},
 		WaitStrategy: wait.ForAll(
-			wait.ForListeningPort(EnvtestAPIServerPort).WithPollInterval(500 * time.Millisecond),
-			wait.ForLog(EnvtestReadyLog).WithPollInterval(500 * time.Millisecond),
+			wait.ForListeningPort(EnvtestAPIServerPort).WithPollInterval(500*time.Millisecond),
+			wait.ForLog(EnvtestReadyLog).WithPollInterval(500*time.Millisecond),
 		).WithDeadline(120 * time.Second),
 		MaxRetries:     3,
 		StartupTimeout: 3 * time.Minute,
@@ -208,4 +208,3 @@ func createDefaultNamespaceNoTest(client *k8s_client.Client, ctx context.Context
 	}
 	return nil
 }
-

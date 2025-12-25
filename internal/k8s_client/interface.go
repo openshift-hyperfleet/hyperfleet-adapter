@@ -48,4 +48,3 @@ type K8sClient interface {
 
 // Ensure Client implements K8sClient interface
 var _ K8sClient = (*Client)(nil)
-

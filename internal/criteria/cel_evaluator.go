@@ -16,9 +16,9 @@ import (
 
 // CELEvaluator evaluates CEL expressions against a context
 type CELEvaluator struct {
-	env       *cel.Env
-	evalCtx   *EvaluationContext
-	log       logger.Logger
+	env     *cel.Env
+	evalCtx *EvaluationContext
+	log     logger.Logger
 	ctx     context.Context
 }
 
@@ -268,7 +268,7 @@ func isEmptyValue(val ref.Val) bool {
 	case types.String:
 		return string(v) == ""
 	case types.Bool:
-		return false  // Boolean values (true or false) are never empty
+		return false // Boolean values (true or false) are never empty
 	default:
 		// Check if it's a list or map
 		if lister, ok := val.(interface{ Size() ref.Val }); ok {
@@ -383,4 +383,3 @@ func ConditionsToCEL(conditions []ConditionDef) (string, error) {
 
 	return strings.Join(expressions, " && "), nil
 }
-

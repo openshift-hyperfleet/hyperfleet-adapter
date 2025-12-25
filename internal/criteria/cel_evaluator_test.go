@@ -597,4 +597,3 @@ func TestEvaluateSafeErrorHandling(t *testing.T) {
 		})
 	}
 }
-

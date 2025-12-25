@@ -11,17 +11,18 @@ import (
 // All production code should use this function with values from the config YAML.
 //
 // Example usage with config:
-//   // From adapter-config-template.yaml:
-//   //   - kind: "Deployment"
-//   //     apiVersion: "apps/v1"
 //
-//   gvk, err := GVKFromKindAndApiVersion(resource.Kind, resource.ApiVersion)
-//   if err != nil {
-//       return fmt.Errorf("invalid GVK in config: %w", err)
-//   }
+//	// From adapter-config-template.yaml:
+//	//   - kind: "Deployment"
+//	//     apiVersion: "apps/v1"
 //
-//   // Now use gvk with client operations:
-//   obj, err := client.GetResource(ctx, gvk, namespace, name)
+//	gvk, err := GVKFromKindAndApiVersion(resource.Kind, resource.ApiVersion)
+//	if err != nil {
+//	    return fmt.Errorf("invalid GVK in config: %w", err)
+//	}
+//
+//	// Now use gvk with client operations:
+//	obj, err := client.GetResource(ctx, gvk, namespace, name)
 func GVKFromKindAndApiVersion(kind, apiVersion string) (schema.GroupVersionKind, error) {
 	gv, err := schema.ParseGroupVersion(apiVersion)
 	if err != nil {
@@ -41,9 +42,10 @@ func GVKFromKindAndApiVersion(kind, apiVersion string) (schema.GroupVersionKind,
 // before creating the resource.
 //
 // Example:
-//   obj, _ := RenderAndParseResource(template, variables)
-//   gvk := GVKFromUnstructured(obj)
-//   created, err := client.CreateResource(ctx, obj)
+//
+//	obj, _ := RenderAndParseResource(template, variables)
+//	gvk := GVKFromUnstructured(obj)
+//	created, err := client.CreateResource(ctx, obj)
 func GVKFromUnstructured(obj *unstructured.Unstructured) schema.GroupVersionKind {
 	if obj == nil {
 		return schema.GroupVersionKind{}

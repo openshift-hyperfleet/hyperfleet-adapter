@@ -41,7 +41,7 @@ type ConditionsResult struct {
 type Evaluator struct {
 	evalCtx *EvaluationContext
 	log     logger.Logger
-	ctx   context.Context
+	ctx     context.Context
 
 	// Lazily cached CEL evaluator for repeated CEL evaluations
 	// Recreated when context version changes
@@ -79,7 +79,7 @@ func (e *Evaluator) getCELEvaluator() (*CELEvaluator, error) {
 	defer e.mu.Unlock()
 
 	currentVersion := e.evalCtx.Version()
-	
+
 	// Recreate CEL evaluator if context changed or not yet created
 	if e.celEval == nil || e.celEvalVersion != currentVersion {
 		celEval, err := newCELEvaluator(e.ctx, e.evalCtx, e.log)
@@ -89,7 +89,7 @@ func (e *Evaluator) getCELEvaluator() (*CELEvaluator, error) {
 		e.celEval = celEval
 		e.celEvalVersion = currentVersion
 	}
-	
+
 	return e.celEval, nil
 }
 
@@ -699,4 +699,3 @@ func IsFieldNotFound(err error) bool {
 	var target *FieldNotFoundError
 	return errors.As(err, &target)
 }
-

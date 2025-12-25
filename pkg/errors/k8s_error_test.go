@@ -421,4 +421,3 @@ func TestIsK8sOperationError(t *testing.T) {
 		assert.Nil(t, k8sErr)
 	})
 }
-

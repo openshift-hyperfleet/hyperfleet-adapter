@@ -94,4 +94,3 @@ func GetSharedEnv(t *testing.T) TestEnv {
 	require.NotNil(t, sharedEnv, "Shared test environment is not initialized")
 	return sharedEnv
 }
-

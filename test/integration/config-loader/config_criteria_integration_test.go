@@ -448,4 +448,3 @@ func TestConfigParameterExtraction(t *testing.T) {
 		}
 	})
 }
-

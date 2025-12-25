@@ -449,7 +449,6 @@ func TestParseLevel(t *testing.T) {
 	}
 }
 
-
 func TestLoggerContextExtraction(t *testing.T) {
 	log, err := NewLogger(Config{
 		Level:     "debug",

@@ -90,4 +90,3 @@ func (e *K8sTestEnv) CleanupTestNamespace(t *testing.T, name string) {
 func isAlreadyExistsError(err error) bool {
 	return apierrors.IsAlreadyExists(err)
 }
-

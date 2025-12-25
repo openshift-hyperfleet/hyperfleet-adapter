@@ -392,4 +392,3 @@ type PreconditionsOutcome struct {
 	// NotMetReason provides details when AllMatched is false
 	NotMetReason string
 }
-
