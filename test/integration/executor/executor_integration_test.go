@@ -428,16 +428,18 @@ func TestExecutor_CELExpressionEvaluation(t *testing.T) {
 	config := createTestConfig(mockAPI.URL())
 	config.Spec.Preconditions = []config_loader.Precondition{
 		{
-			Name: "clusterStatus",
-			APICall: &config_loader.APICall{
-				Method:  "GET",
-				URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}",
-				Timeout: "5s",
+			ActionBase: config_loader.ActionBase{
+				Name: "clusterStatus",
+				APICall: &config_loader.APICall{
+					Method:  "GET",
+					URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}",
+					Timeout: "5s",
+				},
 			},
 			Capture: []config_loader.CaptureField{
-				{Name: "clusterName", Field: "metadata.name"},
-				{Name: "clusterPhase", Field: "status.phase"},
-				{Name: "nodeCount", Field: "spec.node_count"},
+				{Name: "clusterName", FieldExpressionDef: config_loader.FieldExpressionDef{Field: "metadata.name"}},
+				{Name: "clusterPhase", FieldExpressionDef: config_loader.FieldExpressionDef{Field: "status.phase"}},
+				{Name: "nodeCount", FieldExpressionDef: config_loader.FieldExpressionDef{Field: "spec.node_count"}},
 			},
 			// Use CEL expression instead of structured conditions
 			Expression: `clusterPhase == "Ready" && nodeCount >= 3`,
@@ -863,28 +865,34 @@ func TestExecutor_LogAction(t *testing.T) {
 			Preconditions: []config_loader.Precondition{
 				{
 					// Log action only - no API call or conditions
-					Name: "logStart",
-					Log: &config_loader.LogAction{
-						Message: "Starting processing for cluster {{ .clusterId }}",
-						Level:   "info",
+					ActionBase: config_loader.ActionBase{
+						Name: "logStart",
+						Log: &config_loader.LogAction{
+							Message: "Starting processing for cluster {{ .clusterId }}",
+							Level:   "info",
+						},
 					},
 				},
 				{
 					// Log action before API call
-					Name: "logBeforeAPICall",
-					Log: &config_loader.LogAction{
-						Message: "About to check cluster status for {{ .clusterId }}",
-						Level:   "debug",
+					ActionBase: config_loader.ActionBase{
+						Name: "logBeforeAPICall",
+						Log: &config_loader.LogAction{
+							Message: "About to check cluster status for {{ .clusterId }}",
+							Level:   "debug",
+						},
 					},
 				},
 				{
-					Name: "checkCluster",
-					APICall: &config_loader.APICall{
-						Method: "GET",
-						URL:    "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}",
+					ActionBase: config_loader.ActionBase{
+						Name: "checkCluster",
+						APICall: &config_loader.APICall{
+							Method: "GET",
+							URL:    "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}",
+						},
 					},
 					Capture: []config_loader.CaptureField{
-						{Name: "clusterPhase", Field: "status.phase"},
+						{Name: "clusterPhase", FieldExpressionDef: config_loader.FieldExpressionDef{Field: "status.phase"}},
 					},
 					Conditions: []config_loader.Condition{
 						{Field: "clusterPhase", Operator: "equals", Value: "Ready"},
@@ -895,18 +903,22 @@ func TestExecutor_LogAction(t *testing.T) {
 				PostActions: []config_loader.PostAction{
 					{
 						// Log action in post-actions
-						Name: "logCompletion",
-						Log: &config_loader.LogAction{
-							Message: "Completed processing cluster {{ .clusterId }} with resource {{ .resourceId }}",
-							Level:   "info",
+						ActionBase: config_loader.ActionBase{
+							Name: "logCompletion",
+							Log: &config_loader.LogAction{
+								Message: "Completed processing cluster {{ .clusterId }} with resource {{ .resourceId }}",
+								Level:   "info",
+							},
 						},
 					},
 					{
 						// Log with warning level
-						Name: "logWarning",
-						Log: &config_loader.LogAction{
-							Message: "This is a warning for cluster {{ .clusterId }}",
-							Level:   "warning",
+						ActionBase: config_loader.ActionBase{
+							Name: "logWarning",
+							Log: &config_loader.LogAction{
+								Message: "This is a warning for cluster {{ .clusterId }}",
+								Level:   "warning",
+							},
 						},
 					},
 				},
@@ -1097,14 +1109,16 @@ func TestExecutor_ExecutionError_CELAccess(t *testing.T) {
 			},
 			Preconditions: []config_loader.Precondition{
 				{
-					Name: "clusterStatus",
-					APICall: &config_loader.APICall{
-						Method:  "GET",
-						URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}",
-						Timeout: "5s",
+					ActionBase: config_loader.ActionBase{
+						Name: "clusterStatus",
+						APICall: &config_loader.APICall{
+							Method:  "GET",
+							URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}",
+							Timeout: "5s",
+						},
 					},
 					Capture: []config_loader.CaptureField{
-						{Name: "clusterPhase", Field: "status.phase"},
+						{Name: "clusterPhase", FieldExpressionDef: config_loader.FieldExpressionDef{Field: "status.phase"}},
 					},
 					Conditions: []config_loader.Condition{
 						{Field: "clusterPhase", Operator: "equals", Value: "Ready"},
@@ -1145,12 +1159,14 @@ func TestExecutor_ExecutionError_CELAccess(t *testing.T) {
 				},
 				PostActions: []config_loader.PostAction{
 					{
-						Name: "reportError",
-						APICall: &config_loader.APICall{
-							Method:  "POST",
-							URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}/error-report",
-							Body:    "{{ .errorReportPayload }}",
-							Timeout: "5s",
+						ActionBase: config_loader.ActionBase{
+							Name: "reportError",
+							APICall: &config_loader.APICall{
+								Method:  "POST",
+								URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}/error-report",
+								Body:    "{{ .errorReportPayload }}",
+								Timeout: "5s",
+							},
 						},
 					},
 				},
@@ -1262,7 +1278,7 @@ func TestExecutor_PayloadBuildFailure(t *testing.T) {
 			},
 			Preconditions: []config_loader.Precondition{
 				{
-					Name: "simpleCheck",
+					ActionBase: config_loader.ActionBase{Name: "simpleCheck"},
 					Conditions: []config_loader.Condition{
 						{Field: "clusterId", Operator: "equals", Value: "test-cluster"},
 					},
@@ -1283,12 +1299,14 @@ func TestExecutor_PayloadBuildFailure(t *testing.T) {
 				},
 				PostActions: []config_loader.PostAction{
 					{
-						Name: "shouldNotExecute",
-						APICall: &config_loader.APICall{
-							Method:  "POST",
-							URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}/status",
-							Body:    "{{ .badPayload }}",
-							Timeout: "5s",
+						ActionBase: config_loader.ActionBase{
+							Name: "shouldNotExecute",
+							APICall: &config_loader.APICall{
+								Method:  "POST",
+								URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}/status",
+								Body:    "{{ .badPayload }}",
+								Timeout: "5s",
+							},
 						},
 					},
 				},
