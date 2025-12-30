@@ -185,9 +185,17 @@ func (pe *PreconditionExecutor) executePrecondition(ctx context.Context, precond
 		// Log individual condition results
 		for _, cr := range condResult.Results {
 			if cr.Matched {
-				pe.log.Debugf(ctx, "Condition: %s %s %v = %v ✓", cr.Field, cr.Operator, cr.ExpectedValue, cr.FieldValue)
+				if cr.Operator == criteria.OperatorExists {
+					pe.log.Debugf(ctx, "Condition: %s %s = %v ✓", cr.Field, cr.Operator, cr.FieldValue)
+				} else {
+					pe.log.Debugf(ctx, "Condition: %s %s %v = %v ✓", cr.Field, cr.Operator, cr.ExpectedValue, cr.FieldValue)
+				}
 			} else {
-				pe.log.Infof(ctx, "Condition FAILED: %s %s %v (actual: %v)", cr.Field, cr.Operator, cr.ExpectedValue, cr.FieldValue)
+				if cr.Operator == criteria.OperatorExists {
+					pe.log.Infof(ctx, "Condition FAILED: %s %s (field is nil or empty)", cr.Field, cr.Operator)
+				} else {
+					pe.log.Infof(ctx, "Condition FAILED: %s %s %v (actual: %v)", cr.Field, cr.Operator, cr.ExpectedValue, cr.FieldValue)
+				}
 			}
 		}
 

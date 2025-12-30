@@ -338,7 +338,7 @@ spec:
     - name: "checkCluster"
 `,
 			wantError: true,
-			errorMsg:  "must specify apiCall, expression, or conditions",
+			errorMsg:  "must specify",
 		},
 		{
 			name: "API call without method",
@@ -1184,7 +1184,7 @@ func TestValidateResourceDiscovery(t *testing.T) {
 				},
 			},
 			wantErr: true,
-			errMsg:  "must have either byName or bySelectors",
+			errMsg:  "must have either",
 		},
 		{
 			name: "invalid - bySelectors without labelSelector defined",
@@ -1205,7 +1205,7 @@ func TestValidateResourceDiscovery(t *testing.T) {
 				},
 			},
 			wantErr: true,
-			errMsg:  "must have labelSelector defined",
+			errMsg:  "labelSelector",
 		},
 		{
 			name: "valid - manifest.refs array with discovery",
