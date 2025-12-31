@@ -486,17 +486,10 @@ func (v *Validator) validateK8sManifests() {
 				}
 				// Single ref: content will have been loaded into Manifest by loadFileReferences
 				// and will be validated below if it's a valid manifest map
-			} else if _, hasRefs := manifest[FieldRefs]; hasRefs {
-				// Multiple refs: content loaded into ManifestItems, validated below
 			} else {
 				// Inline manifest - validate it
 				v.validateK8sManifest(manifest, path)
 			}
-		}
-
-		// Validate any loaded manifest items from manifest.refs (multiple refs)
-		for j, item := range resource.ManifestItems {
-			v.validateK8sManifest(item, fmt.Sprintf("%s.%s[%d].%s[%d]", FieldSpec, FieldResources, i, FieldManifestItems, j))
 		}
 	}
 }

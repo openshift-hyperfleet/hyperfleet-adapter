@@ -159,12 +159,8 @@ func (re *ResourceExecutor) executeResource(ctx context.Context, resource config
 func (re *ResourceExecutor) buildManifest(ctx context.Context, resource config_loader.Resource, execCtx *ExecutionContext) (*unstructured.Unstructured, error) {
 	var manifestData map[string]interface{}
 
-	// Check if manifest is inline or from ManifestItems (loaded from ref)
-	if len(resource.ManifestItems) > 0 {
-		// Use first manifest item (loaded from ref file)
-		manifestData = resource.ManifestItems[0]
-	} else if resource.Manifest != nil {
-		// Use inline manifest
+	// Get manifest (inline or loaded from ref)
+	if resource.Manifest != nil {
 		switch m := resource.Manifest.(type) {
 		case map[string]interface{}:
 			manifestData = m

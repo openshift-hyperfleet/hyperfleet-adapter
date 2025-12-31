@@ -76,15 +76,13 @@ const (
 // Resource field names
 const (
 	FieldManifest         = "manifest"
-	FieldManifestItems    = "manifestItems"
 	FieldRecreateOnChange = "recreateOnChange"
 	FieldDiscovery        = "discovery"
 )
 
 // Manifest reference field names
 const (
-	FieldRef  = "ref"
-	FieldRefs = "refs"
+	FieldRef = "ref"
 )
 
 // Discovery field names
