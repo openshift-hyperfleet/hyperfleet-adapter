@@ -198,7 +198,7 @@ func (c *HyperfleetAPIConfig) GetBaseURL() string {
 // Resource Accessors
 // -----------------------------------------------------------------------------
 
-// HasManifestRef returns true if the manifest uses a ref (single or array)
+// HasManifestRef returns true if the manifest uses a ref (single file reference)
 func (r *Resource) HasManifestRef() bool {
 	if r == nil || r.Manifest == nil {
 		return false
@@ -208,37 +208,24 @@ func (r *Resource) HasManifestRef() bool {
 		return false
 	}
 	_, hasRef := manifest["ref"]
-	_, hasRefs := manifest["refs"]
-	return hasRef || hasRefs
+	return hasRef
 }
 
-// GetManifestRefs returns the ref paths (handles both single ref and refs array)
-func (r *Resource) GetManifestRefs() []string {
+// GetManifestRef returns the ref path if set, empty string otherwise
+func (r *Resource) GetManifestRef() string {
 	if r == nil || r.Manifest == nil {
-		return nil
+		return ""
 	}
 	manifest := normalizeToStringKeyMap(r.Manifest)
 	if manifest == nil {
-		return nil
+		return ""
 	}
 
-	// Single ref
-	if ref, ok := manifest["ref"].(string); ok && ref != "" {
-		return []string{ref}
+	if ref, ok := manifest["ref"].(string); ok {
+		return ref
 	}
 
-	// Array of refs
-	if refs, ok := manifest["refs"].([]interface{}); ok {
-		result := make([]string, 0, len(refs))
-		for _, r := range refs {
-			if s, ok := r.(string); ok && s != "" {
-				result = append(result, s)
-			}
-		}
-		return result
-	}
-
-	return nil
+	return ""
 }
 
 // UnmarshalManifest attempts to unmarshal the manifest as a map

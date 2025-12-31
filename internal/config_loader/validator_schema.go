@@ -308,16 +308,11 @@ func (v *SchemaValidator) validateFileReferences() error {
 		}
 	}
 
-	// Validate manifest.ref and manifest.refs in spec.resources
+	// Validate manifest.ref in spec.resources
 	for i, resource := range v.config.Spec.Resources {
-		refs := resource.GetManifestRefs()
-		for j, ref := range refs {
-			var path string
-			if len(refs) == 1 {
-				path = fmt.Sprintf("%s.%s[%d].%s.%s", FieldSpec, FieldResources, i, FieldManifest, FieldRef)
-			} else {
-				path = fmt.Sprintf("%s.%s[%d].%s.%s[%d]", FieldSpec, FieldResources, i, FieldManifest, FieldRefs, j)
-			}
+		ref := resource.GetManifestRef()
+		if ref != "" {
+			path := fmt.Sprintf("%s.%s[%d].%s.%s", FieldSpec, FieldResources, i, FieldManifest, FieldRef)
 			if err := v.validateFileExists(ref, path); err != nil {
 				errors = append(errors, err.Error())
 			}
@@ -362,35 +357,21 @@ func (v *SchemaValidator) validateFileExists(refPath, configPath string) error {
 // -----------------------------------------------------------------------------
 
 func (v *SchemaValidator) loadFileReferences() error {
-	// Load manifest.ref or manifest.refs in spec.resources
+	// Load manifest.ref in spec.resources
 	for i := range v.config.Spec.Resources {
 		resource := &v.config.Spec.Resources[i]
-		refs := resource.GetManifestRefs()
-		if len(refs) == 0 {
+		ref := resource.GetManifestRef()
+		if ref == "" {
 			continue
 		}
 
-		// Load all referenced files
-		items := make([]map[string]interface{}, 0, len(refs))
-		for j, ref := range refs {
-			content, err := v.loadYAMLFile(ref)
-			if err != nil {
-				if len(refs) == 1 {
-					return fmt.Errorf("%s.%s[%d].%s.%s: %w", FieldSpec, FieldResources, i, FieldManifest, FieldRef, err)
-				}
-				return fmt.Errorf("%s.%s[%d].%s.%s[%d]: %w", FieldSpec, FieldResources, i, FieldManifest, FieldRefs, j, err)
-			}
-			items = append(items, content)
+		content, err := v.loadYAMLFile(ref)
+		if err != nil {
+			return fmt.Errorf("%s.%s[%d].%s.%s: %w", FieldSpec, FieldResources, i, FieldManifest, FieldRef, err)
 		}
 
-		// Store loaded items
-		if len(items) == 1 {
-			// Single ref: replace manifest with content (backward compatible)
-			resource.Manifest = items[0]
-		} else {
-			// Multiple refs: store in ManifestItems array
-			resource.ManifestItems = items
-		}
+		// Replace manifest with loaded content
+		resource.Manifest = content
 	}
 
 	// Load buildRef in spec.post.payloads

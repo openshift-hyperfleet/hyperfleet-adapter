@@ -231,8 +231,6 @@ type Resource struct {
 	Manifest         interface{}      `yaml:"manifest,omitempty"`
 	RecreateOnChange bool             `yaml:"recreateOnChange,omitempty"`
 	Discovery        *DiscoveryConfig `yaml:"discovery,omitempty"`
-	// ManifestItems holds loaded content when manifest.ref is an array (populated by loader)
-	ManifestItems []map[string]interface{} `yaml:"-"`
 }
 
 // DiscoveryConfig represents resource discovery configuration

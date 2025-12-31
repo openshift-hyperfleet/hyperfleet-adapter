@@ -1207,28 +1207,6 @@ func TestValidateResourceDiscovery(t *testing.T) {
 			wantErr: true,
 			errMsg:  "must have labelSelector defined",
 		},
-		{
-			name: "valid - manifest.refs array with discovery",
-			config: &AdapterConfig{
-				Spec: AdapterConfigSpec{
-					Resources: []Resource{
-						{
-							Name: "test",
-							Manifest: map[string]interface{}{
-								"refs": []interface{}{"templates/a.yaml", "templates/b.yaml"},
-							},
-							Discovery: &DiscoveryConfig{
-								Namespace: "*",
-								BySelectors: &SelectorConfig{
-									LabelSelector: map[string]string{"app": "test"},
-								},
-							},
-						},
-					},
-				},
-			},
-			wantErr: false,
-		},
 	}
 
 	for _, tt := range tests {
@@ -1244,77 +1222,6 @@ func TestValidateResourceDiscovery(t *testing.T) {
 	}
 }
 
-func TestLoadManifestRefsArray(t *testing.T) {
-	// Create temporary directory
-	tmpDir := t.TempDir()
-	templateDir := filepath.Join(tmpDir, "templates")
-	require.NoError(t, os.MkdirAll(templateDir, 0755))
-
-	// Create multiple template files
-	require.NoError(t, os.WriteFile(filepath.Join(templateDir, "configmap.yaml"), []byte(`
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: test-cm
-`), 0644))
-
-	require.NoError(t, os.WriteFile(filepath.Join(templateDir, "secret.yaml"), []byte(`
-apiVersion: v1
-kind: Secret
-metadata:
-  name: test-secret
-`), 0644))
-
-	// Create config with manifest.refs array
-	configYAML := `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterConfig
-metadata:
-  name: test-adapter
-spec:
-  adapter:
-    version: "0.1.0"
-  hyperfleetApi:
-    baseUrl: "https://test.example.com"
-    timeout: 2s
-  kubernetes:
-    apiVersion: "v1"
-  params:
-    - name: "clusterId"
-      source: "event.cluster_id"
-  resources:
-    - name: "multiResource"
-      manifest:
-        refs:
-          - "templates/configmap.yaml"
-          - "templates/secret.yaml"
-      discovery:
-        namespace: "*"
-        bySelectors:
-          labelSelector:
-            app: "test"
-`
-	configPath := filepath.Join(tmpDir, "config.yaml")
-	require.NoError(t, os.WriteFile(configPath, []byte(configYAML), 0644))
-
-	// Load config
-	config, err := Load(configPath, WithSkipSemanticValidation())
-	require.NoError(t, err)
-	require.NotNil(t, config)
-
-	// Verify ManifestItems contains both loaded manifests
-	require.Len(t, config.Spec.Resources, 1)
-	resource := config.Spec.Resources[0]
-	require.Len(t, resource.ManifestItems, 2)
-
-	// First item should be configmap
-	assert.Equal(t, "v1", resource.ManifestItems[0]["apiVersion"])
-	assert.Equal(t, "ConfigMap", resource.ManifestItems[0]["kind"])
-
-	// Second item should be secret
-	assert.Equal(t, "v1", resource.ManifestItems[1]["apiVersion"])
-	assert.Equal(t, "Secret", resource.ManifestItems[1]["kind"])
-}
 
 func TestConditionValuesAlias(t *testing.T) {
 	// Test that both "value" and "values" YAML keys are supported
