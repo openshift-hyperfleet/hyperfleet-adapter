@@ -88,7 +88,7 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 	e.log.Info(ctx, "Processing event")
 
 	// Phase 1: Parameter Extraction
-	e.log.Info(ctx, "Phase: Parameter Extraction")
+	e.log.Infof(ctx, "Phase %s: RUNNING", result.CurrentPhase)
 	if err := e.executeParamExtraction(execCtx); err != nil {
 		result.Status = StatusFailed
 		result.Errors[PhaseParamExtraction] = err
@@ -99,8 +99,8 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 	e.log.Debugf(ctx, "Parameter extraction completed: extracted %d params", len(execCtx.Params))
 
 	// Phase 2: Preconditions
-	e.log.Infof(ctx, "Phase: Preconditions (%d configured)", len(e.config.AdapterConfig.Spec.Preconditions))
 	result.CurrentPhase = PhasePreconditions
+	e.log.Infof(ctx, "Phase %s: RUNNING - %d configured", result.CurrentPhase, len(e.config.AdapterConfig.Spec.Preconditions))
 	precondOutcome := e.precondExecutor.ExecuteAll(ctx, e.config.AdapterConfig.Spec.Preconditions, execCtx)
 	result.PreconditionResults = precondOutcome.Results
 
@@ -110,7 +110,7 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 		precondErr := fmt.Errorf("precondition evaluation failed: %w", precondOutcome.Error)
 		result.Errors[result.CurrentPhase] = precondErr
 		execCtx.SetError("PreconditionFailed", precondOutcome.Error.Error())
-		e.log.Errorf(ctx, "Precondition execution failed: %v", precondOutcome.Error)
+		e.log.Errorf(ctx, "Phase %s: FAILED - %v", result.CurrentPhase, precondOutcome.Error)
 		result.ResourcesSkipped = true
 		result.SkipReason = "PreconditionFailed"
 		execCtx.SetSkipped("PreconditionFailed", precondOutcome.Error.Error())
@@ -120,15 +120,15 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 		result.ResourcesSkipped = true
 		result.SkipReason = precondOutcome.NotMetReason
 		execCtx.SetSkipped("PreconditionNotMet", precondOutcome.NotMetReason)
-		e.log.Infof(ctx, "Preconditions NOT MET - resources will be skipped: %s", precondOutcome.NotMetReason)
+		e.log.Infof(ctx, "Phase %s: NOT_MET - %s", result.CurrentPhase, precondOutcome.NotMetReason)
 	} else {
 		// All preconditions matched
-		e.log.Infof(ctx, "Preconditions ALL MET: %d/%d passed", len(precondOutcome.Results), len(precondOutcome.Results))
+		e.log.Infof(ctx, "Phase %s: SUCCESS - %d passed", result.CurrentPhase, len(precondOutcome.Results))
 	}
 
 	// Phase 3: Resources (skip if preconditions not met or previous error)
-	e.log.Infof(ctx, "Phase: Resources (%d configured)", len(e.config.AdapterConfig.Spec.Resources))
 	result.CurrentPhase = PhaseResources
+	e.log.Infof(ctx, "Phase %s: RUNNING - %d configured", result.CurrentPhase, len(e.config.AdapterConfig.Spec.Resources))
 	if !result.ResourcesSkipped {
 		resourceResults, err := e.resourceExecutor.ExecuteAll(ctx, e.config.AdapterConfig.Spec.Resources, execCtx)
 		result.ResourceResults = resourceResults
@@ -138,25 +138,22 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 			resErr := fmt.Errorf("resource execution failed: %w", err)
 			result.Errors[result.CurrentPhase] = resErr
 			execCtx.SetError("ResourceFailed", err.Error())
-			e.log.Errorf(ctx, "Resource execution FAILED: %v", err)
+			e.log.Errorf(ctx, "Phase %s: FAILED - %v", result.CurrentPhase, err)
 			// Continue to post actions for error reporting
 		} else {
-			e.log.Infof(ctx, "Resources completed: %d/%d resources processed successfully", len(resourceResults), len(resourceResults))
-			for _, r := range resourceResults {
-				e.log.Infof(ctx, "resource[%s]: kind=%s namespace=%s name=%s operation=%s", r.Name, r.Kind, r.Namespace, r.ResourceName, r.Operation)
-			}
+			e.log.Infof(ctx, "Phase %s: SUCCESS - %d processed", result.CurrentPhase, len(resourceResults))
 		}
 	} else {
-		e.log.Infof(ctx, "Resources SKIPPED: %s", result.SkipReason)
+		e.log.Infof(ctx, "Phase %s: SKIPPED - %s", result.CurrentPhase, result.SkipReason)
 	}
 
 	// Phase 4: Post Actions (always execute for error reporting)
+	result.CurrentPhase = PhasePostActions
 	postActionCount := 0
 	if e.config.AdapterConfig.Spec.Post != nil {
 		postActionCount = len(e.config.AdapterConfig.Spec.Post.PostActions)
 	}
-	e.log.Infof(ctx, "Phase: Post Actions (%d configured)", postActionCount)
-	result.CurrentPhase = PhasePostActions
+	e.log.Infof(ctx, "Phase %s: RUNNING - %d configured", result.CurrentPhase, postActionCount)
 	postResults, err := e.postActionExecutor.ExecuteAll(ctx, e.config.AdapterConfig.Spec.Post, execCtx)
 	result.PostActionResults = postResults
 
@@ -164,16 +161,9 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 		result.Status = StatusFailed
 		postErr := fmt.Errorf("post action execution failed: %w", err)
 		result.Errors[result.CurrentPhase] = postErr
-		e.log.Errorf(ctx, "Post action execution FAILED: %v", err)
+		e.log.Errorf(ctx, "Phase %s: FAILED - %v", result.CurrentPhase, err)
 	} else {
-		e.log.Infof(ctx, "Post actions completed: %d/%d actions executed successfully", len(postResults), postActionCount)
-		for _, r := range postResults {
-			if r.APICallMade {
-				e.log.Infof(ctx, "action[%s]: status=%s httpStatus=%d", r.Name, r.Status, r.HTTPStatus)
-			} else {
-				e.log.Infof(ctx, "action[%s]: status=%s", r.Name, r.Status)
-			}
-		}
+		e.log.Infof(ctx, "Phase %s: SUCCESS - %d executed", result.CurrentPhase, len(postResults))
 	}
 
 	// Finalize
