@@ -15,6 +15,9 @@ import (
 
 	apierrors "github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 // Environment variables for API configuration
@@ -265,6 +268,22 @@ func (c *httpClient) resolveURL(url string) string {
 
 // doRequest performs a single HTTP request without retry logic
 func (c *httpClient) doRequest(ctx context.Context, req *Request) (*Response, error) {
+	// Resolve URL (prepend base URL if relative)
+	resolvedURL := c.resolveURL(req.URL)
+
+	// Create child span for this HTTP request (new span_id, same trace_id as parent event)
+	// Use method-only span name to avoid high cardinality; URL is in attributes
+	spanName := fmt.Sprintf("HTTP %s", req.Method)
+	ctx, span := otel.Tracer("http-client").Start(ctx, spanName)
+	span.SetAttributes(
+		attribute.String("http.request.method", req.Method),
+		attribute.String("url.full", resolvedURL),
+	)
+	defer span.End()
+
+	// Update logger context with new span_id for this request
+	ctx = logger.WithOTelTraceContext(ctx)
+
 	// Determine timeout
 	timeout := c.config.Timeout
 	if req.Timeout > 0 {
@@ -274,9 +293,6 @@ func (c *httpClient) doRequest(ctx context.Context, req *Request) (*Response, er
 	// Create context with timeout
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-
-	// Resolve URL (prepend base URL if relative)
-	resolvedURL := c.resolveURL(req.URL)
 
 	// Create HTTP request
 	var body io.Reader
@@ -303,6 +319,10 @@ func (c *httpClient) doRequest(ctx context.Context, req *Request) (*Response, er
 	if len(req.Body) > 0 && httpReq.Header.Get("Content-Type") == "" {
 		httpReq.Header.Set("Content-Type", "application/json")
 	}
+
+	// Inject OpenTelemetry trace context into headers (W3C Trace Context format)
+	// This propagates trace_id and span_id via the 'traceparent' header
+	otel.GetTextMapPropagator().Inject(reqCtx, propagation.HeaderCarrier(httpReq.Header))
 
 	// Execute request
 	c.log.Debugf(ctx, "HyperFleet API request: %s %s", req.Method, req.URL)

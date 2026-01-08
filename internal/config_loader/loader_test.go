@@ -1222,7 +1222,6 @@ func TestValidateResourceDiscovery(t *testing.T) {
 	}
 }
 
-
 func TestConditionValuesAlias(t *testing.T) {
 	// Test that both "value" and "values" YAML keys are supported
 	tests := []struct {

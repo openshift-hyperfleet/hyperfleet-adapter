@@ -38,7 +38,8 @@ func (pe *PreconditionExecutor) ExecuteAll(ctx context.Context, preconditions []
 
 		if err != nil {
 			// Execution error (API call failed, parse error, etc.)
-			pe.log.Errorf(ctx, "Precondition[%s] evaluated: FAILED - error=%v", precond.Name, err)
+			errCtx := logger.WithErrorField(ctx, err)
+			pe.log.Errorf(errCtx, "Precondition[%s] evaluated: FAILED", precond.Name)
 			return &PreconditionsOutcome{
 				AllMatched: false,
 				Results:    results,
@@ -83,7 +84,6 @@ func (pe *PreconditionExecutor) executePrecondition(ctx context.Context, precond
 
 	// Step 2: Make API call if configured
 	if precond.APICall != nil {
-		pe.log.Debugf(ctx, "Making API call: %s %s", precond.APICall.Method, precond.APICall.URL)
 		apiResult, err := pe.executeAPICall(ctx, precond.APICall, execCtx)
 		if err != nil {
 			result.Status = StatusFailed
@@ -150,7 +150,6 @@ func (pe *PreconditionExecutor) executePrecondition(ctx context.Context, precond
 				}
 			}
 		}
-		pe.log.Debugf(ctx, "API call completed, response captured")
 	}
 
 	// Step 3: Evaluate conditions
@@ -186,7 +185,7 @@ func (pe *PreconditionExecutor) executePrecondition(ctx context.Context, precond
 			if cr.Matched {
 				pe.log.Debugf(ctx, "Condition: %s %s %v = %v (matched)", cr.Field, cr.Operator, cr.ExpectedValue, cr.FieldValue)
 			} else {
-				pe.log.Infof(ctx, "Condition[%s] evaluated: NOT_MET - %s %s %v (actual: %v)", precond.Name, cr.Field, cr.Operator, cr.ExpectedValue, cr.FieldValue)
+				pe.log.Debugf(ctx, "Condition: %s %s %v = %v (not matched)", cr.Field, cr.Operator, cr.ExpectedValue, cr.FieldValue)
 			}
 		}
 

@@ -73,7 +73,12 @@ func (re *ResourceExecutor) executeResource(ctx context.Context, resource config
 	result.Namespace = manifest.GetNamespace()
 	result.ResourceName = manifest.GetName()
 
-	re.log.Infof(ctx, "Resource[%s] manifest built: kind=%s name=%s namespace=%s", resource.Name, gvk.Kind, manifest.GetName(), manifest.GetNamespace())
+	// Add K8s resource context fields for logging (separate from event resource_type/resource_id)
+	ctx = logger.WithK8sKind(ctx, result.Kind)
+	ctx = logger.WithK8sName(ctx, result.ResourceName)
+	ctx = logger.WithK8sNamespace(ctx, result.Namespace)
+
+	re.log.Debugf(ctx, "Resource[%s] manifest built: namespace=%s", resource.Name, manifest.GetNamespace())
 
 	// Step 2: Check for existing resource using discovery
 	var existingResource *unstructured.Unstructured
@@ -99,10 +104,17 @@ func (re *ResourceExecutor) executeResource(ctx context.Context, resource config
 	}
 
 	// Step 3: Determine and perform the appropriate operation
+	// Extract manifest generation once for use in comparison and logging
+	manifestGen := k8s_client.GetGenerationAnnotation(manifest)
+
+	// Add observed_generation to context early so it appears in all subsequent logs
+	if manifestGen > 0 {
+		ctx = logger.WithObservedGeneration(ctx, manifestGen)
+	}
+
 	if existingResource != nil {
 		// Check if generation annotations match - skip update if unchanged
 		existingGen := k8s_client.GetGenerationAnnotation(existingResource)
-		manifestGen := k8s_client.GetGenerationAnnotation(manifest)
 
 		if existingGen == manifestGen {
 			// Generations match - no action needed
@@ -126,8 +138,8 @@ func (re *ResourceExecutor) executeResource(ctx context.Context, resource config
 	}
 
 	// Log the operation decision
-	re.log.Infof(ctx, "Resource[%s] is processing: operation=%s kind=%s name=%s reason=%s",
-	resource.Name, strings.ToUpper(string(result.Operation)), gvk.Kind, manifest.GetName(), result.OperationReason)
+	re.log.Infof(ctx, "Resource[%s] is processing: operation=%s reason=%s",
+		resource.Name, strings.ToUpper(string(result.Operation)), result.OperationReason)
 
 	// Execute the operation
 	switch result.Operation {
@@ -140,7 +152,7 @@ func (re *ResourceExecutor) executeResource(ctx context.Context, resource config
 	case OperationSkip:
 		// No action needed, resource already set above
 	}
-	
+
 	if err != nil {
 		result.Status = StatusFailed
 		result.Error = err
@@ -150,13 +162,16 @@ func (re *ResourceExecutor) executeResource(ctx context.Context, resource config
 			Step:    resource.Name,
 			Message: err.Error(),
 		}
-		re.log.Errorf(ctx, "Resource[%s] processed: FAILED - operation=%s reason=%s kind=%s name=%s error=%v", 
-			resource.Name, result.Operation, result.OperationReason, gvk.Kind, manifest.GetName(), err)
+		errCtx := logger.WithK8sResult(ctx, "FAILED")
+		errCtx = logger.WithErrorField(errCtx, err)
+		re.log.Errorf(errCtx, "Resource[%s] processed: operation=%s reason=%s",
+			resource.Name, result.Operation, result.OperationReason)
 		return result, NewExecutorError(PhaseResources, resource.Name,
 			fmt.Sprintf("failed to %s resource", result.Operation), err)
 	}
-	re.log.Infof(ctx, "Resource[%s] processed: SUCCESS - operation=%s reason=%s kind=%s name=%s", 
-		resource.Name, result.Operation, result.OperationReason, gvk.Kind, manifest.GetName())
+	successCtx := logger.WithK8sResult(ctx, "SUCCESS")
+	re.log.Infof(successCtx, "Resource[%s] processed: operation=%s reason=%s",
+		resource.Name, result.Operation, result.OperationReason)
 
 	// Store resource in execution context
 	if result.Resource != nil {
@@ -321,19 +336,19 @@ func (re *ResourceExecutor) recreateResource(ctx context.Context, existing, mani
 	name := existing.GetName()
 
 	// Delete the existing resource
-	re.log.Infof(ctx, "Deleting resource for recreation: %s/%s", gvk.Kind, name)
+	re.log.Debugf(ctx, "Deleting resource for recreation")
 	if err := re.k8sClient.DeleteResource(ctx, gvk, namespace, name); err != nil {
 		return nil, fmt.Errorf("failed to delete resource for recreation: %w", err)
 	}
 
 	// Wait for the resource to be fully deleted
-	re.log.Infof(ctx, "Waiting for resource deletion to complete: %s/%s", gvk.Kind, name)
+	re.log.Debugf(ctx, "Waiting for resource deletion to complete")
 	if err := re.waitForDeletion(ctx, gvk, namespace, name); err != nil {
 		return nil, fmt.Errorf("failed waiting for resource deletion: %w", err)
 	}
 
 	// Create the new resource
-	re.log.Infof(ctx, "Creating new resource after deletion confirmed: %s/%s", gvk.Kind, manifest.GetName())
+	re.log.Debugf(ctx, "Creating new resource after deletion confirmed")
 	return re.k8sClient.CreateResource(ctx, manifest)
 }
 
@@ -348,22 +363,23 @@ func (re *ResourceExecutor) waitForDeletion(ctx context.Context, gvk schema.Grou
 	for {
 		select {
 		case <-ctx.Done():
-			re.log.Warnf(ctx, "Context cancelled/timed out while waiting for deletion of %s/%s", gvk.Kind, name)
+			re.log.Warnf(ctx, "Context cancelled/timed out while waiting for deletion")
 			return fmt.Errorf("context cancelled while waiting for resource deletion: %w", ctx.Err())
 		case <-ticker.C:
 			_, err := re.k8sClient.GetResource(ctx, gvk, namespace, name)
 			if err != nil {
 				// NotFound means the resource is deleted - this is success
 				if apierrors.IsNotFound(err) {
-					re.log.Infof(ctx, "Resource deletion confirmed: %s/%s", gvk.Kind, name)
+					re.log.Debugf(ctx, "Resource deletion confirmed")
 					return nil
 				}
 				// Any other error is unexpected
-				re.log.Errorf(ctx, "Error checking resource deletion status for %s/%s: %v", gvk.Kind, name, err)
+				errCtx := logger.WithErrorField(ctx, err)
+				re.log.Errorf(errCtx, "Error checking resource deletion status")
 				return fmt.Errorf("error checking deletion status: %w", err)
 			}
 			// Resource still exists, continue polling
-			re.log.Debugf(ctx, "Resource %s/%s still exists, waiting for deletion...", gvk.Kind, name)
+			re.log.Debugf(ctx, "Resource still exists, waiting for deletion...")
 		}
 	}
 }
