@@ -36,8 +36,6 @@ type Logger interface {
 	With(key string, value interface{}) Logger
 	// WithFields returns a new logger with multiple additional fields
 	WithFields(fields map[string]interface{}) Logger
-	// WithError returns a new logger with error field (no-op if err is nil)
-	WithError(err error) Logger
 	// Without returns a new logger with the specified field removed
 	Without(key string) Logger
 }
@@ -100,7 +98,10 @@ func ConfigFromEnv() Config {
 }
 
 // NewLogger creates a new Logger with the given configuration
-// Returns error if output is invalid (must be "stdout", "stderr", or empty)
+// NewLogger creates a Logger configured according to cfg.
+// It selects the output writer, log level, and format, initializes the base
+// fields (component, version, hostname), and returns a logger ready for use.
+// Returns an error if cfg.Output is invalid (must be "stdout", "stderr", or empty).
 func NewLogger(cfg Config) (Logger, error) {
 	// Determine output writer
 	var writer io.Writer
@@ -146,11 +147,11 @@ func NewLogger(cfg Config) (Logger, error) {
 		hostname = "unknown"
 	}
 
-	// Create base logger with required fields
+	// Create base logger with required fields (per logging spec)
 	slogLogger := slog.New(handler).With(
-		"component", cfg.Component,
-		"version", cfg.Version,
-		"hostname", hostname,
+		string(ComponentKey), cfg.Component,
+		string(VersionKey), cfg.Version,
+		string(HostnameKey), hostname,
 	)
 
 	return &logger{
@@ -274,28 +275,6 @@ func (l *logger) WithFields(fields map[string]interface{}) Logger {
 	for k, v := range fields {
 		newFields[k] = v
 	}
-	return &logger{
-		slog:      l.slog,
-		fields:    newFields,
-		component: l.component,
-		version:   l.version,
-		hostname:  l.hostname,
-	}
-}
-
-// WithError returns a new logger with the error field set.
-// If err is nil, returns the same logger instance (no-op) to avoid
-// unnecessary allocations. This allows safe usage like:
-//
-//	log.WithError(maybeNilErr).Info("message")
-//
-// To remove an existing error field, use Without("error").
-func (l *logger) WithError(err error) Logger {
-	if err == nil {
-		return l
-	}
-	newFields := copyFields(l.fields)
-	newFields["error"] = err.Error()
 	return &logger{
 		slog:      l.slog,
 		fields:    newFields,

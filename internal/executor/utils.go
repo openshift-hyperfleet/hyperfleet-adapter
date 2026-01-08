@@ -35,7 +35,12 @@ func ToConditionDefs(conditions []config_loader.Condition) []criteria.ConditionD
 
 // ExecuteLogAction executes a log action with the given context
 // The message is rendered as a Go template with access to all params
-// This is a shared utility function used by both PreconditionExecutor and PostActionExecutor
+// ExecuteLogAction renders a log message template and emits the result at the configured level.
+// 
+// If logAction is nil or its Message is empty, the function returns immediately. The Message is
+// rendered as a Go template using execCtx.Params; if rendering fails the error is logged with an
+// attached stack trace and the function returns. The rendered message is logged with a "[config]"
+// prefix at the level specified by logAction.Level (defaults to "info").
 func ExecuteLogAction(ctx context.Context, logAction *config_loader.LogAction, execCtx *ExecutionContext, log logger.Logger) {
 	if logAction == nil || logAction.Message == "" {
 		return
@@ -44,7 +49,8 @@ func ExecuteLogAction(ctx context.Context, logAction *config_loader.LogAction, e
 	// Render the message template
 	message, err := renderTemplate(logAction.Message, execCtx.Params)
 	if err != nil {
-		log.Errorf(ctx, "failed to render log message: %v", err)
+		errCtx := logger.WithStackTraceField(logger.WithErrorField(ctx, err), logger.CaptureStackTrace(1))
+		log.Errorf(errCtx, "failed to render log message")
 		return
 	}
 
@@ -72,7 +78,13 @@ func ExecuteLogAction(ctx context.Context, logAction *config_loader.LogAction, e
 // ExecuteAPICall executes an API call with the given configuration and returns the response and rendered URL
 // This is a shared utility function used by both PreconditionExecutor and PostActionExecutor
 // On error, it returns an APIError with full context (method, URL, status, body, attempts, duration)
-// Returns: response, renderedURL, error
+// ExecuteAPICall executes the HTTP API call described by apiCall using apiClient.
+//
+// It renders the URL, header values, and body templates with execCtx.Params, applies timeout and retry options when specified,
+// and performs the request with the HTTP method from apiCall (supports GET, POST, PUT, PATCH, DELETE).
+// On error, it returns any available response along with an APIError that includes method, URL, status, body, attempts, duration, and the underlying error.
+// If apiCall is nil or template rendering fails, a descriptive error is returned.
+// If the HTTP method is unsupported, an error indicating the unsupported method is returned.
 func ExecuteAPICall(ctx context.Context, apiCall *config_loader.APICall, execCtx *ExecutionContext, apiClient hyperfleet_api.Client, log logger.Logger) (*hyperfleet_api.Response, string, error) {
 	if apiCall == nil {
 		return nil, "", fmt.Errorf("apiCall is nil")
@@ -137,7 +149,14 @@ func ExecuteAPICall(ctx context.Context, apiCall *config_loader.APICall, execCtx
 		resp, err = apiClient.Post(ctx, url, body, opts...)
 		// Log body on failure for debugging
 		if err != nil || (resp != nil && !resp.IsSuccess()) {
-			log.Errorf(ctx, "POST %s failed, request body: %s", url, string(body))
+			var logErr error
+			if err != nil {
+				logErr = err
+			} else {
+				logErr = fmt.Errorf("POST %s returned non-success status: %d", url, resp.StatusCode)
+			}
+			errCtx := logger.WithStackTraceField(logger.WithErrorField(ctx, logErr), logger.CaptureStackTrace(1))
+			log.Errorf(errCtx, "POST %s failed, request body: %s", url, string(body))
 		}
 	case http.MethodPut:
 		body := []byte(apiCall.Body)
