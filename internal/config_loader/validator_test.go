@@ -270,7 +270,6 @@ func TestValidateK8sManifests(t *testing.T) {
 	})
 }
 
-
 func TestValidOperators(t *testing.T) {
 	// Verify all expected operators are defined in criteria package
 	expectedOperators := []string{
