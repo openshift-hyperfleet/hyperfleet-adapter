@@ -184,10 +184,14 @@ func TestReadyzHandler_ReadyToNotReady(t *testing.T) {
 	req = httptest.NewRequest(http.MethodGet, "/readyz", nil)
 	w = httptest.NewRecorder()
 	server.readyzHandler(w, req)
-	assert.Equal(t, http.StatusServiceUnavailable, w.Result().StatusCode)
+
+	resp := w.Result()
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
 
 	var response ReadyResponse
-	err := json.NewDecoder(w.Result().Body).Decode(&response)
+	err := json.NewDecoder(resp.Body).Decode(&response)
 	require.NoError(t, err)
 	assert.Equal(t, CheckOK, response.Checks["config"])    // Config stays ok
 	assert.Equal(t, CheckError, response.Checks["broker"]) // Broker is error
