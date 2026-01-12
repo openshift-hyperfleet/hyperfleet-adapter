@@ -37,7 +37,8 @@ func (pae *PostActionExecutor) ExecuteAll(ctx context.Context, postConfig *confi
 	if len(postConfig.Payloads) > 0 {
 		pae.log.Infof(ctx, "Building %d post payloads", len(postConfig.Payloads))
 		if err := pae.buildPostPayloads(ctx, postConfig.Payloads, execCtx); err != nil {
-			pae.log.Errorf(ctx, "Failed to build post payloads: %v", err)
+			errCtx := logger.WithErrorField(ctx, err)
+			pae.log.Errorf(errCtx, "Failed to build post payloads")
 			execCtx.Adapter.ExecutionError = &ExecutionError{
 				Phase:   string(PhasePostActions),
 				Step:    "build_payloads",
@@ -57,7 +58,8 @@ func (pae *PostActionExecutor) ExecuteAll(ctx context.Context, postConfig *confi
 		results = append(results, result)
 
 		if err != nil {
-			pae.log.Errorf(ctx, "PostAction[%s] processed: FAILED - error=%v", action.Name, err)
+			errCtx := logger.WithErrorField(ctx, err)
+			pae.log.Errorf(errCtx, "PostAction[%s] processed: FAILED", action.Name)
 
 			// Set ExecutionError for failed post action
 			execCtx.Adapter.ExecutionError = &ExecutionError{
@@ -215,11 +217,9 @@ func (pae *PostActionExecutor) executePostAction(ctx context.Context, action con
 
 	// Execute API call if configured
 	if action.APICall != nil {
-		pae.log.Debugf(ctx, "Making API call: %s %s", action.APICall.Method, action.APICall.URL)
 		if err := pae.executeAPICall(ctx, action.APICall, execCtx, &result); err != nil {
 			return result, err
 		}
-		pae.log.Debugf(ctx, "API call completed: HTTP %d", result.HTTPStatus)
 	}
 
 	return result, nil

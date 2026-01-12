@@ -5,12 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/cloudevents/sdk-go/v2/event"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleet_api"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/k8s_client"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
+	pkgotel "github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/otel"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // NewExecutor creates a new Executor with the given configuration
@@ -50,12 +54,16 @@ func validateExecutorConfig(config *ExecutorConfig) error {
 // The caller is responsible for:
 // - Adding event ID to context for logging correlation using logger.WithEventID()
 func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResult {
+	// Start OTel span and add trace context to logs
+	ctx, span := e.startTracedExecution(ctx)
+	defer span.End()
 
 	// Parse event data
 	eventData, rawData, err := ParseEventData(data)
 	if err != nil {
 		parseErr := fmt.Errorf("failed to parse event data: %w", err)
-		e.log.Errorf(ctx, "Failed to parse event data: error=%v", parseErr)
+		errCtx := logger.WithErrorField(ctx, parseErr)
+		e.log.Errorf(errCtx, "Failed to parse event data")
 		return &ExecutionResult{
 			Status:       StatusFailed,
 			CurrentPhase: PhaseParamExtraction,
@@ -65,11 +73,11 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 
 	// This is intended to set OwnerReference and ResourceID for the event when it exist
 	// For example, when a NodePool event arrived
-	// the logger will set the cluster_id:owner_id , resource_id: nodepool_id and resource_type: nodepool
-	// but when a resource is cluster type, it will just record cluster_id:resource_id
+	// the logger will set the cluster_id=owner_id, nodepool_id=resource_id, resource_type=nodepool
+	// but when a resource is cluster type, it will just record cluster_id=resource_id
 	if eventData.OwnedReference != nil {
-		ctx = logger.WithResourceID(
-			logger.WithResourceType(ctx, eventData.Kind), eventData.ID)
+		ctx = logger.WithResourceType(ctx, eventData.Kind)
+		ctx = logger.WithDynamicResourceID(ctx, eventData.Kind, eventData.ID)
 		ctx = logger.WithDynamicResourceID(ctx, eventData.OwnedReference.Kind, eventData.OwnedReference.ID)
 	} else {
 		ctx = logger.WithDynamicResourceID(ctx, eventData.Kind, eventData.ID)
@@ -110,7 +118,8 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 		precondErr := fmt.Errorf("precondition evaluation failed: error=%w", precondOutcome.Error)
 		result.Errors[result.CurrentPhase] = precondErr
 		execCtx.SetError("PreconditionFailed", precondOutcome.Error.Error())
-		e.log.Errorf(ctx, "Phase %s: FAILED - error=%v", result.CurrentPhase, precondOutcome.Error)
+		errCtx := logger.WithErrorField(ctx, precondOutcome.Error)
+		e.log.Errorf(errCtx, "Phase %s: FAILED", result.CurrentPhase)
 		result.ResourcesSkipped = true
 		result.SkipReason = "PreconditionFailed"
 		execCtx.SetSkipped("PreconditionFailed", precondOutcome.Error.Error())
@@ -138,7 +147,8 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 			resErr := fmt.Errorf("resource execution failed: %w", err)
 			result.Errors[result.CurrentPhase] = resErr
 			execCtx.SetError("ResourceFailed", err.Error())
-			e.log.Errorf(ctx, "Phase %s: FAILED - error=%v", result.CurrentPhase, err)
+			errCtx := logger.WithErrorField(ctx, err)
+			e.log.Errorf(errCtx, "Phase %s: FAILED", result.CurrentPhase)
 			// Continue to post actions for error reporting
 		} else {
 			e.log.Infof(ctx, "Phase %s: SUCCESS - %d processed", result.CurrentPhase, len(resourceResults))
@@ -161,7 +171,8 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 		result.Status = StatusFailed
 		postErr := fmt.Errorf("post action execution failed: %w", err)
 		result.Errors[result.CurrentPhase] = postErr
-		e.log.Errorf(ctx, "Phase %s: FAILED - error=%v", result.CurrentPhase, err)
+		errCtx := logger.WithErrorField(ctx, err)
+		e.log.Errorf(errCtx, "Phase %s: FAILED", result.CurrentPhase)
 	} else {
 		e.log.Infof(ctx, "Phase %s: SUCCESS - %d executed", result.CurrentPhase, len(postResults))
 	}
@@ -172,7 +183,14 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 	if result.Status == StatusSuccess {
 		e.log.Infof(ctx, "Event execution finished: event_execution_status=success resources_skipped=%t reason=%s", result.ResourcesSkipped, result.SkipReason)
 	} else {
-		e.log.Errorf(ctx, "Event execution finished: event_execution_status=failed event_execution_errors=%v", result.Errors)
+		// Combine all errors into a single error for logging
+		var errMsgs []string
+		for phase, err := range result.Errors {
+			errMsgs = append(errMsgs, fmt.Sprintf("%s: %v", phase, err))
+		}
+		combinedErr := fmt.Errorf("execution failed: %s", strings.Join(errMsgs, "; "))
+		errCtx := logger.WithErrorField(ctx, combinedErr)
+		e.log.Errorf(errCtx, "Event execution finished: event_execution_status=failed")
 	}
 	return result
 }
@@ -190,6 +208,23 @@ func (e *Executor) executeParamExtraction(execCtx *ExecutionContext) error {
 	return nil
 }
 
+// startTracedExecution creates an OTel span and adds trace context to logs.
+// Returns the enriched context and span. Caller must call span.End() when done.
+//
+// This method:
+//   - Creates an OTel span with trace_id and span_id (for distributed tracing)
+//   - Adds trace_id and span_id to logger context (for log correlation)
+//   - The trace context is automatically propagated to outgoing HTTP requests
+func (e *Executor) startTracedExecution(ctx context.Context) (context.Context, trace.Span) {
+	componentName := e.config.AdapterConfig.Metadata.Name
+	ctx, span := otel.Tracer(componentName).Start(ctx, "Execute")
+
+	// Add trace_id and span_id to logger context for log correlation
+	ctx = logger.WithOTelTraceContext(ctx)
+
+	return ctx, span
+}
+
 // CreateHandler creates an event handler function that can be used with the broker subscriber
 // This is a convenience method for integrating with the broker_consumer package
 //
@@ -201,14 +236,19 @@ func (e *Executor) CreateHandler() func(ctx context.Context, evt *event.Event) e
 		// Add event ID to context for logging correlation
 		ctx = logger.WithEventID(ctx, evt.ID())
 
+		// Extract W3C trace context from CloudEvent extensions (if present)
+		// This enables distributed tracing when upstream services (e.g., Sentinel)
+		// include traceparent/tracestate in the CloudEvent
+		ctx = pkgotel.ExtractTraceContextFromCloudEvent(ctx, evt)
+
 		// Log event metadata
 		e.log.Infof(ctx, "Event received: id=%s type=%s source=%s time=%s",
 			evt.ID(), evt.Type(), evt.Source(), evt.Time())
 
 		_ = e.Execute(ctx, evt.Data())
 
-		e.log.Infof(ctx, "Event processed: id=%s type=%s source=%s time=%s",
-			evt.ID(), evt.Type(), evt.Source(), evt.Time())
+		e.log.Infof(ctx, "Event processed: type=%s source=%s time=%s",
+			evt.Type(), evt.Source(), evt.Time())
 
 		return nil
 	}

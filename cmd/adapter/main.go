@@ -14,6 +14,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleet_api"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/k8s_client"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/otel"
 	"github.com/openshift-hyperfleet/hyperfleet-broker/broker"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -39,6 +40,12 @@ var (
 const (
 	EnvBrokerSubscriptionID = "BROKER_SUBSCRIPTION_ID"
 	EnvBrokerTopic          = "BROKER_TOPIC"
+)
+
+// Timeout constants
+const (
+	// OTelShutdownTimeout is the timeout for gracefully shutting down the OpenTelemetry TracerProvider
+	OTelShutdownTimeout = 5 * time.Second
 )
 
 func main() {
@@ -148,7 +155,8 @@ func runServe() error {
 	log.Info(ctx, "Loading adapter configuration...")
 	adapterConfig, err := config_loader.Load(configPath, config_loader.WithAdapterVersion(version))
 	if err != nil {
-		log.Errorf(ctx, "Failed to load adapter configuration: %v", err)
+		errCtx := logger.WithErrorField(ctx, err)
+		log.Errorf(errCtx, "Failed to load adapter configuration")
 		return fmt.Errorf("failed to load adapter configuration: %w", err)
 	}
 
@@ -164,11 +172,31 @@ func runServe() error {
 		adapterConfig.Spec.HyperfleetAPI.Timeout,
 		adapterConfig.Spec.HyperfleetAPI.RetryAttempts)
 
+	// Get trace sample ratio from environment (default: 10%)
+	sampleRatio := otel.GetTraceSampleRatio(log, ctx)
+
+	// Initialize OpenTelemetry for trace_id/span_id generation and HTTP propagation
+	tp, err := otel.InitTracer(adapterConfig.Metadata.Name, version, sampleRatio)
+	if err != nil {
+		errCtx := logger.WithErrorField(ctx, err)
+		log.Errorf(errCtx, "Failed to initialize OpenTelemetry")
+		return fmt.Errorf("failed to initialize OpenTelemetry: %w", err)
+	}
+	defer func() {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), OTelShutdownTimeout)
+		defer shutdownCancel()
+		if err := tp.Shutdown(shutdownCtx); err != nil {
+			errCtx := logger.WithErrorField(shutdownCtx, err)
+			log.Warnf(errCtx, "Failed to shutdown TracerProvider")
+		}
+	}()
+
 	// Create HyperFleet API client from config
 	log.Info(ctx, "Creating HyperFleet API client...")
 	apiClient, err := createAPIClient(adapterConfig.Spec.HyperfleetAPI, log)
 	if err != nil {
-		log.Errorf(ctx, "Failed to create HyperFleet API client: %v", err)
+		errCtx := logger.WithErrorField(ctx, err)
+		log.Errorf(errCtx, "Failed to create HyperFleet API client")
 		return fmt.Errorf("failed to create HyperFleet API client: %w", err)
 	}
 
@@ -177,7 +205,8 @@ func runServe() error {
 	log.Info(ctx, "Creating Kubernetes client...")
 	k8sClient, err := k8s_client.NewClient(ctx, k8s_client.ClientConfig{}, log)
 	if err != nil {
-		log.Errorf(ctx, "Failed to create Kubernetes client: %v", err)
+		errCtx := logger.WithErrorField(ctx, err)
+		log.Errorf(errCtx, "Failed to create Kubernetes client")
 		return fmt.Errorf("failed to create Kubernetes client: %w", err)
 	}
 
@@ -190,7 +219,8 @@ func runServe() error {
 		WithLogger(log).
 		Build()
 	if err != nil {
-		log.Errorf(ctx, "Failed to create executor: %v", err)
+		errCtx := logger.WithErrorField(ctx, err)
+		log.Errorf(errCtx, "Failed to create executor")
 		return fmt.Errorf("failed to create executor: %w", err)
 	}
 
@@ -219,15 +249,19 @@ func runServe() error {
 	// Get subscription ID from environment
 	subscriptionID := os.Getenv(EnvBrokerSubscriptionID)
 	if subscriptionID == "" {
-		log.Errorf(ctx, "%s environment variable is required", EnvBrokerSubscriptionID)
-		return fmt.Errorf("%s environment variable is required", EnvBrokerSubscriptionID)
+		err := fmt.Errorf("%s environment variable is required", EnvBrokerSubscriptionID)
+		errCtx := logger.WithErrorField(ctx, err)
+		log.Errorf(errCtx, "Missing required environment variable")
+		return err
 	}
 
 	// Get topic from environment
 	topic := os.Getenv(EnvBrokerTopic)
 	if topic == "" {
-		log.Errorf(ctx, "%s environment variable is required", EnvBrokerTopic)
-		return fmt.Errorf("%s environment variable is required", EnvBrokerTopic)
+		err := fmt.Errorf("%s environment variable is required", EnvBrokerTopic)
+		errCtx := logger.WithErrorField(ctx, err)
+		log.Errorf(errCtx, "Missing required environment variable")
+		return err
 	}
 
 	// Create broker subscriber
@@ -237,9 +271,10 @@ func runServe() error {
 	//   - BROKER_RABBITMQ_URL: RabbitMQ URL (for rabbitmq)
 	//   - SUBSCRIBER_PARALLELISM: number of parallel workers (default: 1)
 	log.Info(ctx, "Creating broker subscriber...")
-	subscriber, err := broker.NewSubscriber(subscriptionID)
+	subscriber, err := broker.NewSubscriber(log, subscriptionID)
 	if err != nil {
-		log.Errorf(ctx, "Failed to create subscriber: %v", err)
+		errCtx := logger.WithErrorField(ctx, err)
+		log.Errorf(errCtx, "Failed to create subscriber")
 		return fmt.Errorf("failed to create subscriber: %w", err)
 	}
 	log.Info(ctx, "Broker subscriber created successfully")
@@ -248,7 +283,8 @@ func runServe() error {
 	log.Info(ctx, "Subscribing to broker topic...")
 	err = subscriber.Subscribe(ctx, topic, handler)
 	if err != nil {
-		log.Errorf(ctx, "Failed to subscribe to topic: %v", err)
+		errCtx := logger.WithErrorField(ctx, err)
+		log.Errorf(errCtx, "Failed to subscribe to topic")
 		return fmt.Errorf("failed to subscribe to topic: %w", err)
 	}
 	log.Info(ctx, "Successfully subscribed to broker topic")
@@ -256,10 +292,15 @@ func runServe() error {
 	// Channel to signal fatal errors from the errors goroutine
 	fatalErrCh := make(chan error, 1)
 
-	// Monitor subscription errors channel in a separate goroutine
+	// Monitor subscription errors channel in a separate goroutine.
+	// Note: Error context here reflects the handler's location, not the error's origin
+	// in the broker library. Stack traces (if captured) would show this goroutine's
+	// call stack. For richer error context, the broker library would need to provide
+	// errors with embedded stack traces or structured error details.
 	go func() {
 		for subErr := range subscriber.Errors() {
-			log.Errorf(ctx, "Subscription error: %v", subErr)
+			errCtx := logger.WithErrorField(ctx, subErr)
+			log.Errorf(errCtx, "Subscription error")
 			// For critical errors, signal shutdown
 			select {
 			case fatalErrCh <- subErr:
@@ -277,7 +318,8 @@ func runServe() error {
 	case <-ctx.Done():
 		log.Info(ctx, "Context cancelled, shutting down...")
 	case err := <-fatalErrCh:
-		log.Errorf(ctx, "Fatal subscription error, shutting down: %v", err)
+		errCtx := logger.WithErrorField(ctx, err)
+		log.Errorf(errCtx, "Fatal subscription error, shutting down")
 		cancel() // Cancel context to trigger graceful shutdown
 	}
 
@@ -295,12 +337,15 @@ func runServe() error {
 	select {
 	case err := <-closeDone:
 		if err != nil {
-			log.Errorf(ctx, "Error closing subscriber: %v", err)
+			errCtx := logger.WithErrorField(ctx, err)
+			log.Errorf(errCtx, "Error closing subscriber")
 		} else {
 			log.Info(ctx, "Subscriber closed successfully")
 		}
 	case <-shutdownCtx.Done():
-		log.Error(ctx, "Subscriber close timed out after 30 seconds")
+		err := fmt.Errorf("subscriber close timed out after 30 seconds")
+		errCtx := logger.WithErrorField(ctx, err)
+		log.Error(errCtx, "Subscriber close timed out")
 	}
 
 	log.Info(ctx, "Adapter shutdown complete")

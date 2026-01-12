@@ -6,7 +6,6 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"runtime"
 	"strings"
 )
 
@@ -36,8 +35,6 @@ type Logger interface {
 	With(key string, value interface{}) Logger
 	// WithFields returns a new logger with multiple additional fields
 	WithFields(fields map[string]interface{}) Logger
-	// WithError returns a new logger with error field (no-op if err is nil)
-	WithError(err error) Logger
 	// Without returns a new logger with the specified field removed
 	Without(key string) Logger
 }
@@ -146,11 +143,11 @@ func NewLogger(cfg Config) (Logger, error) {
 		hostname = "unknown"
 	}
 
-	// Create base logger with required fields
+	// Create base logger with required fields (per logging spec)
 	slogLogger := slog.New(handler).With(
-		"component", cfg.Component,
-		"version", cfg.Version,
-		"hostname", hostname,
+		string(ComponentKey), cfg.Component,
+		string(VersionKey), cfg.Version,
+		string(HostnameKey), hostname,
 	)
 
 	return &logger{
@@ -283,28 +280,6 @@ func (l *logger) WithFields(fields map[string]interface{}) Logger {
 	}
 }
 
-// WithError returns a new logger with the error field set.
-// If err is nil, returns the same logger instance (no-op) to avoid
-// unnecessary allocations. This allows safe usage like:
-//
-//	log.WithError(maybeNilErr).Info("message")
-//
-// To remove an existing error field, use Without("error").
-func (l *logger) WithError(err error) Logger {
-	if err == nil {
-		return l
-	}
-	newFields := copyFields(l.fields)
-	newFields["error"] = err.Error()
-	return &logger{
-		slog:      l.slog,
-		fields:    newFields,
-		component: l.component,
-		version:   l.version,
-		hostname:  l.hostname,
-	}
-}
-
 // Without returns a new logger with the specified field removed.
 // If the field doesn't exist, returns a new logger with the same fields.
 func (l *logger) Without(key string) Logger {
@@ -317,21 +292,4 @@ func (l *logger) Without(key string) Logger {
 		version:   l.version,
 		hostname:  l.hostname,
 	}
-}
-
-// GetStackTrace returns the current stack trace as a slice of strings
-func GetStackTrace(skip int) []string {
-	var pcs [32]uintptr
-	n := runtime.Callers(skip+2, pcs[:])
-	frames := runtime.CallersFrames(pcs[:n])
-
-	var stack []string
-	for {
-		frame, more := frames.Next()
-		stack = append(stack, fmt.Sprintf("%s() %s:%d", frame.Function, frame.File, frame.Line))
-		if !more {
-			break
-		}
-	}
-	return stack
 }

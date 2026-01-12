@@ -44,7 +44,8 @@ func ExecuteLogAction(ctx context.Context, logAction *config_loader.LogAction, e
 	// Render the message template
 	message, err := renderTemplate(logAction.Message, execCtx.Params)
 	if err != nil {
-		log.Errorf(ctx, "failed to render log message: %v", err)
+		errCtx := logger.WithErrorField(ctx, err)
+		log.Errorf(errCtx, "failed to render log message")
 		return
 	}
 
@@ -137,7 +138,14 @@ func ExecuteAPICall(ctx context.Context, apiCall *config_loader.APICall, execCtx
 		resp, err = apiClient.Post(ctx, url, body, opts...)
 		// Log body on failure for debugging
 		if err != nil || (resp != nil && !resp.IsSuccess()) {
-			log.Errorf(ctx, "POST %s failed, request body: %s", url, string(body))
+			var logErr error
+			if err != nil {
+				logErr = err
+			} else {
+				logErr = fmt.Errorf("POST %s returned non-success status: %d", url, resp.StatusCode)
+			}
+			errCtx := logger.WithErrorField(ctx, logErr)
+			log.Error(errCtx, "Request failed")
 		}
 	case http.MethodPut:
 		body := []byte(apiCall.Body)

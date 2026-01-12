@@ -145,35 +145,6 @@ func TestLoggerWithFields(t *testing.T) {
 	}
 }
 
-func TestLoggerWithError(t *testing.T) {
-	log, err := NewLogger(DefaultConfig())
-	if err != nil {
-		t.Fatalf("NewLogger returned error: %v", err)
-	}
-
-	t.Run("with_error", func(t *testing.T) {
-		err := &testError{msg: "test error message"}
-		result := log.WithError(err)
-
-		impl, ok := result.(*logger)
-		if !ok {
-			t.Fatal("WithError() didn't return *logger type")
-		}
-
-		if impl.fields["error"] != "test error message" {
-			t.Errorf("Expected error field, got %v", impl.fields["error"])
-		}
-	})
-
-	t.Run("with_nil_error", func(t *testing.T) {
-		result := log.WithError(nil)
-		// Should return same logger when error is nil
-		if result != log {
-			t.Error("WithError(nil) should return same logger")
-		}
-	})
-}
-
 type testError struct {
 	msg string
 }
@@ -296,7 +267,7 @@ func TestLoggerChaining(t *testing.T) {
 		log.WithFields(map[string]interface{}{"a": 1}).With("b", 2).Info(ctx, "Test mixed chaining")
 	})
 
-	t.Run("chain_WithError", func(t *testing.T) {
+	t.Run("chain_WithErrorField", func(t *testing.T) {
 		defer func() {
 			if r := recover(); r != nil {
 				t.Errorf("Chaining panicked: %v", r)
@@ -304,7 +275,8 @@ func TestLoggerChaining(t *testing.T) {
 		}()
 
 		err := &testError{msg: "test error"}
-		log.WithError(err).With("extra", "info").Error(ctx, "Error with context")
+		ctx := WithErrorField(ctx, err)
+		log.With("extra", "info").Error(ctx, "Error with context")
 	})
 }
 
