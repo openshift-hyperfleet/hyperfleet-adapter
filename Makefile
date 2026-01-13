@@ -169,7 +169,7 @@ ifeq ($(CONTAINER_RUNTIME),none)
 	@exit 1
 else
 	@echo "Building container image with $(CONTAINER_RUNTIME)..."
-	$(CONTAINER_CMD) build --platform linux/amd64 --no-cache -t $(IMAGE_REGISTRY)/$(PROJECT_NAME):$(IMAGE_TAG) .
+	$(CONTAINER_CMD) build --platform linux/amd64 --no-cache --build-arg GIT_COMMIT=$(GIT_COMMIT) -t $(IMAGE_REGISTRY)/$(PROJECT_NAME):$(IMAGE_TAG) .
 	@echo "✅ Image built: $(IMAGE_REGISTRY)/$(PROJECT_NAME):$(IMAGE_TAG)"
 endif
 
@@ -201,7 +201,7 @@ ifeq ($(CONTAINER_RUNTIME),none)
 	@exit 1
 else
 	@echo "Building dev image quay.io/$(QUAY_USER)/$(PROJECT_NAME):$(DEV_TAG)..."
-	$(CONTAINER_CMD) build --platform linux/amd64 --build-arg BASE_IMAGE=alpine:3.21 -t quay.io/$(QUAY_USER)/$(PROJECT_NAME):$(DEV_TAG) .
+	$(CONTAINER_CMD) build --platform linux/amd64 --build-arg BASE_IMAGE=alpine:3.21 --build-arg GIT_COMMIT=$(GIT_COMMIT) -t quay.io/$(QUAY_USER)/$(PROJECT_NAME):$(DEV_TAG) .
 	@echo "Pushing dev image..."
 	$(CONTAINER_CMD) push quay.io/$(QUAY_USER)/$(PROJECT_NAME):$(DEV_TAG)
 	@echo ""

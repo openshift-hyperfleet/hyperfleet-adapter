@@ -3,8 +3,11 @@ ARG BASE_IMAGE=gcr.io/distroless/static-debian12:nonroot
 # Build stage
 FROM golang:1.25-alpine AS builder
 
-# Install build dependencies (make for build target, git for version info)
-RUN apk add --no-cache make git
+# Git commit passed from build machine (avoids installing git in container)
+ARG GIT_COMMIT=unknown
+
+# Install build dependencies
+RUN apk add --no-cache make
 
 WORKDIR /build
 
@@ -15,7 +18,7 @@ COPY . .
 RUN go mod tidy && go mod verify
 
 # Build binary using make to include version, commit, and build date
-RUN make build
+RUN make build GIT_COMMIT=${GIT_COMMIT}
 
 # Runtime stage
 FROM ${BASE_IMAGE}
