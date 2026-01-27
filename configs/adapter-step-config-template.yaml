@@ -1,0 +1,283 @@
+# HyperFleet Adapter Step-Based Configuration Template
+#
+# This configuration uses the simplified step-based execution model where
+# all operations are expressed as sequential steps with optional 'when' clauses.
+#
+# EXECUTION MODEL:
+# ================
+# Steps execute sequentially in order. Each step has:
+#   - name: Unique identifier (used to reference results in later steps)
+#   - when: (optional) CEL expression - if false, step is skipped (soft failure)
+#   - One of: param, apiCall, resource, payload, log
+#
+# STEP TYPES:
+# ===========
+# param    - Extract/define a value (from env, event, literal, or expression)
+# apiCall  - Execute HTTP request with optional captures
+# resource - Create/update Kubernetes resource
+# payload  - Build JSON structure for API calls
+# log      - Emit log message
+#
+# REFERENCING RESULTS:
+# ====================
+# Each step's result is accessible by its name:
+#   - {{ .stepName }} in Go templates
+#   - stepName in CEL expressions
+#   - stepName.error != null to check for errors
+#   - stepName.skipped to check if step was skipped
+#
+# CEL EXPRESSIONS:
+# ================
+# Use CEL for 'when' clauses and param expressions:
+#   when: "clusterPhase == 'NotReady'"
+#   when: "previousStep.error == null"
+#   when: "!hasError && clusterPhase == 'Ready'"
+#
+# SOFT FAILURES:
+# ==============
+# When 'when' evaluates to false, the step is skipped (not an error).
+# Execution continues to subsequent steps.
+# Use stepName.error in later 'when' clauses to conditionally skip steps.
+
+apiVersion: hyperfleet.redhat.com/v1alpha1
+kind: AdapterConfig
+metadata:
+  name: example-adapter
+  namespace: hyperfleet-system
+  labels:
+    hyperfleet.io/adapter-type: example
+    hyperfleet.io/component: adapter
+
+spec:
+  adapter:
+    version: "0.1.0"
+
+  hyperfleetApi:
+    timeout: 2s
+    retryAttempts: 3
+    retryBackoff: exponential
+
+  kubernetes:
+    apiVersion: "v1"
+
+  steps:
+    # =========================================================================
+    # CONFIGURATION PARAMETERS
+    # Use param steps with 'value' for configuration that would otherwise be
+    # in spec.adapter or spec.hyperfleetApi
+    # =========================================================================
+    - name: "adapterVersion"
+      param:
+        value: "0.1.0"
+
+    - name: "apiTimeout"
+      param:
+        value: "10s"
+
+    - name: "apiRetryAttempts"
+      param:
+        value: 3
+
+    - name: "apiRetryBackoff"
+      param:
+        value: "exponential"
+
+    # =========================================================================
+    # ENVIRONMENT PARAMETERS
+    # Extract values from environment variables
+    # =========================================================================
+    - name: "hyperfleetApiBaseUrl"
+      param:
+        source: "env.HYPERFLEET_API_BASE_URL"
+
+    - name: "hyperfleetApiVersion"
+      param:
+        source: "env.HYPERFLEET_API_VERSION"
+        default: "v1"
+
+    # =========================================================================
+    # EVENT PARAMETERS
+    # Extract values from CloudEvent data
+    # =========================================================================
+    - name: "clusterId"
+      param:
+        source: "event.id"
+
+    - name: "resourceType"
+      param:
+        source: "event.kind"
+
+    - name: "eventGeneration"
+      param:
+        source: "event.generation"
+        default: "1"
+
+    - name: "eventHref"
+      param:
+        source: "event.href"
+
+    # =========================================================================
+    # COMPUTED PARAMETERS
+    # Use CEL expressions to compute values from other parameters
+    # =========================================================================
+    - name: "clusterApiUrl"
+      param:
+        expression: "hyperfleetApiBaseUrl + '/api/hyperfleet/' + hyperfleetApiVersion + '/clusters/' + clusterId"
+
+    # =========================================================================
+    # API CALLS
+    # Execute HTTP requests to external services
+    # Use 'capture' to extract fields from the response to top-level variables
+    # =========================================================================
+    - name: "clusterStatus"
+      apiCall:
+        method: GET
+        url: "{{ .clusterApiUrl }}"
+        timeout: "{{ .apiTimeout }}"
+        retryAttempts: 3
+        retryBackoff: "exponential"
+        capture:
+          - name: "clusterPhase"
+            field: "status.phase"
+          - name: "clusterName"
+            field: "name"
+          - name: "generationId"
+            field: "generation"
+
+    # =========================================================================
+    # ERROR TRACKING
+    # Use param steps with expressions to track errors from previous steps
+    # =========================================================================
+    - name: "hasError"
+      param:
+        expression: "clusterStatus.error != null"
+
+    # =========================================================================
+    # LOGGING
+    # Emit log messages for debugging and monitoring
+    # =========================================================================
+    - name: "logClusterStatus"
+      log:
+        level: info
+        message: "Processing cluster {{ .clusterId }}: phase={{ .clusterPhase }}, hasError={{ .hasError }}"
+
+    # =========================================================================
+    # RESOURCES
+    # Create/update Kubernetes resources
+    # Use 'when' to conditionally create resources based on state
+    # =========================================================================
+    - name: "clusterNamespace"
+      when: "!hasError && clusterPhase == 'NotReady'"
+      resource:
+        manifest:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ .clusterId | lower }}"
+            labels:
+              hyperfleet.io/cluster-id: "{{ .clusterId }}"
+              hyperfleet.io/managed-by: "{{ .metadata.name }}"
+              hyperfleet.io/resource-type: "namespace"
+            annotations:
+              hyperfleet.io/created-by: "hyperfleet-adapter"
+              hyperfleet.io/generation: "{{ .generationId }}"
+        discovery:
+          bySelectors:
+            labelSelector:
+              hyperfleet.io/resource-type: "namespace"
+              hyperfleet.io/cluster-id: "{{ .clusterId }}"
+              hyperfleet.io/managed-by: "{{ .metadata.name }}"
+
+    # =========================================================================
+    # EXECUTION STATUS
+    # Compute final execution status for reporting
+    # =========================================================================
+    - name: "executionError"
+      param:
+        expression: |
+          clusterStatus.error != null ? clusterStatus.error :
+          clusterNamespace.error != null ? clusterNamespace.error :
+          null
+
+    - name: "executionStatus"
+      param:
+        expression: "executionError == null ? 'success' : 'failed'"
+
+    # =========================================================================
+    # PAYLOAD BUILDING
+    # Build complex JSON structures for API calls
+    # Supports nested structures with CEL expressions
+    # =========================================================================
+    - name: "statusPayload"
+      payload:
+        adapter: "{{ .metadata.name }}"
+        conditions:
+          - type: "Applied"
+            status:
+              expression: |
+                clusterNamespace.?status.?phase.orValue("") == "Active" ? "True" : "False"
+            reason:
+              expression: |
+                clusterNamespace.?status.?phase.orValue("") == "Active"
+                  ? "NamespaceCreated"
+                  : "NamespacePending"
+            message:
+              expression: |
+                clusterNamespace.?status.?phase.orValue("") == "Active"
+                  ? "Namespace created successfully"
+                  : "Namespace creation in progress"
+
+          - type: "Available"
+            status:
+              expression: |
+                clusterNamespace.?status.?phase.orValue("") == "Active" ? "True" : "False"
+            reason:
+              expression: |
+                clusterNamespace.?status.?phase.orValue("") == "Active" ? "NamespaceReady" : "NamespaceNotReady"
+            message:
+              expression: |
+                clusterNamespace.?status.?phase.orValue("") == "Active" ? "Namespace is active and ready" : "Namespace is not active and ready"
+
+          - type: "Health"
+            status:
+              expression: "executionStatus == 'success' ? 'True' : 'False'"
+            reason:
+              expression: |
+                executionError.?reason.orValue("") != "" ? executionError.?reason.orValue("") : "Healthy"
+            message:
+              expression: |
+                executionError.?message.orValue("") != "" ? executionError.?message.orValue("") : "All adapter operations completed successfully"
+
+        observed_generation:
+          expression: "generationId"
+
+        observed_time: "{{ now | date \"2006-01-02T15:04:05Z07:00\" }}"
+
+        data:
+          namespace:
+            name:
+              expression: |
+                clusterNamespace.?metadata.?name.orValue("")
+            status:
+              expression: |
+                clusterNamespace.?status.?phase.orValue("")
+
+    - name: "logPayload"
+      log:
+        level: info
+        message: "{{ .statusPayload }}"
+    # =========================================================================
+    # STATUS REPORTING
+    # Report status back to HyperFleet API (always runs - no when clause)
+    # =========================================================================
+    - name: "reportStatus"
+      apiCall:
+        method: POST
+        url: "{{ .clusterApiUrl }}/statuses"
+        body: "{{ .statusPayload }}"
+        timeout: "30s"
+        retryAttempts: 3
+        retryBackoff: "exponential"
+        headers:
+          - name: "Content-Type"
+            value: "application/json"

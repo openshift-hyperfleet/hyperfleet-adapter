@@ -134,11 +134,7 @@ func runValidationPipeline(config *AdapterConfig, cfg *loaderConfig) error {
 		validateAPIVersionAndKind,
 		validateMetadata,
 		validateAdapterSpec,
-		validateParams,
-		validatePreconditions,
-		validateResources,
-		validatePostActions,
-		validatePayloads,
+		validateSteps,
 	}
 
 	for _, v := range coreValidators {
@@ -151,19 +147,6 @@ func runValidationPipeline(config *AdapterConfig, cfg *loaderConfig) error {
 	if cfg.adapterVersion != "" {
 		if err := ValidateAdapterVersion(config, cfg.adapterVersion); err != nil {
 			return fmt.Errorf("adapter version validation failed: %w", err)
-		}
-	}
-
-	// File reference validation (buildRef, manifest.ref)
-	// Only run if baseDir is set (when loaded from file)
-	if cfg.baseDir != "" {
-		if err := validateFileReferences(config, cfg.baseDir); err != nil {
-			return fmt.Errorf("file reference validation failed: %w", err)
-		}
-
-		// Load file references (manifest.ref, buildRef) after validation passes
-		if err := loadFileReferences(config, cfg.baseDir); err != nil {
-			return fmt.Errorf("failed to load file references: %w", err)
 		}
 	}
 

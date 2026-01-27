@@ -27,10 +27,8 @@ func BuiltinVariables() []string {
 // GetDefinedVariables returns all variables defined in the config that can be used
 // in templates and CEL expressions. This includes:
 // - Built-in variables (metadata, now, date)
-// - Parameters from spec.params
-// - Captured variables from preconditions
-// - Post payloads
-// - Resource aliases (resources.<name>)
+// - Step names (each step's result is accessible by name)
+// - Captured variables from API call steps
 func (c *AdapterConfig) GetDefinedVariables() map[string]bool {
 	vars := make(map[string]bool)
 
@@ -43,127 +41,45 @@ func (c *AdapterConfig) GetDefinedVariables() map[string]bool {
 		vars[b] = true
 	}
 
-	// Parameters from spec.params
-	for _, p := range c.Spec.Params {
-		if p.Name != "" {
-			vars[p.Name] = true
+	// Variables from steps
+	for _, step := range c.Spec.Steps {
+		if step.Name != "" {
+			vars[step.Name] = true
 		}
-	}
-
-	// Variables from precondition captures
-	for _, precond := range c.Spec.Preconditions {
-		for _, capture := range precond.Capture {
-			if capture.Name != "" {
-				vars[capture.Name] = true
+		// Captures from API call steps
+		if step.APICall != nil {
+			for _, capture := range step.APICall.Capture {
+				if capture.Name != "" {
+					vars[capture.Name] = true
+				}
 			}
-		}
-	}
-
-	// Post payloads
-	if c.Spec.Post != nil {
-		for _, p := range c.Spec.Post.Payloads {
-			if p.Name != "" {
-				vars[p.Name] = true
-			}
-		}
-	}
-
-	// Resource aliases
-	for _, r := range c.Spec.Resources {
-		if r.Name != "" {
-			vars[FieldResources+"."+r.Name] = true
 		}
 	}
 
 	return vars
 }
 
-// GetParamByName returns a parameter by name from spec.params, or nil if not found
-func (c *AdapterConfig) GetParamByName(name string) *Parameter {
+// GetStepByName returns a step by name, or nil if not found
+func (c *AdapterConfig) GetStepByName(name string) *Step {
 	if c == nil {
 		return nil
 	}
-	for i := range c.Spec.Params {
-		if c.Spec.Params[i].Name == name {
-			return &c.Spec.Params[i]
+	for i := range c.Spec.Steps {
+		if c.Spec.Steps[i].Name == name {
+			return &c.Spec.Steps[i]
 		}
 	}
 	return nil
 }
 
-// GetRequiredParams returns all parameters marked as required from spec.params
-func (c *AdapterConfig) GetRequiredParams() []Parameter {
+// StepNames returns all step names in order
+func (c *AdapterConfig) StepNames() []string {
 	if c == nil {
 		return nil
 	}
-	var required []Parameter
-	for _, p := range c.Spec.Params {
-		if p.Required {
-			required = append(required, p)
-		}
-	}
-	return required
-}
-
-// GetResourceByName returns a resource by name, or nil if not found
-func (c *AdapterConfig) GetResourceByName(name string) *Resource {
-	if c == nil {
-		return nil
-	}
-	for i := range c.Spec.Resources {
-		if c.Spec.Resources[i].Name == name {
-			return &c.Spec.Resources[i]
-		}
-	}
-	return nil
-}
-
-// GetPreconditionByName returns a precondition by name, or nil if not found
-func (c *AdapterConfig) GetPreconditionByName(name string) *Precondition {
-	if c == nil {
-		return nil
-	}
-	for i := range c.Spec.Preconditions {
-		if c.Spec.Preconditions[i].Name == name {
-			return &c.Spec.Preconditions[i]
-		}
-	}
-	return nil
-}
-
-// GetPostActionByName returns a post action by name, or nil if not found
-func (c *AdapterConfig) GetPostActionByName(name string) *PostAction {
-	if c == nil || c.Spec.Post == nil {
-		return nil
-	}
-	for i := range c.Spec.Post.PostActions {
-		if c.Spec.Post.PostActions[i].Name == name {
-			return &c.Spec.Post.PostActions[i]
-		}
-	}
-	return nil
-}
-
-// ParamNames returns all parameter names in order
-func (c *AdapterConfig) ParamNames() []string {
-	if c == nil {
-		return nil
-	}
-	names := make([]string, len(c.Spec.Params))
-	for i, p := range c.Spec.Params {
-		names[i] = p.Name
-	}
-	return names
-}
-
-// ResourceNames returns all resource names in order
-func (c *AdapterConfig) ResourceNames() []string {
-	if c == nil {
-		return nil
-	}
-	names := make([]string, len(c.Spec.Resources))
-	for i, r := range c.Spec.Resources {
-		names[i] = r.Name
+	names := make([]string, len(c.Spec.Steps))
+	for i, s := range c.Spec.Steps {
+		names[i] = s.Name
 	}
 	return names
 }

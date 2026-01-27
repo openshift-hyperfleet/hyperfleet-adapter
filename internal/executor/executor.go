@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
-	"strings"
 
 	"github.com/cloudevents/sdk-go/v2/event"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
@@ -24,13 +23,12 @@ func NewExecutor(config *ExecutorConfig) (*Executor, error) {
 	}
 
 	return &Executor{
-		config:             config,
-		precondExecutor:    newPreconditionExecutor(config),
-		resourceExecutor:   newResourceExecutor(config),
-		postActionExecutor: newPostActionExecutor(config),
-		log:                config.Logger,
+		config:       config,
+		stepExecutor: NewStepExecutor(config.APIClient, config.K8sClient, config.Logger),
+		log:          config.Logger,
 	}, nil
 }
+
 func validateExecutorConfig(config *ExecutorConfig) error {
 	if config == nil {
 		return fmt.Errorf("config is required")
@@ -50,162 +48,61 @@ func validateExecutorConfig(config *ExecutorConfig) error {
 	return nil
 }
 
-// Execute processes event data according to the adapter configuration
+// Execute processes pre-parsed event data according to the adapter configuration.
 // The caller is responsible for:
+// - Parsing the event data using ParseEventData()
 // - Adding event ID to context for logging correlation using logger.WithEventID()
-func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResult {
+// - Adding logging context from EventData when available
+//
+// Parameters:
+// - rawData: raw map for step execution and template rendering
+func (e *Executor) Execute(ctx context.Context, rawData map[string]interface{}) *ExecutionResult {
 	// Start OTel span and add trace context to logs
 	ctx, span := e.startTracedExecution(ctx)
 	defer span.End()
 
-	// Parse event data
-	eventData, rawData, err := ParseEventData(data)
-	if err != nil {
-		parseErr := fmt.Errorf("failed to parse event data: %w", err)
-		errCtx := logger.WithErrorField(ctx, parseErr)
-		e.log.Errorf(errCtx, "Failed to parse event data")
-		return &ExecutionResult{
-			Status:       StatusFailed,
-			CurrentPhase: PhaseParamExtraction,
-			Errors:       map[ExecutionPhase]error{PhaseParamExtraction: parseErr},
-		}
+	// Ensure rawData is not nil
+	if rawData == nil {
+		rawData = make(map[string]interface{})
 	}
 
-	// This is intended to set OwnerReference and ResourceID for the event when it exist
-	// For example, when a NodePool event arrived
-	// the logger will set the cluster_id=owner_id, nodepool_id=resource_id, resource_type=nodepool
-	// but when a resource is cluster type, it will just record cluster_id=resource_id
-	if eventData.OwnedReference != nil {
-		ctx = logger.WithResourceType(ctx, eventData.Kind)
-		ctx = logger.WithDynamicResourceID(ctx, eventData.Kind, eventData.ID)
-		ctx = logger.WithDynamicResourceID(ctx, eventData.OwnedReference.Kind, eventData.OwnedReference.ID)
-	} else {
-		ctx = logger.WithDynamicResourceID(ctx, eventData.Kind, eventData.ID)
-	}
-
-	execCtx := NewExecutionContext(ctx, rawData)
-
-	// Initialize execution result
-	result := &ExecutionResult{
-		Status:       StatusSuccess,
-		Params:       make(map[string]interface{}),
-		Errors:       make(map[ExecutionPhase]error),
-		CurrentPhase: PhaseParamExtraction,
-	}
-
+	// Execute using step-based model
 	e.log.Info(ctx, "Processing event")
 
-	// Phase 1: Parameter Extraction
-	e.log.Infof(ctx, "Phase %s: RUNNING", result.CurrentPhase)
-	if err := e.executeParamExtraction(execCtx); err != nil {
-		result.Status = StatusFailed
-		result.Errors[PhaseParamExtraction] = err
-		execCtx.SetError("ParameterExtractionFailed", err.Error())
-		return result
-	}
-	result.Params = execCtx.Params
-	e.log.Debugf(ctx, "Parameter extraction completed: extracted %d params", len(execCtx.Params))
-
-	// Phase 2: Preconditions
-	result.CurrentPhase = PhasePreconditions
-	e.log.Infof(ctx, "Phase %s: RUNNING - %d configured", result.CurrentPhase, len(e.config.AdapterConfig.Spec.Preconditions))
-	precondOutcome := e.precondExecutor.ExecuteAll(ctx, e.config.AdapterConfig.Spec.Preconditions, execCtx)
-	result.PreconditionResults = precondOutcome.Results
-
-	if precondOutcome.Error != nil {
-		// Process execution error: precondition evaluation failed
-		result.Status = StatusFailed
-		precondErr := fmt.Errorf("precondition evaluation failed: error=%w", precondOutcome.Error)
-		result.Errors[result.CurrentPhase] = precondErr
-		execCtx.SetError("PreconditionFailed", precondOutcome.Error.Error())
-		errCtx := logger.WithErrorField(ctx, precondOutcome.Error)
-		e.log.Errorf(errCtx, "Phase %s: FAILED", result.CurrentPhase)
-		result.ResourcesSkipped = true
-		result.SkipReason = "PreconditionFailed"
-		execCtx.SetSkipped("PreconditionFailed", precondOutcome.Error.Error())
-		// Continue to post actions for error reporting
-	} else if !precondOutcome.AllMatched {
-		// Business outcome: precondition not satisfied
-		result.ResourcesSkipped = true
-		result.SkipReason = precondOutcome.NotMetReason
-		execCtx.SetSkipped("PreconditionNotMet", precondOutcome.NotMetReason)
-		e.log.Infof(ctx, "Phase %s: SUCCESS - NOT_MET - %s", result.CurrentPhase, precondOutcome.NotMetReason)
-	} else {
-		// All preconditions matched
-		e.log.Infof(ctx, "Phase %s: SUCCESS - MET - %d passed", result.CurrentPhase, len(precondOutcome.Results))
+	// Create metadata map for step context
+	metadata := map[string]interface{}{
+		"name":      e.config.AdapterConfig.Metadata.Name,
+		"namespace": e.config.AdapterConfig.Metadata.Namespace,
+		"labels":    e.config.AdapterConfig.Metadata.Labels,
 	}
 
-	// Phase 3: Resources (skip if preconditions not met or previous error)
-	result.CurrentPhase = PhaseResources
-	e.log.Infof(ctx, "Phase %s: RUNNING - %d configured", result.CurrentPhase, len(e.config.AdapterConfig.Spec.Resources))
-	if !result.ResourcesSkipped {
-		resourceResults, err := e.resourceExecutor.ExecuteAll(ctx, e.config.AdapterConfig.Spec.Resources, execCtx)
-		result.ResourceResults = resourceResults
+	// Create step execution context
+	stepCtx := NewStepExecutionContext(ctx, rawData, metadata)
 
-		if err != nil {
-			result.Status = StatusFailed
-			resErr := fmt.Errorf("resource execution failed: %w", err)
-			result.Errors[result.CurrentPhase] = resErr
-			execCtx.SetError("ResourceFailed", err.Error())
-			errCtx := logger.WithErrorField(ctx, err)
-			e.log.Errorf(errCtx, "Phase %s: FAILED", result.CurrentPhase)
-			// Continue to post actions for error reporting
-		} else {
-			e.log.Infof(ctx, "Phase %s: SUCCESS - %d processed", result.CurrentPhase, len(resourceResults))
-		}
-	} else {
-		e.log.Infof(ctx, "Phase %s: SKIPPED - %s", result.CurrentPhase, result.SkipReason)
+	// Execute all steps
+	stepResult := e.stepExecutor.ExecuteAll(ctx, e.config.AdapterConfig.Spec.Steps, stepCtx)
+
+	// Convert step result to execution result for compatibility
+	result := &ExecutionResult{
+		Status:            stepResult.Status,
+		Params:            stepResult.Variables,
+		Errors:            make(map[string]error),
+		StepResults:       stepResult.StepResults,
+		stepResultsByName: stepResult.StepResultsByName,
 	}
 
-	// Phase 4: Post Actions (always execute for error reporting)
-	result.CurrentPhase = PhasePostActions
-	postActionCount := 0
-	if e.config.AdapterConfig.Spec.Post != nil {
-		postActionCount = len(e.config.AdapterConfig.Spec.Post.PostActions)
-	}
-	e.log.Infof(ctx, "Phase %s: RUNNING - %d configured", result.CurrentPhase, postActionCount)
-	postResults, err := e.postActionExecutor.ExecuteAll(ctx, e.config.AdapterConfig.Spec.Post, execCtx)
-	result.PostActionResults = postResults
-
-	if err != nil {
-		result.Status = StatusFailed
-		postErr := fmt.Errorf("post action execution failed: %w", err)
-		result.Errors[result.CurrentPhase] = postErr
-		errCtx := logger.WithErrorField(ctx, err)
-		e.log.Errorf(errCtx, "Phase %s: FAILED", result.CurrentPhase)
-	} else {
-		e.log.Infof(ctx, "Phase %s: SUCCESS - %d executed", result.CurrentPhase, len(postResults))
-	}
-
-	// Finalize
-	result.ExecutionContext = execCtx
-
+	// Log completion
 	if result.Status == StatusSuccess {
-		e.log.Infof(ctx, "Event execution finished: event_execution_status=success resources_skipped=%t reason=%s", result.ResourcesSkipped, result.SkipReason)
+		e.log.Infof(ctx, "Event execution finished: event_execution_status=success step_count=%d", len(stepResult.StepResults))
 	} else {
-		// Combine all errors into a single error for logging
-		var errMsgs []string
-		for phase, err := range result.Errors {
-			errMsgs = append(errMsgs, fmt.Sprintf("%s: %v", phase, err))
+		errMsg := "unknown error"
+		if stepResult.FirstError != nil {
+			errMsg = fmt.Sprintf("%s: %s", stepResult.FirstError.Reason, stepResult.FirstError.Message)
 		}
-		combinedErr := fmt.Errorf("execution failed: %s", strings.Join(errMsgs, "; "))
-		errCtx := logger.WithErrorField(ctx, combinedErr)
-		e.log.Errorf(errCtx, "Event execution finished: event_execution_status=failed")
+		e.log.Errorf(ctx, "Event execution finished: event_execution_status=failed error=%s", errMsg)
 	}
+
 	return result
-}
-
-// executeParamExtraction extracts parameters from the event and environment
-func (e *Executor) executeParamExtraction(execCtx *ExecutionContext) error {
-	// Extract configured parameters
-	if err := extractConfigParams(e.config.AdapterConfig, execCtx, e.config.K8sClient); err != nil {
-		return err
-	}
-
-	// Add metadata params
-	addMetadataParams(e.config.AdapterConfig, execCtx)
-
-	return nil
 }
 
 // startTracedExecution creates an OTel span and adds trace context to logs.
@@ -245,7 +142,32 @@ func (e *Executor) CreateHandler() func(ctx context.Context, evt *event.Event) e
 		e.log.Infof(ctx, "Event received: id=%s type=%s source=%s time=%s",
 			evt.ID(), evt.Type(), evt.Source(), evt.Time())
 
-		_ = e.Execute(ctx, evt.Data())
+		// Parse event data
+		eventData, rawData, err := ParseEventData(evt.Data())
+		if err != nil {
+			parseErr := fmt.Errorf("failed to parse event data: %w", err)
+			errCtx := logger.WithErrorField(ctx, parseErr)
+			e.log.Errorf(errCtx, "Failed to parse event data")
+			// ACK the message to prevent retry loops for parse errors
+			return nil
+		}
+
+		// Set logging context from event data
+		if eventData != nil {
+			// This is intended to set OwnerReference and ResourceID for the event when it exist
+			// For example, when a NodePool event arrived
+			// the logger will set the cluster_id=owner_id, nodepool_id=resource_id, resource_type=nodepool
+			// but when a resource is cluster type, it will just record cluster_id=resource_id
+			if eventData.OwnedReference != nil {
+				ctx = logger.WithResourceType(ctx, eventData.Kind)
+				ctx = logger.WithDynamicResourceID(ctx, eventData.Kind, eventData.ID)
+				ctx = logger.WithDynamicResourceID(ctx, eventData.OwnedReference.Kind, eventData.OwnedReference.ID)
+			} else if eventData.Kind != "" {
+				ctx = logger.WithDynamicResourceID(ctx, eventData.Kind, eventData.ID)
+			}
+		}
+
+		_ = e.Execute(ctx, rawData)
 
 		e.log.Infof(ctx, "Event processed: type=%s source=%s time=%s",
 			evt.Type(), evt.Source(), evt.Time())

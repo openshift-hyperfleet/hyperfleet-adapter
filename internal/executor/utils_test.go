@@ -1,17 +1,13 @@
 package executor
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"testing"
 	"time"
 
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleet_api"
 	apierrors "github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/errors"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -433,75 +429,6 @@ func TestValidateAPIResponse_ResponseBodyString(t *testing.T) {
 	assert.Equal(t, `{"error":"database timeout","code":"DB_TIMEOUT"}`, apiErr.ResponseBodyString())
 }
 
-// TestToConditionDefs tests the conversion of config_loader conditions to criteria definitions
-func TestToConditionDefs(t *testing.T) {
-	tests := []struct {
-		name       string
-		conditions []config_loader.Condition
-		expected   []criteria.ConditionDef
-	}{
-		{
-			name:       "empty conditions",
-			conditions: []config_loader.Condition{},
-			expected:   []criteria.ConditionDef{},
-		},
-		{
-			name: "single condition",
-			conditions: []config_loader.Condition{
-				{Field: "status.phase", Operator: "equals", Value: "Running"},
-			},
-			expected: []criteria.ConditionDef{
-				{Field: "status.phase", Operator: criteria.OperatorEquals, Value: "Running"},
-			},
-		},
-		{
-			name: "multiple conditions with camelCase operators",
-			conditions: []config_loader.Condition{
-				{Field: "status.phase", Operator: "equals", Value: "Running"},
-				{Field: "replicas", Operator: "greaterThan", Value: 0},
-				{Field: "metadata.labels.app", Operator: "notEquals", Value: ""},
-			},
-			expected: []criteria.ConditionDef{
-				{Field: "status.phase", Operator: criteria.OperatorEquals, Value: "Running"},
-				{Field: "replicas", Operator: criteria.OperatorGreaterThan, Value: 0},
-				{Field: "metadata.labels.app", Operator: criteria.OperatorNotEquals, Value: ""},
-			},
-		},
-		{
-			name: "all operator types",
-			conditions: []config_loader.Condition{
-				{Field: "f1", Operator: "equals", Value: "v1"},
-				{Field: "f2", Operator: "notEquals", Value: "v2"},
-				{Field: "f3", Operator: "greaterThan", Value: 10},
-				{Field: "f4", Operator: "lessThan", Value: 5},
-				{Field: "f5", Operator: "contains", Value: "test"},
-				{Field: "f6", Operator: "in", Value: []string{"a", "b"}},
-			},
-			expected: []criteria.ConditionDef{
-				{Field: "f1", Operator: criteria.OperatorEquals, Value: "v1"},
-				{Field: "f2", Operator: criteria.OperatorNotEquals, Value: "v2"},
-				{Field: "f3", Operator: criteria.OperatorGreaterThan, Value: 10},
-				{Field: "f4", Operator: criteria.OperatorLessThan, Value: 5},
-				{Field: "f5", Operator: criteria.OperatorContains, Value: "test"},
-				{Field: "f6", Operator: criteria.OperatorIn, Value: []string{"a", "b"}},
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := ToConditionDefs(tt.conditions)
-
-			require.Len(t, result, len(tt.expected))
-			for i, expected := range tt.expected {
-				assert.Equal(t, expected.Field, result[i].Field)
-				assert.Equal(t, expected.Operator, result[i].Operator)
-				assert.Equal(t, expected.Value, result[i].Value)
-			}
-		})
-	}
-}
-
 // TestRenderTemplateBytes tests template rendering to bytes
 func TestRenderTemplateBytes(t *testing.T) {
 	tests := []struct {
@@ -567,12 +494,10 @@ func TestExecutionErrorToMap(t *testing.T) {
 		{
 			name: "error with all fields",
 			execErr: &ExecutionError{
-				Phase:   "preconditions",
 				Step:    "check-cluster",
 				Message: "Cluster not found",
 			},
 			expected: map[string]interface{}{
-				"phase":   "preconditions",
 				"step":    "check-cluster",
 				"message": "Cluster not found",
 			},
@@ -580,12 +505,10 @@ func TestExecutionErrorToMap(t *testing.T) {
 		{
 			name: "error with empty fields",
 			execErr: &ExecutionError{
-				Phase:   "",
 				Step:    "",
 				Message: "",
 			},
 			expected: map[string]interface{}{
-				"phase":   "",
 				"step":    "",
 				"message": "",
 			},
@@ -603,7 +526,6 @@ func TestExecutionErrorToMap(t *testing.T) {
 
 			expectedMap := tt.expected.(map[string]interface{})
 			resultMap := result.(map[string]interface{})
-			assert.Equal(t, expectedMap["phase"], resultMap["phase"])
 			assert.Equal(t, expectedMap["step"], resultMap["step"])
 			assert.Equal(t, expectedMap["message"], resultMap["message"])
 		})
@@ -625,63 +547,34 @@ func TestAdapterMetadataToMap(t *testing.T) {
 		{
 			name: "success status",
 			adapter: &AdapterMetadata{
-				ExecutionStatus:  "success",
-				ResourcesSkipped: false,
-				SkipReason:       "",
-				ErrorReason:      "",
-				ErrorMessage:     "",
-				ExecutionError:   nil,
+				ExecutionStatus: "success",
+				ErrorReason:     "",
+				ErrorMessage:    "",
+				ExecutionError:  nil,
 			},
 			expected: map[string]interface{}{
-				"executionStatus":  "success",
-				"resourcesSkipped": false,
-				"skipReason":       "",
-				"errorReason":      "",
-				"errorMessage":     "",
-				"executionError":   nil,
-			},
-		},
-		{
-			name: "skipped status",
-			adapter: &AdapterMetadata{
-				ExecutionStatus:  "success",
-				ResourcesSkipped: true,
-				SkipReason:       "Precondition 'check-status' not met",
-				ErrorReason:      "",
-				ErrorMessage:     "",
-				ExecutionError:   nil,
-			},
-			expected: map[string]interface{}{
-				"executionStatus":  "success",
-				"resourcesSkipped": true,
-				"skipReason":       "Precondition 'check-status' not met",
-				"errorReason":      "",
-				"errorMessage":     "",
-				"executionError":   nil,
+				"executionStatus": "success",
+				"errorReason":     "",
+				"errorMessage":    "",
+				"executionError":  nil,
 			},
 		},
 		{
 			name: "failed status with error",
 			adapter: &AdapterMetadata{
-				ExecutionStatus:  "failed",
-				ResourcesSkipped: false,
-				SkipReason:       "",
-				ErrorReason:      "APIError",
-				ErrorMessage:     "API returned 500",
+				ExecutionStatus: "failed",
+				ErrorReason:     "APIError",
+				ErrorMessage:    "API returned 500",
 				ExecutionError: &ExecutionError{
-					Phase:   "preconditions",
 					Step:    "fetch-cluster",
 					Message: "Connection refused",
 				},
 			},
 			expected: map[string]interface{}{
-				"executionStatus":  "failed",
-				"resourcesSkipped": false,
-				"skipReason":       "",
-				"errorReason":      "APIError",
-				"errorMessage":     "API returned 500",
+				"executionStatus": "failed",
+				"errorReason":     "APIError",
+				"errorMessage":    "API returned 500",
 				"executionError": map[string]interface{}{
-					"phase":   "preconditions",
 					"step":    "fetch-cluster",
 					"message": "Connection refused",
 				},
@@ -694,8 +587,6 @@ func TestAdapterMetadataToMap(t *testing.T) {
 			result := adapterMetadataToMap(tt.adapter)
 
 			assert.Equal(t, tt.expected["executionStatus"], result["executionStatus"])
-			assert.Equal(t, tt.expected["resourcesSkipped"], result["resourcesSkipped"])
-			assert.Equal(t, tt.expected["skipReason"], result["skipReason"])
 			assert.Equal(t, tt.expected["errorReason"], result["errorReason"])
 			assert.Equal(t, tt.expected["errorMessage"], result["errorMessage"])
 
@@ -704,81 +595,9 @@ func TestAdapterMetadataToMap(t *testing.T) {
 			} else {
 				expectedErr := tt.expected["executionError"].(map[string]interface{})
 				resultErr := result["executionError"].(map[string]interface{})
-				assert.Equal(t, expectedErr["phase"], resultErr["phase"])
 				assert.Equal(t, expectedErr["step"], resultErr["step"])
 				assert.Equal(t, expectedErr["message"], resultErr["message"])
 			}
-		})
-	}
-}
-
-// TestExecuteLogAction tests log action execution
-func TestExecuteLogAction(t *testing.T) {
-	tests := []struct {
-		name       string
-		logAction  *config_loader.LogAction
-		params     map[string]interface{}
-		expectCall bool
-	}{
-		{
-			name:       "nil log action",
-			logAction:  nil,
-			params:     map[string]interface{}{},
-			expectCall: false,
-		},
-		{
-			name:       "empty message",
-			logAction:  &config_loader.LogAction{Message: ""},
-			params:     map[string]interface{}{},
-			expectCall: false,
-		},
-		{
-			name:       "simple message",
-			logAction:  &config_loader.LogAction{Message: "Hello World", Level: "info"},
-			params:     map[string]interface{}{},
-			expectCall: true,
-		},
-		{
-			name:       "template message",
-			logAction:  &config_loader.LogAction{Message: "Processing cluster {{ .clusterId }}", Level: "info"},
-			params:     map[string]interface{}{"clusterId": "cluster-123"},
-			expectCall: true,
-		},
-		{
-			name:       "debug level",
-			logAction:  &config_loader.LogAction{Message: "Debug info", Level: "debug"},
-			params:     map[string]interface{}{},
-			expectCall: true,
-		},
-		{
-			name:       "warning level",
-			logAction:  &config_loader.LogAction{Message: "Warning message", Level: "warning"},
-			params:     map[string]interface{}{},
-			expectCall: true,
-		},
-		{
-			name:       "error level",
-			logAction:  &config_loader.LogAction{Message: "Error occurred", Level: "error"},
-			params:     map[string]interface{}{},
-			expectCall: true,
-		},
-		{
-			name:       "default level (empty)",
-			logAction:  &config_loader.LogAction{Message: "Default level", Level: ""},
-			params:     map[string]interface{}{},
-			expectCall: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			log := logger.NewTestLogger()
-			execCtx := &ExecutionContext{Params: tt.params}
-
-			// This should not panic
-			ExecuteLogAction(context.Background(), tt.logAction, execCtx, log)
-
-			// We don't verify the exact log output, just that it doesn't error
 		})
 	}
 }
@@ -1091,4 +910,94 @@ func TestGetResourceAsMap(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+// TestStepResult tests step result creation and methods
+func TestStepResult(t *testing.T) {
+	t.Run("NewStepResult creates success result", func(t *testing.T) {
+		result := NewStepResult("testStep", StepTypeParam, "value")
+
+		assert.Equal(t, "testStep", result.Name)
+		assert.Equal(t, StepTypeParam, result.Type)
+		assert.Equal(t, "value", result.Result)
+		assert.Nil(t, result.Error)
+		assert.False(t, result.Skipped)
+		assert.True(t, result.IsSuccess())
+	})
+
+	t.Run("NewStepResultSkipped creates skipped result", func(t *testing.T) {
+		result := NewStepResultSkipped("testStep", StepTypeResource, "when clause false")
+
+		assert.Equal(t, "testStep", result.Name)
+		assert.Equal(t, StepTypeResource, result.Type)
+		assert.True(t, result.Skipped)
+		assert.Equal(t, "when clause false", result.SkipReason)
+		assert.False(t, result.IsSuccess())
+	})
+
+	t.Run("NewStepResultError creates error result", func(t *testing.T) {
+		result := NewStepResultError("testStep", StepTypeAPICall, "APIFailed", "connection refused")
+
+		assert.Equal(t, "testStep", result.Name)
+		assert.Equal(t, StepTypeAPICall, result.Type)
+		assert.NotNil(t, result.Error)
+		assert.Equal(t, "APIFailed", result.Error.Reason)
+		assert.Equal(t, "connection refused", result.Error.Message)
+		assert.False(t, result.IsSuccess())
+	})
+
+	t.Run("ToMap converts result correctly", func(t *testing.T) {
+		result := NewStepResult("testStep", StepTypeParam, map[string]interface{}{"key": "value"})
+		m := result.ToMap()
+
+		assert.Equal(t, false, m["skipped"])
+		assert.NotNil(t, m["result"])
+		assert.Nil(t, m["error"])
+	})
+}
+
+// TestStepExecutionResult tests step execution result management
+func TestStepExecutionResult(t *testing.T) {
+	t.Run("NewStepExecutionResult creates empty result", func(t *testing.T) {
+		result := NewStepExecutionResult()
+
+		assert.Equal(t, StatusSuccess, result.Status)
+		assert.Empty(t, result.StepResults)
+		assert.Empty(t, result.StepResultsByName)
+		assert.False(t, result.HasErrors)
+	})
+
+	t.Run("AddStepResult adds and indexes results", func(t *testing.T) {
+		result := NewStepExecutionResult()
+
+		step1 := NewStepResult("step1", StepTypeParam, "value1")
+		step2 := NewStepResult("step2", StepTypeParam, "value2")
+
+		result.AddStepResult(step1)
+		result.AddStepResult(step2)
+
+		assert.Len(t, result.StepResults, 2)
+		assert.Equal(t, step1, result.GetStepResult("step1"))
+		assert.Equal(t, step2, result.GetStepResult("step2"))
+	})
+
+	t.Run("AddStepResult tracks errors", func(t *testing.T) {
+		result := NewStepExecutionResult()
+
+		successStep := NewStepResult("success", StepTypeParam, "value")
+		errorStep := NewStepResultError("error", StepTypeAPICall, "Failed", "error message")
+
+		result.AddStepResult(successStep)
+		assert.False(t, result.HasErrors)
+
+		result.AddStepResult(errorStep)
+		assert.True(t, result.HasErrors)
+		assert.Equal(t, "Failed", result.FirstError.Reason)
+	})
+
+	t.Run("GetStepResult returns nil for unknown step", func(t *testing.T) {
+		result := NewStepExecutionResult()
+
+		assert.Nil(t, result.GetStepResult("unknown"))
+	})
 }

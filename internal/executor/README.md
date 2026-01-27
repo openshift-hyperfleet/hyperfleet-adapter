@@ -79,17 +79,20 @@ if err != nil {
     return err
 }
 
-// Create handler for broker subscription
+// Create handler for broker subscription (handles parsing internally)
 handler := exec.CreateHandler()
 
-// Or execute directly
-result := exec.Execute(ctx, cloudEvent)
+// Or execute directly with parsed event data
+eventData, rawData, err := executor.ParseEventData(cloudEventData)
+if err != nil {
+    log.Errorf("Failed to parse event: %v", err)
+    return
+}
+result := exec.Execute(ctx, eventData, rawData)
 if result.Status == executor.StatusFailed {
     log.Errorf("Execution failed: %v", result.Errors)
-} else if result.ResourcesSkipped {
-    log.Infof("Execution succeeded, resources skipped: %s", result.SkipReason)
 } else {
-    log.Infof("Execution succeeded")
+    log.Infof("Execution succeeded with %d steps", len(result.StepResults))
 }
 ```
 
@@ -509,8 +512,9 @@ exec, _ := executor.NewBuilder().
     WithLogger(testLogger).
     Build()
 
-// Execute test event
-result := exec.Execute(ctx, testEvent)
+// Execute test event (parse and execute)
+eventData, rawData, _ := executor.ParseEventData(testEvent)
+result := exec.Execute(ctx, eventData, rawData)
 assert.Equal(t, executor.StatusSuccess, result.Status)
 ```
 

@@ -64,7 +64,7 @@ func (re *ResourceExecutor) executeResource(ctx context.Context, resource config
 	if err != nil {
 		result.Status = StatusFailed
 		result.Error = err
-		return result, NewExecutorError(PhaseResources, resource.Name, "failed to build manifest", err)
+		return result, NewExecutorError( resource.Name, "failed to build manifest", err)
 	}
 
 	// Extract resource info
@@ -93,7 +93,7 @@ func (re *ResourceExecutor) executeResource(ctx context.Context, resource config
 				// Fatal error (auth, permission, validation) - fail fast
 				result.Status = StatusFailed
 				result.Error = err
-				return result, NewExecutorError(PhaseResources, resource.Name, "failed to discover existing resource", err)
+				return result, NewExecutorError( resource.Name, "failed to discover existing resource", err)
 			}
 		}
 		if existingResource != nil {
@@ -158,7 +158,6 @@ func (re *ResourceExecutor) executeResource(ctx context.Context, resource config
 		result.Error = err
 		// Set ExecutionError for K8s operation failure
 		execCtx.Adapter.ExecutionError = &ExecutionError{
-			Phase:   string(PhaseResources),
 			Step:    resource.Name,
 			Message: err.Error(),
 		}
@@ -166,7 +165,7 @@ func (re *ResourceExecutor) executeResource(ctx context.Context, resource config
 		errCtx = logger.WithErrorField(errCtx, err)
 		re.log.Errorf(errCtx, "Resource[%s] processed: operation=%s reason=%s",
 			resource.Name, result.Operation, result.OperationReason)
-		return result, NewExecutorError(PhaseResources, resource.Name,
+		return result, NewExecutorError( resource.Name,
 			fmt.Sprintf("failed to %s resource", result.Operation), err)
 	}
 	successCtx := logger.WithK8sResult(ctx, "SUCCESS")

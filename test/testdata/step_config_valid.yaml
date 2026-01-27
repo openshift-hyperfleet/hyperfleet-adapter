@@ -1,0 +1,163 @@
+# Step-Based Adapter Configuration (Test)
+# This config uses the simplified step-based DSL
+
+apiVersion: hyperfleet.redhat.com/v1alpha1
+kind: AdapterConfig
+metadata:
+  name: step-test-adapter
+  namespace: hyperfleet-system
+  labels:
+    hyperfleet.io/adapter-type: test
+
+spec:
+  adapter:
+    version: "0.2.0"
+
+  hyperfleetApi:
+    timeout: 2s
+    retryAttempts: 3
+    retryBackoff: exponential
+
+  kubernetes:
+    apiVersion: "v1"
+
+  steps:
+    # Configuration parameters
+    - name: "adapterVersion"
+      param:
+        value: "0.2.0"
+
+    - name: "apiTimeout"
+      param:
+        value: "10s"
+
+    # Parameters from environment
+    - name: "hyperfleetApiBaseUrl"
+      param:
+        source: "env.HYPERFLEET_API_BASE_URL"
+        default: "http://localhost:8080"
+
+    - name: "hyperfleetApiVersion"
+      param:
+        source: "env.HYPERFLEET_API_VERSION"
+        default: "v1"
+
+    # Parameters from event
+    - name: "clusterId"
+      param:
+        source: "event.id"
+
+    - name: "eventGeneration"
+      param:
+        source: "event.generation"
+        default: "1"
+
+    # Computed parameter using CEL expression
+    - name: "clusterApiUrl"
+      param:
+        expression: "hyperfleetApiBaseUrl + '/api/hyperfleet/' + hyperfleetApiVersion + '/clusters/' + clusterId"
+
+    # API call with captures
+    - name: "clusterStatus"
+      apiCall:
+        method: GET
+        url: "{{ .clusterApiUrl }}"
+        timeout: "{{ .apiTimeout }}"
+      capture:
+        - name: "clusterPhase"
+          field: "status.phase"
+        - name: "clusterName"
+          field: "name"
+
+    # Log step
+    - name: "logClusterPhase"
+      log:
+        level: info
+        message: "Cluster {{ .clusterId }} is in phase {{ .clusterPhase }}"
+
+    # Resource with when clause (only creates if cluster is NotReady)
+    - name: "clusterNamespace"
+      when: "clusterPhase == 'NotReady'"
+      resource:
+        manifest:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ .clusterId | lower }}"
+            labels:
+              hyperfleet.io/cluster-id: "{{ .clusterId }}"
+              hyperfleet.io/managed-by: "{{ .metadata.name }}"
+            annotations:
+              hyperfleet.io/generation: "{{ .eventGeneration }}"
+        discovery:
+          bySelectors:
+            labelSelector:
+              hyperfleet.io/cluster-id: "{{ .clusterId }}"
+
+    # Another resource with different when clause
+    - name: "clusterConfigMap"
+      when: "clusterPhase == 'Ready'"
+      resource:
+        manifest:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: "{{ .clusterId | lower }}-config"
+            namespace: "{{ .clusterId | lower }}"
+            labels:
+              hyperfleet.io/cluster-id: "{{ .clusterId }}"
+            annotations:
+              hyperfleet.io/generation: "{{ .eventGeneration }}"
+          data:
+            cluster-name: "{{ .clusterName }}"
+            cluster-phase: "{{ .clusterPhase }}"
+        discovery:
+          byName: "{{ .clusterId | lower }}-config"
+          namespace: "{{ .clusterId | lower }}"
+
+    # Error tracking
+    - name: "hasError"
+      param:
+        expression: "clusterStatus.error != null"
+
+    - name: "executionStatus"
+      param:
+        expression: "hasError ? 'failed' : 'success'"
+
+    # Payload builder
+    - name: "statusPayload"
+      payload:
+        adapter: "{{ .metadata.name }}"
+        status:
+          expression: "executionStatus"
+        observed_generation:
+          expression: "eventGeneration"
+        conditions:
+          - type: "Applied"
+            status:
+              expression: |
+                clusterNamespace.?status.?phase.orValue("") == "Active" ? "True" : "False"
+            reason:
+              expression: |
+                clusterNamespace.?status.?phase.orValue("") == "Active" ? "NamespaceCreated" : "NamespacePending"
+            message:
+              expression: |
+                clusterNamespace.?status.?phase.orValue("") == "Active" ? "Namespace created successfully" : "Namespace creation pending"
+          - type: "Health"
+            status:
+              expression: "executionStatus == 'success' ? 'True' : 'False'"
+            reason:
+              expression: "hasError ? 'Error' : 'Healthy'"
+            message:
+              expression: "hasError ? 'Execution had errors' : 'All operations completed successfully'"
+
+    # Report status (always runs - no when clause)
+    - name: "reportStatus"
+      apiCall:
+        method: POST
+        url: "{{ .clusterApiUrl }}/statuses"
+        body: "{{ .statusPayload }}"
+        timeout: "{{ .apiTimeout }}"
+        headers:
+          - name: "Content-Type"
+            value: "application/json"

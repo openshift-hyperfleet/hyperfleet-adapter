@@ -2,13 +2,10 @@ package config_loader
 
 import (
 	"fmt"
-	"reflect"
 	"regexp"
 	"strings"
 
 	"github.com/google/cel-go/cel"
-
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
 )
 
 // -----------------------------------------------------------------------------
@@ -54,7 +51,7 @@ func (ve *ValidationErrors) HasErrors() bool {
 // -----------------------------------------------------------------------------
 
 // Validator performs semantic validation on AdapterConfig.
-// It validates operators, template variables, CEL expressions, and K8s manifests.
+// It validates template variables, CEL expressions, and K8s manifests.
 type Validator struct {
 	config        *AdapterConfig
 	errors        *ValidationErrors
@@ -84,7 +81,6 @@ func (v *Validator) Validate() error {
 	}
 
 	// Run all validators
-	v.validateConditionOperators()
 	v.validateCaptureFields()
 	v.validateTemplateVariables()
 	v.validateCELExpressions()
@@ -106,83 +102,17 @@ func (v *Validator) collectDefinedParameters() {
 }
 
 // -----------------------------------------------------------------------------
-// Operator Validation
-// -----------------------------------------------------------------------------
-
-// validateConditionOperators validates all condition operators in the config
-func (v *Validator) validateConditionOperators() {
-	// Validate precondition conditions
-	for i, precond := range v.config.Spec.Preconditions {
-		for j, cond := range precond.Conditions {
-			path := fmt.Sprintf("%s.%s[%d].%s[%d]", FieldSpec, FieldPreconditions, i, FieldConditions, j)
-			v.validateCondition(cond, path)
-		}
-	}
-}
-
-// validateCondition validates a single condition including operator and value
-func (v *Validator) validateCondition(cond Condition, path string) {
-	// Validate operator
-	v.validateOperator(cond.Operator, path)
-
-	// Validate value based on operator
-	v.validateConditionValue(cond.Operator, cond.Value, path)
-}
-
-// validateOperator checks if an operator is valid
-func (v *Validator) validateOperator(operator string, path string) {
-	if operator == "" {
-		v.errors.Add(path, "operator is required")
-		return
-	}
-	if !criteria.IsValidOperator(operator) {
-		v.errors.Add(path, fmt.Sprintf("invalid operator %q, must be one of: %s",
-			operator, strings.Join(criteria.OperatorStrings(), ", ")))
-	}
-}
-
-// validateConditionValue validates that the value is appropriate for the operator
-func (v *Validator) validateConditionValue(operator string, value interface{}, path string) {
-	op := criteria.Operator(operator)
-
-	// "exists" operator does not require a value
-	if op == criteria.OperatorExists {
-		return
-	}
-
-	// All other operators require a value
-	if value == nil {
-		v.errors.Add(path, fmt.Sprintf("value is required for operator %q", operator))
-		return
-	}
-
-	// "in" and "notIn" operators require a list/array value
-	if op == criteria.OperatorIn || op == criteria.OperatorNotIn {
-		if !isSliceOrArray(value) {
-			v.errors.Add(path, fmt.Sprintf("value must be a list for operator %q", operator))
-		}
-	}
-}
-
-// isSliceOrArray checks if a value is a slice or array
-func isSliceOrArray(value interface{}) bool {
-	if value == nil {
-		return false
-	}
-	kind := reflect.TypeOf(value).Kind()
-	return kind == reflect.Slice || kind == reflect.Array
-}
-
-// -----------------------------------------------------------------------------
 // Capture Field Validation
 // -----------------------------------------------------------------------------
 
-// validateCaptureFields validates capture fields in preconditions
+// validateCaptureFields validates capture fields in API call steps
 func (v *Validator) validateCaptureFields() {
-	for i, precond := range v.config.Spec.Preconditions {
-		for j, capture := range precond.Capture {
-			path := fmt.Sprintf("%s.%s[%d].%s[%d]", FieldSpec, FieldPreconditions, i, FieldCapture, j)
-			v.validateCaptureField(capture, path)
+	for i, step := range v.config.Spec.Steps {
+		if step.APICall != nil {
+			for j, capture := range step.APICall.Capture {
+				path := fmt.Sprintf("%s.%s[%d].%s.%s[%d]", FieldSpec, FieldSteps, i, FieldAPICall, FieldCapture, j)
+				v.validateCaptureField(capture, path)
+			}
 		}
 	}
 }
@@ -219,62 +149,52 @@ var templateVarRegex = regexp.MustCompile(`\{\{\s*\.([a-zA-Z_][a-zA-Z0-9_\.]*)\s
 
 // validateTemplateVariables validates that template variables are defined
 func (v *Validator) validateTemplateVariables() {
-	// Validate precondition API call URLs and bodies
-	for i, precond := range v.config.Spec.Preconditions {
-		if precond.APICall != nil {
-			basePath := fmt.Sprintf("%s.%s[%d].%s", FieldSpec, FieldPreconditions, i, FieldAPICall)
-			v.validateTemplateString(precond.APICall.URL, basePath+"."+FieldURL)
-			v.validateTemplateString(precond.APICall.Body, basePath+"."+FieldBody)
-			for j, header := range precond.APICall.Headers {
+	// Validate step configurations
+	for i, step := range v.config.Spec.Steps {
+		basePath := fmt.Sprintf("%s.%s[%d]", FieldSpec, FieldSteps, i)
+
+		// Validate API call step templates
+		if step.APICall != nil {
+			apiPath := basePath + "." + FieldAPICall
+			v.validateTemplateString(step.APICall.URL, apiPath+"."+FieldURL)
+			v.validateTemplateString(step.APICall.Body, apiPath+"."+FieldBody)
+			for j, header := range step.APICall.Headers {
 				v.validateTemplateString(header.Value,
-					fmt.Sprintf("%s.%s[%d].%s", basePath, FieldHeaders, j, FieldHeaderValue))
+					fmt.Sprintf("%s.%s[%d].%s", apiPath, FieldHeaders, j, FieldValue))
 			}
 		}
-	}
 
-	// Validate resource manifests
-	for i, resource := range v.config.Spec.Resources {
-		resourcePath := fmt.Sprintf("%s.%s[%d]", FieldSpec, FieldResources, i)
-		if manifest, ok := resource.Manifest.(map[string]interface{}); ok {
-			v.validateTemplateMap(manifest, resourcePath+"."+FieldManifest)
-		}
-		if resource.Discovery != nil {
-			discoveryPath := resourcePath + "." + FieldDiscovery
-			v.validateTemplateString(resource.Discovery.Namespace, discoveryPath+"."+FieldNamespace)
-			v.validateTemplateString(resource.Discovery.ByName, discoveryPath+"."+FieldByName)
-			if resource.Discovery.BySelectors != nil {
-				for k, val := range resource.Discovery.BySelectors.LabelSelector {
-					v.validateTemplateString(val,
-						fmt.Sprintf("%s.%s.%s[%s]", discoveryPath, FieldBySelectors, FieldLabelSelector, k))
-				}
+		// Validate resource step templates
+		if step.Resource != nil {
+			resourcePath := basePath + "." + FieldResource
+			if manifest, ok := step.Resource.Manifest.(map[string]interface{}); ok {
+				v.validateTemplateMap(manifest, resourcePath+"."+FieldManifest)
 			}
-		}
-	}
-
-	// Validate post action API calls
-	if v.config.Spec.Post != nil {
-		for i, action := range v.config.Spec.Post.PostActions {
-			if action.APICall != nil {
-				basePath := fmt.Sprintf("%s.%s.%s[%d].%s", FieldSpec, FieldPost, FieldPostActions, i, FieldAPICall)
-				v.validateTemplateString(action.APICall.URL, basePath+"."+FieldURL)
-				v.validateTemplateString(action.APICall.Body, basePath+"."+FieldBody)
-				for j, header := range action.APICall.Headers {
-					v.validateTemplateString(header.Value,
-						fmt.Sprintf("%s.%s[%d].%s", basePath, FieldHeaders, j, FieldHeaderValue))
+			if step.Resource.Discovery != nil {
+				discoveryPath := resourcePath + "." + FieldDiscovery
+				v.validateTemplateString(step.Resource.Discovery.Namespace, discoveryPath+"."+FieldNamespace)
+				v.validateTemplateString(step.Resource.Discovery.ByName, discoveryPath+"."+FieldByName)
+				if step.Resource.Discovery.BySelectors != nil {
+					for k, val := range step.Resource.Discovery.BySelectors.LabelSelector {
+						v.validateTemplateString(val,
+							fmt.Sprintf("%s.%s.%s[%s]", discoveryPath, FieldBySelectors, FieldLabelSelector, k))
+					}
 				}
 			}
 		}
 
-		// Validate post payload build value templates (build is now interface{})
-		for i, payload := range v.config.Spec.Post.Payloads {
-			if payload.Build != nil {
-				if buildMap, ok := payload.Build.(map[string]interface{}); ok {
-					v.validateTemplateMap(buildMap, fmt.Sprintf("%s.%s.%s[%d].%s", FieldSpec, FieldPost, FieldPayloads, i, FieldBuild))
-				}
+		// Validate log step templates
+		if step.Log != nil {
+			v.validateTemplateString(step.Log.Message, basePath+"."+FieldLog+".message")
+		}
+
+		// Validate payload step templates (recursively)
+		if step.Payload != nil {
+			if payloadMap, ok := step.Payload.(map[string]interface{}); ok {
+				v.validateTemplateMap(payloadMap, basePath+"."+FieldPayload)
 			}
 		}
 	}
-
 }
 
 // validateTemplateString checks template variables in a string
@@ -310,17 +230,6 @@ func (v *Validator) isVariableDefined(varName string) bool {
 		if v.definedParams[root] {
 			return true
 		}
-
-		// Special handling for resource aliases: treat "resources.<name>" as a root.
-		// Resource aliases are registered as "resources.clusterNamespace" etc.,
-		// so we need to check if "resources.<alias>" is defined for paths like
-		// "resources.clusterNamespace.metadata.namespace"
-		if root == FieldResources && len(parts) > 1 {
-			alias := root + "." + parts[1]
-			if v.definedParams[alias] {
-				return true
-			}
-		}
 	}
 
 	return false
@@ -355,7 +264,7 @@ func (v *Validator) validateTemplateMap(m map[string]interface{}, path string) {
 // initCELEnv initializes the CEL environment dynamically from config-defined variables.
 // This uses v.definedParams which must be populated by collectDefinedParameters() first.
 func (v *Validator) initCELEnv() error {
-	// Pre-allocate capacity: +2 for cel.OptionalTypes() and potential "resources" variable
+	// Pre-allocate capacity: +2 for cel.OptionalTypes() and potential "adapter" variable
 	options := make([]cel.EnvOption, 0, len(v.definedParams)+2)
 
 	// Enable optional types for optional chaining syntax (e.g., a.?b.?c)
@@ -381,11 +290,6 @@ func (v *Validator) initCELEnv() error {
 		options = append(options, cel.Variable(root, cel.DynType))
 	}
 
-	// Always add "resources" as a map for resource lookups like resources.clusterNamespace
-	if !addedRoots[FieldResources] {
-		options = append(options, cel.Variable(FieldResources, cel.MapType(cel.StringType, cel.DynType)))
-	}
-
 	// Always add "adapter" as a map for adapter metadata lookups like adapter.executionStatus
 	if !addedRoots[FieldAdapter] {
 		options = append(options, cel.Variable(FieldAdapter, cel.MapType(cel.StringType, cel.DynType)))
@@ -405,22 +309,24 @@ func (v *Validator) validateCELExpressions() {
 		return // CEL env initialization failed, already reported
 	}
 
-	// Validate precondition expressions
-	for i, precond := range v.config.Spec.Preconditions {
-		if precond.Expression != "" {
-			path := fmt.Sprintf("%s.%s[%d].%s", FieldSpec, FieldPreconditions, i, FieldExpression)
-			v.validateCELExpression(precond.Expression, path)
-		}
-	}
+	// Validate step 'when' clauses and param expressions
+	for i, step := range v.config.Spec.Steps {
+		basePath := fmt.Sprintf("%s.%s[%d]", FieldSpec, FieldSteps, i)
 
-	// Validate post payload build expressions (build is now interface{})
-	// We recursively find and validate any "expression" fields in the build structure
-	if v.config.Spec.Post != nil {
-		for i, payload := range v.config.Spec.Post.Payloads {
-			if payload.Build != nil {
-				if buildMap, ok := payload.Build.(map[string]interface{}); ok {
-					v.validateBuildExpressions(buildMap, fmt.Sprintf("%s.%s.%s[%d].%s", FieldSpec, FieldPost, FieldPayloads, i, FieldBuild))
-				}
+		// Validate 'when' clause if present
+		if step.When != "" {
+			v.validateCELExpression(step.When, basePath+"."+FieldWhen)
+		}
+
+		// Validate param expression
+		if step.Param != nil && step.Param.Expression != "" {
+			v.validateCELExpression(step.Param.Expression, basePath+"."+FieldParam+"."+FieldExpression)
+		}
+
+		// Validate payload expressions (recursively)
+		if step.Payload != nil {
+			if payloadMap, ok := step.Payload.(map[string]interface{}); ok {
+				v.validatePayloadExpressions(payloadMap, basePath+"."+FieldPayload)
 			}
 		}
 	}
@@ -444,9 +350,9 @@ func (v *Validator) validateCELExpression(expr string, path string) {
 	}
 }
 
-// validateBuildExpressions recursively validates CEL expressions in a build structure.
+// validatePayloadExpressions recursively validates CEL expressions in a payload structure.
 // It looks for any field named "expression" and validates it as a CEL expression.
-func (v *Validator) validateBuildExpressions(m map[string]interface{}, path string) {
+func (v *Validator) validatePayloadExpressions(m map[string]interface{}, path string) {
 	for key, value := range m {
 		currentPath := fmt.Sprintf("%s.%s", path, key)
 		switch val := value.(type) {
@@ -456,12 +362,12 @@ func (v *Validator) validateBuildExpressions(m map[string]interface{}, path stri
 				v.validateCELExpression(val, currentPath)
 			}
 		case map[string]interface{}:
-			v.validateBuildExpressions(val, currentPath)
+			v.validatePayloadExpressions(val, currentPath)
 		case []interface{}:
 			for i, item := range val {
 				itemPath := fmt.Sprintf("%s[%d]", currentPath, i)
 				if m, ok := item.(map[string]interface{}); ok {
-					v.validateBuildExpressions(m, itemPath)
+					v.validatePayloadExpressions(m, itemPath)
 				}
 			}
 		}
@@ -472,24 +378,18 @@ func (v *Validator) validateBuildExpressions(m map[string]interface{}, path stri
 // Kubernetes Manifest Validation
 // -----------------------------------------------------------------------------
 
-// validateK8sManifests validates Kubernetes resource manifests
+// validateK8sManifests validates Kubernetes resource manifests in resource steps
 func (v *Validator) validateK8sManifests() {
-	for i, resource := range v.config.Spec.Resources {
-		path := fmt.Sprintf("%s.%s[%d].%s", FieldSpec, FieldResources, i, FieldManifest)
+	for i, step := range v.config.Spec.Steps {
+		if step.Resource == nil {
+			continue
+		}
 
-		// Validate inline or single-ref manifest
-		if manifest, ok := resource.Manifest.(map[string]interface{}); ok {
-			// Check for ref (external template reference)
-			if ref, hasRef := manifest[FieldRef].(string); hasRef {
-				if ref == "" {
-					v.errors.Add(path+"."+FieldRef, "manifest ref cannot be empty")
-				}
-				// Single ref: content will have been loaded into Manifest by loadFileReferences
-				// and will be validated below if it's a valid manifest map
-			} else {
-				// Inline manifest - validate it
-				v.validateK8sManifest(manifest, path)
-			}
+		path := fmt.Sprintf("%s.%s[%d].%s.%s", FieldSpec, FieldSteps, i, FieldResource, FieldManifest)
+
+		// Validate inline manifest
+		if manifest, ok := step.Resource.Manifest.(map[string]interface{}); ok {
+			v.validateK8sManifest(manifest, path)
 		}
 	}
 }

@@ -1,3 +1,18 @@
+This branch is an experiment to simplify the adapter DSL
+
+Check the new adapter config format in: adapter-step-config-template.yaml
+
+Things to note:
+
+- Now all operations are under steps
+  - There are no phases (params, preconditions, resources, post)
+- steps like the `clusterStatus` `apiCall` execute and generate as ouputs
+  - `clusterStatus.results`
+  - `clusterStatus.error`
+- which can be used in other expressions, or `when` conditions
+  - e.g. the clusterNamespace resource action uses a `when` to execute only when clusterPhase == NotReady
+- The `reportStatus` is simply another `apiCall` at the end of the adapterConfig
+
 # HyperFleet Adapter
 
 HyperFleet Adapter Framework - Event-driven adapter services for HyperFleet cluster provisioning. Handles CloudEvents consumption, AdapterConfig CRD integration, precondition evaluation, Kubernetes Job creation/monitoring, and status reporting via API. Supports GCP Pub/Sub, RabbitMQ broker abstraction.
@@ -123,10 +138,12 @@ hyperfleet-adapter/
 HyperFleet Adapter uses [bingo](https://github.com/bwplotka/bingo) to manage Go tool dependencies with pinned versions.
 
 **Managed tools**:
+
 - `goimports` - Code formatting and import organization
 - `golangci-lint` - Code linting
 
 **Common operations**:
+
 ```bash
 # Install all tools
 bingo get
@@ -219,11 +236,13 @@ make test
 ```
 
 Unit tests include:
+
 - Logger functionality and context handling
 - Error handling and error codes
 - Operation ID middleware
 - Template rendering and parsing
 - Kubernetes client logic
+
 ### Integration Tests
 
 Integration tests use **Testcontainers** with **dynamically installed envtest** - works in any CI/CD platform without requiring privileged containers.
@@ -269,6 +288,7 @@ The first run will download golang:alpine and install envtest (~20-30 seconds). 
 **Performance**: ~30-40 seconds for complete test suite (10 suites, 24 test cases).
 
 **Alternative**: Use K3s (`make test-integration-k3s`) for 2x faster tests if privileged containers are available.
+
 - ⚠️ Requires Docker or rootful Podman
 - ✅ Makefile automatically checks Podman mode and provides helpful instructions if incompatible
 

@@ -8,7 +8,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleet_api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v3"
 )
 
 func TestLoad(t *testing.T) {
@@ -34,26 +33,14 @@ spec:
     retryBackoff: exponential
   kubernetes:
     apiVersion: "v1"
-  params:
+  steps:
     - name: "clusterId"
-      source: "event.cluster_id"
-      type: "string"
-      required: true
-  preconditions:
-    - name: "clusterStatus"
+      param:
+        source: "event.cluster_id"
+    - name: "checkCluster"
       apiCall:
         method: "GET"
         url: "https://api.example.com/clusters/{{ .clusterId }}"
-  resources:
-    - name: "testNamespace"
-      manifest:
-        apiVersion: v1
-        kind: Namespace
-        metadata:
-          name: "test-ns"
-      discovery:
-        namespace: "*"
-        byName: "test-ns"
 `
 
 	err := os.WriteFile(configPath, []byte(configYAML), 0644)
@@ -70,6 +57,7 @@ spec:
 	assert.Equal(t, "test-adapter", config.Metadata.Name)
 	assert.Equal(t, "hyperfleet-system", config.Metadata.Namespace)
 	assert.Equal(t, "0.1.0", config.Spec.Adapter.Version)
+	assert.Len(t, config.Spec.Steps, 2)
 }
 
 func TestLoadInvalidPath(t *testing.T) {
@@ -176,7 +164,7 @@ spec:
 	}
 }
 
-func TestValidateParameters(t *testing.T) {
+func TestValidateSteps(t *testing.T) {
 	tests := []struct {
 		name      string
 		yaml      string
@@ -184,7 +172,7 @@ func TestValidateParameters(t *testing.T) {
 		errorMsg  string
 	}{
 		{
-			name: "valid parameter with source",
+			name: "valid param step with source",
 			yaml: `
 apiVersion: hyperfleet.redhat.com/v1alpha1
 kind: AdapterConfig
@@ -198,15 +186,15 @@ spec:
     timeout: 5s
   kubernetes:
     apiVersion: "v1"
-  params:
+  steps:
     - name: "clusterId"
-      source: "event.cluster_id"
-      required: true
+      param:
+        source: "event.cluster_id"
 `,
 			wantError: false,
 		},
 		{
-			name: "parameter without name",
+			name: "valid param step with value",
 			yaml: `
 apiVersion: hyperfleet.redhat.com/v1alpha1
 kind: AdapterConfig
@@ -220,14 +208,15 @@ spec:
     timeout: 5s
   kubernetes:
     apiVersion: "v1"
-  params:
-    - source: "event.cluster_id"
+  steps:
+    - name: "version"
+      param:
+        value: "1.0.0"
 `,
-			wantError: true,
-			errorMsg:  "spec.params[0].name is required",
+			wantError: false,
 		},
 		{
-			name: "parameter without source",
+			name: "valid param step with expression",
 			yaml: `
 apiVersion: hyperfleet.redhat.com/v1alpha1
 kind: AdapterConfig
@@ -241,12 +230,55 @@ spec:
     timeout: 5s
   kubernetes:
     apiVersion: "v1"
-  params:
-    - name: "clusterId"
-      required: true
+  steps:
+    - name: "clusterUrl"
+      param:
+        expression: "'https://api.example.com/clusters/' + clusterId"
+`,
+			wantError: false,
+		},
+		{
+			name: "step without name",
+			yaml: `
+apiVersion: hyperfleet.redhat.com/v1alpha1
+kind: AdapterConfig
+metadata:
+  name: test-adapter
+spec:
+  adapter:
+    version: "1.0.0"
+  hyperfleetApi:
+    baseUrl: "https://test.example.com"
+    timeout: 5s
+  kubernetes:
+    apiVersion: "v1"
+  steps:
+    - param:
+        source: "event.cluster_id"
 `,
 			wantError: true,
-			errorMsg:  "source is required",
+			errorMsg:  "name is required",
+		},
+		{
+			name: "step without step type",
+			yaml: `
+apiVersion: hyperfleet.redhat.com/v1alpha1
+kind: AdapterConfig
+metadata:
+  name: test-adapter
+spec:
+  adapter:
+    version: "1.0.0"
+  hyperfleetApi:
+    baseUrl: "https://test.example.com"
+    timeout: 5s
+  kubernetes:
+    apiVersion: "v1"
+  steps:
+    - name: "emptyStep"
+`,
+			wantError: true,
+			errorMsg:  "must specify one of",
 		},
 	}
 
@@ -266,7 +298,7 @@ spec:
 	}
 }
 
-func TestValidatePreconditions(t *testing.T) {
+func TestValidateAPICallSteps(t *testing.T) {
 	tests := []struct {
 		name      string
 		yaml      string
@@ -274,7 +306,7 @@ func TestValidatePreconditions(t *testing.T) {
 		errorMsg  string
 	}{
 		{
-			name: "valid precondition with API call",
+			name: "valid apiCall step",
 			yaml: `
 apiVersion: hyperfleet.redhat.com/v1alpha1
 kind: AdapterConfig
@@ -288,7 +320,7 @@ spec:
     timeout: 5s
   kubernetes:
     apiVersion: "v1"
-  preconditions:
+  steps:
     - name: "checkCluster"
       apiCall:
         method: "GET"
@@ -297,7 +329,7 @@ spec:
 			wantError: false,
 		},
 		{
-			name: "precondition without name",
+			name: "apiCall without method",
 			yaml: `
 apiVersion: hyperfleet.redhat.com/v1alpha1
 kind: AdapterConfig
@@ -311,51 +343,7 @@ spec:
     timeout: 5s
   kubernetes:
     apiVersion: "v1"
-  preconditions:
-    - apiCall:
-        method: "GET"
-        url: "https://api.example.com/clusters"
-`,
-			wantError: true,
-			errorMsg:  "spec.preconditions[0].name is required",
-		},
-		{
-			name: "precondition without apiCall or expression",
-			yaml: `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterConfig
-metadata:
-  name: test-adapter
-spec:
-  adapter:
-    version: "1.0.0"
-  hyperfleetApi:
-    baseUrl: "https://test.example.com"
-    timeout: 5s
-  kubernetes:
-    apiVersion: "v1"
-  preconditions:
-    - name: "checkCluster"
-`,
-			wantError: true,
-			errorMsg:  "must specify apiCall, expression, or conditions",
-		},
-		{
-			name: "API call without method",
-			yaml: `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterConfig
-metadata:
-  name: test-adapter
-spec:
-  adapter:
-    version: "1.0.0"
-  hyperfleetApi:
-    baseUrl: "https://test.example.com"
-    timeout: 5s
-  kubernetes:
-    apiVersion: "v1"
-  preconditions:
+  steps:
     - name: "checkCluster"
       apiCall:
         url: "https://api.example.com/clusters"
@@ -364,7 +352,7 @@ spec:
 			errorMsg:  "method is required",
 		},
 		{
-			name: "API call with invalid method",
+			name: "apiCall with invalid method",
 			yaml: `
 apiVersion: hyperfleet.redhat.com/v1alpha1
 kind: AdapterConfig
@@ -378,14 +366,37 @@ spec:
     timeout: 5s
   kubernetes:
     apiVersion: "v1"
-  preconditions:
+  steps:
     - name: "checkCluster"
       apiCall:
         method: "INVALID"
         url: "https://api.example.com/clusters"
 `,
 			wantError: true,
-			errorMsg:  "is invalid (allowed:",
+			errorMsg:  "invalid method",
+		},
+		{
+			name: "apiCall without url",
+			yaml: `
+apiVersion: hyperfleet.redhat.com/v1alpha1
+kind: AdapterConfig
+metadata:
+  name: test-adapter
+spec:
+  adapter:
+    version: "1.0.0"
+  hyperfleetApi:
+    baseUrl: "https://test.example.com"
+    timeout: 5s
+  kubernetes:
+    apiVersion: "v1"
+  steps:
+    - name: "checkCluster"
+      apiCall:
+        method: "GET"
+`,
+			wantError: true,
+			errorMsg:  "url is required",
 		},
 	}
 
@@ -405,7 +416,7 @@ spec:
 	}
 }
 
-func TestValidateResources(t *testing.T) {
+func TestValidateResourceSteps(t *testing.T) {
 	tests := []struct {
 		name      string
 		yaml      string
@@ -413,7 +424,7 @@ func TestValidateResources(t *testing.T) {
 		errorMsg  string
 	}{
 		{
-			name: "valid resource with manifest",
+			name: "valid resource step with manifest and discovery",
 			yaml: `
 apiVersion: hyperfleet.redhat.com/v1alpha1
 kind: AdapterConfig
@@ -427,41 +438,19 @@ spec:
     timeout: 5s
   kubernetes:
     apiVersion: "v1"
-  resources:
+  steps:
     - name: "testNamespace"
-      manifest:
-        apiVersion: v1
-        kind: Namespace
-        metadata:
-          name: "test-ns"
-      discovery:
-        namespace: "*"
-        byName: "test-ns"
+      resource:
+        manifest:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "test-ns"
+        discovery:
+          namespace: "*"
+          byName: "test-ns"
 `,
 			wantError: false,
-		},
-		{
-			name: "resource without name",
-			yaml: `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterConfig
-metadata:
-  name: test-adapter
-spec:
-  adapter:
-    version: "1.0.0"
-  hyperfleetApi:
-    baseUrl: "https://test.example.com"
-    timeout: 5s
-  kubernetes:
-    apiVersion: "v1"
-  resources:
-    - manifest:
-        apiVersion: v1
-        kind: Namespace
-`,
-			wantError: true,
-			errorMsg:  "spec.resources[0].name is required",
 		},
 		{
 			name: "resource without manifest",
@@ -478,11 +467,42 @@ spec:
     timeout: 5s
   kubernetes:
     apiVersion: "v1"
-  resources:
+  steps:
     - name: "testNamespace"
+      resource:
+        discovery:
+          namespace: "*"
+          byName: "test-ns"
 `,
 			wantError: true,
 			errorMsg:  "manifest is required",
+		},
+		{
+			name: "resource without discovery",
+			yaml: `
+apiVersion: hyperfleet.redhat.com/v1alpha1
+kind: AdapterConfig
+metadata:
+  name: test-adapter
+spec:
+  adapter:
+    version: "1.0.0"
+  hyperfleetApi:
+    baseUrl: "https://test.example.com"
+    timeout: 5s
+  kubernetes:
+    apiVersion: "v1"
+  steps:
+    - name: "testNamespace"
+      resource:
+        manifest:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: test
+`,
+			wantError: true,
+			errorMsg:  "discovery is required",
 		},
 	}
 
@@ -502,7 +522,7 @@ spec:
 	}
 }
 
-func TestGetRequiredParams(t *testing.T) {
+func TestGetStepByName(t *testing.T) {
 	yaml := `
 apiVersion: hyperfleet.redhat.com/v1alpha1
 kind: AdapterConfig
@@ -516,107 +536,67 @@ spec:
     timeout: 5s
   kubernetes:
     apiVersion: "v1"
-  params:
+  steps:
+    - name: "step1"
+      param:
+        value: "value1"
+    - name: "step2"
+      param:
+        value: "value2"
+`
+
+	config, err := Parse([]byte(yaml))
+	require.NoError(t, err)
+
+	step := config.GetStepByName("step1")
+	assert.NotNil(t, step)
+	assert.Equal(t, "step1", step.Name)
+
+	step = config.GetStepByName("nonexistent")
+	assert.Nil(t, step)
+}
+
+func TestStepNames(t *testing.T) {
+	yaml := `
+apiVersion: hyperfleet.redhat.com/v1alpha1
+kind: AdapterConfig
+metadata:
+  name: test-adapter
+spec:
+  adapter:
+    version: "1.0.0"
+  hyperfleetApi:
+    baseUrl: "https://test.example.com"
+    timeout: 5s
+  kubernetes:
+    apiVersion: "v1"
+  steps:
     - name: "clusterId"
-      source: "event.cluster_id"
-      required: true
-    - name: "optional"
-      source: "event.optional"
-      required: false
-    - name: "resourceId"
-      source: "event.resource_id"
-      required: true
-`
-
-	config, err := Parse([]byte(yaml))
-	require.NoError(t, err)
-
-	requiredParams := config.GetRequiredParams()
-	assert.Len(t, requiredParams, 2)
-	assert.Equal(t, "clusterId", requiredParams[0].Name)
-	assert.Equal(t, "resourceId", requiredParams[1].Name)
-}
-
-func TestGetResourceByName(t *testing.T) {
-	yaml := `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterConfig
-metadata:
-  name: test-adapter
-spec:
-  adapter:
-    version: "1.0.0"
-  hyperfleetApi:
-    baseUrl: "https://test.example.com"
-    timeout: 5s
-  kubernetes:
-    apiVersion: "v1"
-  resources:
-    - name: "namespace1"
-      manifest:
-        apiVersion: v1
-        kind: Namespace
-        metadata:
-          name: "ns1"
-      discovery:
-        namespace: "*"
-        byName: "ns1"
-    - name: "namespace2"
-      manifest:
-        apiVersion: v1
-        kind: Namespace
-        metadata:
-          name: "ns2"
-      discovery:
-        namespace: "*"
-        byName: "ns2"
-`
-
-	config, err := Parse([]byte(yaml))
-	require.NoError(t, err)
-
-	resource := config.GetResourceByName("namespace1")
-	assert.NotNil(t, resource)
-	assert.Equal(t, "namespace1", resource.Name)
-
-	resource = config.GetResourceByName("nonexistent")
-	assert.Nil(t, resource)
-}
-
-func TestGetPreconditionByName(t *testing.T) {
-	yaml := `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterConfig
-metadata:
-  name: test-adapter
-spec:
-  adapter:
-    version: "1.0.0"
-  hyperfleetApi:
-    baseUrl: "https://test.example.com"
-    timeout: 5s
-  kubernetes:
-    apiVersion: "v1"
-  preconditions:
-    - name: "precond1"
+      param:
+        source: "event.cluster_id"
+    - name: "checkCluster"
       apiCall:
         method: "GET"
-        url: "https://api.example.com/check1"
-    - name: "precond2"
-      apiCall:
-        method: "GET"
-        url: "https://api.example.com/check2"
+        url: "https://api.example.com/clusters"
+    - name: "createResource"
+      resource:
+        manifest:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: test
+        discovery:
+          byName: "test"
 `
 
 	config, err := Parse([]byte(yaml))
 	require.NoError(t, err)
 
-	precond := config.GetPreconditionByName("precond1")
-	assert.NotNil(t, precond)
-	assert.Equal(t, "precond1", precond.Name)
-
-	precond = config.GetPreconditionByName("nonexistent")
-	assert.Nil(t, precond)
+	names := config.StepNames()
+	assert.Len(t, names, 3)
+	assert.Contains(t, names, "clusterId")
+	assert.Contains(t, names, "checkCluster")
+	assert.Contains(t, names, "createResource")
 }
 
 func TestParseTimeout(t *testing.T) {
@@ -731,479 +711,129 @@ func TestSupportedAPIVersions(t *testing.T) {
 	assert.Equal(t, "hyperfleet.redhat.com/v1alpha1", APIVersionV1Alpha1)
 }
 
-func TestValidateFileReferences(t *testing.T) {
-	// Create temporary directory with test files
-	tmpDir := t.TempDir()
-
-	// Create a test template file
-	templatePath := filepath.Join(tmpDir, "templates")
-	require.NoError(t, os.MkdirAll(templatePath, 0755))
-	templateFile := filepath.Join(templatePath, "test-template.yaml")
-	require.NoError(t, os.WriteFile(templateFile, []byte("test: value"), 0644))
-
-	tests := []struct {
-		name    string
-		config  *AdapterConfig
-		baseDir string
-		wantErr bool
-		errMsg  string
-	}{
-		{
-			name: "valid payload buildRef",
-			config: &AdapterConfig{
-				Spec: AdapterConfigSpec{
-					Post: &PostConfig{
-						Payloads: []Payload{
-							{Name: "test", BuildRef: "templates/test-template.yaml"},
-						},
-					},
-				},
-			},
-			baseDir: tmpDir,
-			wantErr: false,
-		},
-		{
-			name: "invalid payload buildRef - file not found",
-			config: &AdapterConfig{
-				Spec: AdapterConfigSpec{
-					Post: &PostConfig{
-						Payloads: []Payload{
-							{Name: "test", BuildRef: "templates/nonexistent.yaml"},
-						},
-					},
-				},
-			},
-			baseDir: tmpDir,
-			wantErr: true,
-			errMsg:  "does not exist",
-		},
-		{
-			name: "invalid payload buildRef - is a directory",
-			config: &AdapterConfig{
-				Spec: AdapterConfigSpec{
-					Post: &PostConfig{
-						Payloads: []Payload{
-							{Name: "test", BuildRef: "templates"},
-						},
-					},
-				},
-			},
-			baseDir: tmpDir,
-			wantErr: true,
-			errMsg:  "is a directory",
-		},
-		{
-			name: "valid manifest.ref",
-			config: &AdapterConfig{
-				Spec: AdapterConfigSpec{
-					Resources: []Resource{
-						{
-							Name: "test",
-							Manifest: map[string]interface{}{
-								"ref": "templates/test-template.yaml",
-							},
-						},
-					},
-				},
-			},
-			baseDir: tmpDir,
-			wantErr: false,
-		},
-		{
-			name: "invalid manifest.ref - file not found",
-			config: &AdapterConfig{
-				Spec: AdapterConfigSpec{
-					Resources: []Resource{
-						{
-							Name: "test",
-							Manifest: map[string]interface{}{
-								"ref": "templates/nonexistent.yaml",
-							},
-						},
-					},
-				},
-			},
-			baseDir: tmpDir,
-			wantErr: true,
-			errMsg:  "does not exist",
-		},
-		{
-			name: "valid multiple payloads with buildRef",
-			config: &AdapterConfig{
-				Spec: AdapterConfigSpec{
-					Post: &PostConfig{
-						Payloads: []Payload{
-							{Name: "payload1", BuildRef: "templates/test-template.yaml"},
-							{Name: "payload2", BuildRef: "templates/test-template.yaml"},
-						},
-					},
-				},
-			},
-			baseDir: tmpDir,
-			wantErr: false,
-		},
-		{
-			name: "no file references - should pass",
-			config: &AdapterConfig{
-				Spec: AdapterConfigSpec{
-					Params: []Parameter{
-						{Name: "test", Source: "event.test"},
-					},
-				},
-			},
-			baseDir: tmpDir,
-			wantErr: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := validateFileReferences(tt.config, tt.baseDir)
-			if tt.wantErr {
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errMsg)
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
-}
-
-func TestLoadWithFileReferences(t *testing.T) {
-	// Create temporary directory
-	tmpDir := t.TempDir()
-
-	// Create a template file
-	templateDir := filepath.Join(tmpDir, "templates")
-	require.NoError(t, os.MkdirAll(templateDir, 0755))
-	templateFile := filepath.Join(templateDir, "status-payload.yaml")
-	require.NoError(t, os.WriteFile(templateFile, []byte(`
-status: "{{ .status }}"
-`), 0644))
-
-	// Create config file with buildRef
-	configYAML := `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterConfig
-metadata:
-  name: test-adapter
-spec:
-  adapter:
-    version: "0.1.0"
-  hyperfleetApi:
-    baseUrl: "https://test.example.com"
-    timeout: 2s
-  kubernetes:
-    apiVersion: "v1"
-  params:
-    - name: "clusterId"
-      source: "event.cluster_id"
-  resources:
-    - name: "testNamespace"
-      manifest:
-        apiVersion: v1
-        kind: Namespace
-        metadata:
-          name: test
-      discovery:
-        namespace: "*"
-        byName: "test"
-  post:
-    payloads:
-      - name: "statusPayload"
-        buildRef: "templates/status-payload.yaml"
-`
-	configPath := filepath.Join(tmpDir, "config.yaml")
-	require.NoError(t, os.WriteFile(configPath, []byte(configYAML), 0644))
-
-	// Load should succeed because template file exists
-	config, err := Load(configPath, WithSkipSemanticValidation())
-	require.NoError(t, err)
-	require.NotNil(t, config)
-	assert.Equal(t, "test-adapter", config.Metadata.Name)
-
-	// Now test with non-existent buildRef
-	configYAMLBad := `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterConfig
-metadata:
-  name: test-adapter
-spec:
-  adapter:
-    version: "0.1.0"
-  hyperfleetApi:
-    baseUrl: "https://test.example.com"
-    timeout: 2s
-  kubernetes:
-    apiVersion: "v1"
-  params:
-    - name: "clusterId"
-      source: "event.cluster_id"
-  resources:
-    - name: "testNamespace"
-      manifest:
-        apiVersion: v1
-        kind: Namespace
-        metadata:
-          name: test
-      discovery:
-        namespace: "*"
-        byName: "test"
-  post:
-    payloads:
-      - name: "statusPayload"
-        buildRef: "templates/nonexistent.yaml"
-`
-	configPathBad := filepath.Join(tmpDir, "config-bad.yaml")
-	require.NoError(t, os.WriteFile(configPathBad, []byte(configYAMLBad), 0644))
-
-	// Load should fail because template file doesn't exist
-	config, err = Load(configPathBad, WithSkipSemanticValidation())
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "does not exist")
-	assert.Nil(t, config)
-}
-
-func TestLoadFileReferencesContent(t *testing.T) {
-	// Create temporary directory
-	tmpDir := t.TempDir()
-	templateDir := filepath.Join(tmpDir, "templates")
-	require.NoError(t, os.MkdirAll(templateDir, 0755))
-
-	// Create a buildRef template file
-	buildRefFile := filepath.Join(templateDir, "status-payload.yaml")
-	require.NoError(t, os.WriteFile(buildRefFile, []byte(`
-status: "{{ .status }}"
-message: "Operation completed"
-`), 0644))
-
-	// Create a manifest.ref template file
-	manifestRefFile := filepath.Join(templateDir, "deployment.yaml")
-	require.NoError(t, os.WriteFile(manifestRefFile, []byte(`
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: "{{ .name }}"
-  namespace: "{{ .namespace }}"
-spec:
-  replicas: 1
-`), 0644))
-
-	// Create config file with both buildRef and manifest.ref
-	configYAML := `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterConfig
-metadata:
-  name: test-adapter
-spec:
-  adapter:
-    version: "0.1.0"
-  hyperfleetApi:
-    baseUrl: "https://test.example.com"
-    timeout: 2s
-  kubernetes:
-    apiVersion: "v1"
-  params:
-    - name: "clusterId"
-      source: "event.cluster_id"
-  resources:
-    - name: "deployment"
-      manifest:
-        ref: "templates/deployment.yaml"
-      discovery:
-        namespace: "*"
-        bySelectors:
-          labelSelector:
-            app: "test"
-  post:
-    payloads:
-      - name: "statusPayload"
-        buildRef: "templates/status-payload.yaml"
-`
-	configPath := filepath.Join(tmpDir, "config.yaml")
-	require.NoError(t, os.WriteFile(configPath, []byte(configYAML), 0644))
-
-	// Load config
-	config, err := Load(configPath, WithSkipSemanticValidation())
-	require.NoError(t, err)
-	require.NotNil(t, config)
-
-	// Verify manifest.ref was loaded and replaced
-	require.Len(t, config.Spec.Resources, 1)
-	manifest, ok := config.Spec.Resources[0].Manifest.(map[string]interface{})
-	require.True(t, ok, "Manifest should be a map after loading ref")
-	assert.Equal(t, "apps/v1", manifest["apiVersion"])
-	assert.Equal(t, "Deployment", manifest["kind"])
-	// Verify ref is no longer present (replaced with actual content)
-	_, hasRef := manifest["ref"]
-	assert.False(t, hasRef, "ref should be replaced with actual content")
-
-	// Verify buildRef content was loaded into BuildRefContent
-	require.NotNil(t, config.Spec.Post)
-	require.Len(t, config.Spec.Post.Payloads, 1)
-	assert.NotNil(t, config.Spec.Post.Payloads[0].BuildRefContent)
-	assert.Equal(t, "{{ .status }}", config.Spec.Post.Payloads[0].BuildRefContent["status"])
-	assert.Equal(t, "Operation completed", config.Spec.Post.Payloads[0].BuildRefContent["message"])
-	// Original BuildRef path should still be preserved
-	assert.Equal(t, "templates/status-payload.yaml", config.Spec.Post.Payloads[0].BuildRef)
-}
-
 func TestValidateResourceDiscovery(t *testing.T) {
 	tests := []struct {
 		name    string
-		config  *AdapterConfig
+		yaml    string
 		wantErr bool
 		errMsg  string
 	}{
 		{
-			name: "valid - manifest.ref with discovery bySelectors",
-			config: &AdapterConfig{
-				Spec: AdapterConfigSpec{
-					Resources: []Resource{
-						{
-							Name:     "test",
-							Manifest: map[string]interface{}{"ref": "templates/test.yaml"},
-							Discovery: &DiscoveryConfig{
-								Namespace: "test-ns",
-								BySelectors: &SelectorConfig{
-									LabelSelector: map[string]string{"app": "test"},
-								},
-							},
-						},
-					},
-				},
-			},
+			name: "valid - resource step with discovery bySelectors",
+			yaml: `
+apiVersion: hyperfleet.redhat.com/v1alpha1
+kind: AdapterConfig
+metadata:
+  name: test-adapter
+spec:
+  adapter:
+    version: "1.0.0"
+  hyperfleetApi:
+    baseUrl: "https://test.example.com"
+    timeout: 5s
+  kubernetes:
+    apiVersion: "v1"
+  steps:
+    - name: "test"
+      resource:
+        manifest:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: test
+        discovery:
+          namespace: "test-ns"
+          bySelectors:
+            labelSelector:
+              app: "test"
+`,
 			wantErr: false,
 		},
 		{
-			name: "valid - manifest.ref with discovery byName",
-			config: &AdapterConfig{
-				Spec: AdapterConfigSpec{
-					Resources: []Resource{
-						{
-							Name:     "test",
-							Manifest: map[string]interface{}{"ref": "templates/test.yaml"},
-							Discovery: &DiscoveryConfig{
-								Namespace: "*",
-								ByName:    "my-resource",
-							},
-						},
-					},
-				},
-			},
+			name: "valid - resource step with discovery byName",
+			yaml: `
+apiVersion: hyperfleet.redhat.com/v1alpha1
+kind: AdapterConfig
+metadata:
+  name: test-adapter
+spec:
+  adapter:
+    version: "1.0.0"
+  hyperfleetApi:
+    baseUrl: "https://test.example.com"
+    timeout: 5s
+  kubernetes:
+    apiVersion: "v1"
+  steps:
+    - name: "test"
+      resource:
+        manifest:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: test
+        discovery:
+          namespace: "*"
+          byName: "my-resource"
+`,
 			wantErr: false,
 		},
 		{
-			name: "valid - inline manifest with discovery",
-			config: &AdapterConfig{
-				Spec: AdapterConfigSpec{
-					Resources: []Resource{
-						{
-							Name: "test",
-							Manifest: map[string]interface{}{
-								"apiVersion": "v1",
-								"kind":       "ConfigMap",
-							},
-							Discovery: &DiscoveryConfig{
-								Namespace: "test-ns",
-								ByName:    "my-configmap",
-							},
-						},
-					},
-				},
-			},
-			wantErr: false,
-		},
-		{
-			name: "invalid - inline manifest missing discovery",
-			config: &AdapterConfig{
-				Spec: AdapterConfigSpec{
-					Resources: []Resource{
-						{
-							Name: "test",
-							Manifest: map[string]interface{}{
-								"apiVersion": "v1",
-								"kind":       "ConfigMap",
-							},
-							// Missing discovery - now required for all resources
-						},
-					},
-				},
-			},
-			wantErr: true,
-			errMsg:  "discovery is required",
-		},
-		{
-			name: "invalid - manifest.ref missing discovery",
-			config: &AdapterConfig{
-				Spec: AdapterConfigSpec{
-					Resources: []Resource{
-						{
-							Name:     "test",
-							Manifest: map[string]interface{}{"ref": "templates/test.yaml"},
-							// Missing discovery
-						},
-					},
-				},
-			},
-			wantErr: true,
-			errMsg:  "discovery is required",
-		},
-		{
-			name: "valid - manifest.ref with discovery missing namespace (all namespaces)",
-			config: &AdapterConfig{
-				Spec: AdapterConfigSpec{
-					Resources: []Resource{
-						{
-							Name:     "test",
-							Manifest: map[string]interface{}{"ref": "templates/test.yaml"},
-							Discovery: &DiscoveryConfig{
-								// Empty namespace means all namespaces
-								ByName: "my-resource",
-							},
-						},
-					},
-				},
-			},
-			wantErr: false,
-		},
-		{
-			name: "invalid - manifest.ref missing byName or bySelectors",
-			config: &AdapterConfig{
-				Spec: AdapterConfigSpec{
-					Resources: []Resource{
-						{
-							Name:     "test",
-							Manifest: map[string]interface{}{"ref": "templates/test.yaml"},
-							Discovery: &DiscoveryConfig{
-								Namespace: "test-ns",
-								// Missing byName and bySelectors
-							},
-						},
-					},
-				},
-			},
+			name: "invalid - resource step missing byName or bySelectors",
+			yaml: `
+apiVersion: hyperfleet.redhat.com/v1alpha1
+kind: AdapterConfig
+metadata:
+  name: test-adapter
+spec:
+  adapter:
+    version: "1.0.0"
+  hyperfleetApi:
+    baseUrl: "https://test.example.com"
+    timeout: 5s
+  kubernetes:
+    apiVersion: "v1"
+  steps:
+    - name: "test"
+      resource:
+        manifest:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: test
+        discovery:
+          namespace: "test-ns"
+`,
 			wantErr: true,
 			errMsg:  "must have either byName or bySelectors",
 		},
 		{
 			name: "invalid - bySelectors without labelSelector defined",
-			config: &AdapterConfig{
-				Spec: AdapterConfigSpec{
-					Resources: []Resource{
-						{
-							Name:     "test",
-							Manifest: map[string]interface{}{"ref": "templates/test.yaml"},
-							Discovery: &DiscoveryConfig{
-								Namespace:   "test-ns",
-								BySelectors: &SelectorConfig{
-									// Empty selectors
-								},
-							},
-						},
-					},
-				},
-			},
+			yaml: `
+apiVersion: hyperfleet.redhat.com/v1alpha1
+kind: AdapterConfig
+metadata:
+  name: test-adapter
+spec:
+  adapter:
+    version: "1.0.0"
+  hyperfleetApi:
+    baseUrl: "https://test.example.com"
+    timeout: 5s
+  kubernetes:
+    apiVersion: "v1"
+  steps:
+    - name: "test"
+      resource:
+        manifest:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: test
+        discovery:
+          namespace: "test-ns"
+          bySelectors: {}
+`,
 			wantErr: true,
 			errMsg:  "must have labelSelector defined",
 		},
@@ -1211,7 +841,7 @@ func TestValidateResourceDiscovery(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateResources(tt.config)
+			_, err := Parse([]byte(tt.yaml))
 			if tt.wantErr {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errMsg)
@@ -1222,67 +852,142 @@ func TestValidateResourceDiscovery(t *testing.T) {
 	}
 }
 
-func TestConditionValuesAlias(t *testing.T) {
-	// Test that both "value" and "values" YAML keys are supported
-	tests := []struct {
-		name     string
-		yaml     string
-		expected interface{}
-	}{
-		{
-			name: "value with single item",
-			yaml: `
-field: status
-operator: equals
-value: "Ready"
-`,
-			expected: "Ready",
-		},
-		{
-			name: "value with list",
-			yaml: `
-field: status
-operator: in
-value:
-  - "Ready"
-  - "Running"
-`,
-			expected: []interface{}{"Ready", "Running"},
-		},
-		{
-			name: "values with list (alias)",
-			yaml: `
-field: status
-operator: in
-values:
-  - "Ready"
-  - "Running"
-`,
-			expected: []interface{}{"Ready", "Running"},
-		},
-	}
+func TestLogStep(t *testing.T) {
+	yaml := `
+apiVersion: hyperfleet.redhat.com/v1alpha1
+kind: AdapterConfig
+metadata:
+  name: test-adapter
+spec:
+  adapter:
+    version: "1.0.0"
+  hyperfleetApi:
+    baseUrl: "https://test.example.com"
+    timeout: 5s
+  kubernetes:
+    apiVersion: "v1"
+  steps:
+    - name: "logInfo"
+      log:
+        level: "info"
+        message: "Processing complete"
+`
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var cond Condition
-			err := yaml.Unmarshal([]byte(tt.yaml), &cond)
-			require.NoError(t, err)
-			assert.Equal(t, tt.expected, cond.Value)
-		})
-	}
+	config, err := Parse([]byte(yaml))
+	require.NoError(t, err)
+	require.Len(t, config.Spec.Steps, 1)
+
+	step := config.Spec.Steps[0]
+	assert.Equal(t, "logInfo", step.Name)
+	assert.NotNil(t, step.Log)
+	assert.Equal(t, "info", step.Log.Level)
+	assert.Equal(t, "Processing complete", step.Log.Message)
 }
 
-// TestConditionValueAndValuesError verifies that specifying both value and values is an error
-func TestConditionValueAndValuesError(t *testing.T) {
-	yamlContent := `
-field: status
-operator: in
-value: "ignored"
-values:
-  - "Used"
+func TestPayloadStep(t *testing.T) {
+	yaml := `
+apiVersion: hyperfleet.redhat.com/v1alpha1
+kind: AdapterConfig
+metadata:
+  name: test-adapter
+spec:
+  adapter:
+    version: "1.0.0"
+  hyperfleetApi:
+    baseUrl: "https://test.example.com"
+    timeout: 5s
+  kubernetes:
+    apiVersion: "v1"
+  steps:
+    - name: "statusPayload"
+      payload:
+        status: "ready"
+        timestamp: "2024-01-01"
 `
-	var cond Condition
-	err := yaml.Unmarshal([]byte(yamlContent), &cond)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "condition has both 'value' and 'values' keys")
+
+	config, err := Parse([]byte(yaml))
+	require.NoError(t, err)
+	require.Len(t, config.Spec.Steps, 1)
+
+	step := config.Spec.Steps[0]
+	assert.Equal(t, "statusPayload", step.Name)
+	assert.NotNil(t, step.Payload)
+
+	payload, ok := step.Payload.(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "ready", payload["status"])
+	assert.Equal(t, "2024-01-01", payload["timestamp"])
+}
+
+func TestWhenClause(t *testing.T) {
+	yaml := `
+apiVersion: hyperfleet.redhat.com/v1alpha1
+kind: AdapterConfig
+metadata:
+  name: test-adapter
+spec:
+  adapter:
+    version: "1.0.0"
+  hyperfleetApi:
+    baseUrl: "https://test.example.com"
+    timeout: 5s
+  kubernetes:
+    apiVersion: "v1"
+  steps:
+    - name: "status"
+      param:
+        value: "active"
+    - name: "conditionalLog"
+      when: "status == 'active'"
+      log:
+        message: "Status is active"
+`
+
+	config, err := Parse([]byte(yaml))
+	require.NoError(t, err)
+	require.Len(t, config.Spec.Steps, 2)
+
+	// Check when clause
+	assert.Equal(t, "status == 'active'", config.Spec.Steps[1].When)
+}
+
+func TestAPICallCapture(t *testing.T) {
+	yaml := `
+apiVersion: hyperfleet.redhat.com/v1alpha1
+kind: AdapterConfig
+metadata:
+  name: test-adapter
+spec:
+  adapter:
+    version: "1.0.0"
+  hyperfleetApi:
+    baseUrl: "https://test.example.com"
+    timeout: 5s
+  kubernetes:
+    apiVersion: "v1"
+  steps:
+    - name: "getCluster"
+      apiCall:
+        method: "GET"
+        url: "https://api.example.com/clusters/123"
+        capture:
+          - name: "clusterPhase"
+            field: "status.phase"
+          - name: "clusterName"
+            field: "metadata.name"
+`
+
+	config, err := Parse([]byte(yaml))
+	require.NoError(t, err)
+	require.Len(t, config.Spec.Steps, 1)
+
+	step := config.Spec.Steps[0]
+	assert.NotNil(t, step.APICall)
+	require.Len(t, step.APICall.Capture, 2)
+
+	assert.Equal(t, "clusterPhase", step.APICall.Capture[0].Name)
+	assert.Equal(t, "status.phase", step.APICall.Capture[0].Field)
+
+	assert.Equal(t, "clusterName", step.APICall.Capture[1].Name)
+	assert.Equal(t, "metadata.name", step.APICall.Capture[1].Field)
 }

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleet_api"
 	apierrors "github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
@@ -19,59 +18,7 @@ import (
 	"golang.org/x/text/language"
 )
 
-// ToConditionDefs converts config_loader.Condition slice to criteria.ConditionDef slice.
-// This centralizes the conversion logic that was previously repeated in multiple places.
-func ToConditionDefs(conditions []config_loader.Condition) []criteria.ConditionDef {
-	defs := make([]criteria.ConditionDef, len(conditions))
-	for i, cond := range conditions {
-		defs[i] = criteria.ConditionDef{
-			Field:    cond.Field,
-			Operator: criteria.Operator(cond.Operator),
-			Value:    cond.Value,
-		}
-	}
-	return defs
-}
-
-// ExecuteLogAction executes a log action with the given context
-// The message is rendered as a Go template with access to all params
-// This is a shared utility function used by both PreconditionExecutor and PostActionExecutor
-func ExecuteLogAction(ctx context.Context, logAction *config_loader.LogAction, execCtx *ExecutionContext, log logger.Logger) {
-	if logAction == nil || logAction.Message == "" {
-		return
-	}
-
-	// Render the message template
-	message, err := renderTemplate(logAction.Message, execCtx.Params)
-	if err != nil {
-		errCtx := logger.WithErrorField(ctx, err)
-		log.Errorf(errCtx, "failed to render log message")
-		return
-	}
-
-	// Log at the specified level (default: info)
-	level := strings.ToLower(logAction.Level)
-	if level == "" {
-		level = "info"
-	}
-
-	switch level {
-	case "debug":
-		log.Debugf(ctx, "[config] %s", message)
-	case "info":
-		log.Infof(ctx, "[config] %s", message)
-	case "warning", "warn":
-		log.Warnf(ctx, "[config] %s", message)
-	case "error":
-		log.Errorf(ctx, "[config] %s", message)
-	default:
-		log.Infof(ctx, "[config] %s", message)
-	}
-
-}
-
 // ExecuteAPICall executes an API call with the given configuration and returns the response and rendered URL
-// This is a shared utility function used by both PreconditionExecutor and PostActionExecutor
 // On error, it returns an APIError with full context (method, URL, status, body, attempts, duration)
 // Returns: response, renderedURL, error
 func ExecuteAPICall(ctx context.Context, apiCall *config_loader.APICall, execCtx *ExecutionContext, apiClient hyperfleet_api.Client, log logger.Logger) (*hyperfleet_api.Response, string, error) {
@@ -336,7 +283,7 @@ var templateFuncs = template.FuncMap{
 	},
 }
 
-// This is a shared utility used across preconditions, resources, and post-actions
+// This is a shared utility used across steps and resources
 func renderTemplate(templateStr string, data map[string]interface{}) (string, error) {
 	// If no template delimiters, return as-is
 	if !strings.Contains(templateStr, "{{") {
@@ -373,7 +320,6 @@ func executionErrorToMap(execErr *ExecutionError) interface{} {
 	}
 
 	return map[string]interface{}{
-		"phase":   execErr.Phase,
 		"step":    execErr.Step,
 		"message": execErr.Message,
 	}
@@ -386,11 +332,9 @@ func adapterMetadataToMap(adapter *AdapterMetadata) map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"executionStatus":  adapter.ExecutionStatus,
-		"resourcesSkipped": adapter.ResourcesSkipped,
-		"skipReason":       adapter.SkipReason,
-		"errorReason":      adapter.ErrorReason,
-		"errorMessage":     adapter.ErrorMessage,
-		"executionError":   executionErrorToMap(adapter.ExecutionError),
+		"executionStatus": adapter.ExecutionStatus,
+		"errorReason":     adapter.ErrorReason,
+		"errorMessage":    adapter.ErrorMessage,
+		"executionError":  executionErrorToMap(adapter.ExecutionError),
 	}
 }

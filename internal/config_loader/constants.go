@@ -15,10 +15,7 @@ const (
 	FieldAdapter       = "adapter"
 	FieldHyperfleetAPI = "hyperfleetApi"
 	FieldKubernetes    = "kubernetes"
-	FieldParams        = "params"
-	FieldPreconditions = "preconditions"
-	FieldResources     = "resources"
-	FieldPost          = "post"
+	FieldSteps         = "steps"
 )
 
 // Adapter field names
@@ -26,29 +23,20 @@ const (
 	FieldVersion = "version"
 )
 
-// Parameter field names
+// Step field names
 const (
-	FieldName        = "name"
-	FieldSource      = "source"
-	FieldType        = "type"
-	FieldDescription = "description"
-	FieldRequired    = "required"
-	FieldDefault     = "default"
-)
-
-// Payload field names (for post.payloads)
-const (
-	FieldPayloads = "payloads"
-	FieldBuild    = "build"
-	FieldBuildRef = "buildRef"
-)
-
-// Precondition field names
-const (
+	FieldName       = "name"
+	FieldWhen       = "when"
+	FieldParam      = "param"
 	FieldAPICall    = "apiCall"
-	FieldCapture    = "capture"
-	FieldConditions = "conditions"
+	FieldResource   = "resource"
+	FieldPayload    = "payload"
+	FieldLog        = "log"
+	FieldDefault    = "default"
+	FieldSource     = "source"
 	FieldExpression = "expression"
+	FieldValue      = "value"
+	FieldCapture    = "capture"
 )
 
 // API call field names
@@ -60,29 +48,11 @@ const (
 	FieldBody    = "body"
 )
 
-// Header field names
-const (
-	FieldHeaderValue = "value"
-)
-
-// Condition field names
-const (
-	FieldField    = "field"
-	FieldOperator = "operator"
-	FieldValue    = "value"  // Supports any type including lists for operators like "in", "notIn"
-	FieldValues   = "values" // YAML alias for Value - both "value" and "values" are accepted in YAML
-)
-
 // Resource field names
 const (
 	FieldManifest         = "manifest"
 	FieldRecreateOnChange = "recreateOnChange"
 	FieldDiscovery        = "discovery"
-)
-
-// Manifest reference field names
-const (
-	FieldRef = "ref"
 )
 
 // Discovery field names
@@ -95,11 +65,6 @@ const (
 // Selector field names
 const (
 	FieldLabelSelector = "labelSelector"
-)
-
-// Post config field names
-const (
-	FieldPostActions = "postActions"
 )
 
 // Kubernetes manifest field names
