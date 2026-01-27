@@ -118,6 +118,7 @@ and HyperFleet API calls.`,
 	// Add subcommands
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(devCmd)
 
 	// Execute
 	if err := rootCmd.Execute(); err != nil {
