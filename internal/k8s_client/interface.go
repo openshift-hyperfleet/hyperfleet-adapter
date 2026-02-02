@@ -28,6 +28,19 @@ type K8sClient interface {
 	// DeleteResource deletes a Kubernetes resource by GVK, namespace, and name.
 	DeleteResource(ctx context.Context, gvk schema.GroupVersionKind, namespace, name string) error
 
+	// ApplyResource creates or updates a resource (upsert operation).
+	// If the resource doesn't exist, it creates it.
+	// If it exists and generation differs, it updates the resource.
+	// If it exists and generation matches, it skips (idempotent).
+	// The resource must have a hyperfleet.io/generation annotation.
+	ApplyResource(ctx context.Context, obj *unstructured.Unstructured) (*unstructured.Unstructured, error)
+
+	// ApplyResources applies multiple resources in sequence (batch upsert).
+	// Each resource is applied using ApplyResource logic.
+	// Returns results for each resource. Stops on first error.
+	// All resources must have a hyperfleet.io/generation annotation.
+	ApplyResources(ctx context.Context, objs []*unstructured.Unstructured) ([]ApplyResourceResult, error)
+
 	// Discovery operations
 
 	// DiscoverResources discovers Kubernetes resources based on the Discovery configuration.

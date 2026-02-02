@@ -1,0 +1,75 @@
+# Simple ManifestWork Example with Inline Manifest
+#
+# This example shows a basic ManifestWork that deploys a single namespace
+# to a remote cluster via Maestro transport.
+#
+# This example contains an actual inline manifest (1 resource):
+#   - Namespace
+#
+# Use this for simple single-resource deployments with basic generation tracking.
+
+apiVersion: work.open-cluster-management.io/v1
+kind: ManifestWork
+metadata:
+  # ManifestWork name - must be unique within consumer namespace
+  name: "example-namespace-{{ .clusterId }}"
+  
+  # Labels for filtering and management
+  labels:
+    hyperfleet.io/cluster-id: "{{ .clusterId }}"
+    hyperfleet.io/adapter: "{{ .metadata.name }}"
+    hyperfleet.io/generation: "{{ .generationId }}"
+  
+  # Annotations for tracking
+  annotations:
+    hyperfleet.io/generation: "{{ .generationId }}"
+    hyperfleet.io/created-by: "hyperfleet-adapter"
+
+# ManifestWork specification
+spec:
+  # Kubernetes manifests to deploy
+  workload:
+    manifests:
+      # Single namespace manifest
+      - apiVersion: v1
+        kind: Namespace
+        metadata:
+          name: "{{ .clusterId | lower }}"
+          labels:
+            hyperfleet.io/cluster-id: "{{ .clusterId }}"
+            hyperfleet.io/managed-by: "hyperfleet-adapter"
+            hyperfleet.io/environment: "{{ .environment | default \"production\" }}"
+            app.kubernetes.io/name: "cluster-namespace"
+            app.kubernetes.io/instance: "{{ .clusterId }}"
+            app.kubernetes.io/managed-by: "hyperfleet-adapter"
+          annotations:
+            # Generation at resource level for debugging on remote cluster
+            hyperfleet.io/generation: "{{ .generationId }}"
+            hyperfleet.io/created-by: "hyperfleet-adapter"
+            hyperfleet.io/created-at: "{{ now | date \"2006-01-02T15:04:05Z07:00\" }}"
+            description: "Namespace for cluster {{ .clusterId }}"
+  
+  # How to handle deletion
+  deleteOption:
+    # Foreground: Delete dependents first, then the resource
+    propagationPolicy: "Foreground"
+    gracePeriodSeconds: 30
+  
+  # Optional: Per-resource configuration for updates and status feedback
+  manifestConfigs:
+    - resourceIdentifier:
+        group: ""
+        resource: "namespaces"
+        name: "{{ .clusterId | lower }}"
+      updateStrategy:
+        type: "ServerSideApply"
+        serverSideApply:
+          fieldManager: "hyperfleet-adapter"
+          force: false
+      feedbackRules:
+        - type: "JSONPaths"
+          jsonPaths:
+            - name: "phase"
+              path: ".status.phase"
+            - name: "conditions"
+              path: ".status.conditions"

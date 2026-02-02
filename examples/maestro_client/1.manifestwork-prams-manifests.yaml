@@ -1,0 +1,142 @@
+# ManifestWork Template with Parameters from Business Logic
+#
+# This example shows a ManifestWork template that receives manifests dynamically
+# from the adapter business logic configuration (adapter-business-logic.yaml).
+#
+# The manifests are NOT inline here - they are injected by the adapter framework
+# from the business logic config using template expressions like:
+#   {{ .resources.clusterSetup.manifests | toJson }}
+#
+# Usage in adapter-business-logic.yaml:
+#   resources:
+#     - name: "clusterSetup"
+#       transport:
+#         client: "maestro"
+#         maestro:
+#           targetCluster: "{{ .placementClusterName }}"
+#           manifestWork:
+#             ref: "./manifestwork-prams-manifests.yaml"
+#       manifests:
+#         - name: "namespace"
+#           manifest: { ... }
+#         - name: "configMap"
+#           manifest: { ... }
+
+apiVersion: work.open-cluster-management.io/v1
+kind: ManifestWork
+metadata:
+  name: "cluster-setup-{{ .clusterId }}"
+  
+  labels:
+    # Tracking labels
+    hyperfleet.io/cluster-id: "{{ .clusterId }}"
+    hyperfleet.io/adapter: "{{ .metadata.name }}"
+    hyperfleet.io/component: "infrastructure"
+    hyperfleet.io/generation: "{{ .generationId }}"
+    hyperfleet.io/package: "cluster-setup"
+    
+    # Maestro-specific labels
+    maestro.io/source-id: "{{ .metadata.name }}"
+    maestro.io/priority: "high"
+    
+    # Standard Kubernetes labels
+    app.kubernetes.io/name: "cluster-infrastructure"
+    app.kubernetes.io/instance: "{{ .clusterId }}"
+    app.kubernetes.io/managed-by: "hyperfleet-adapter"
+  
+  annotations:
+    # Generation tracking (both ManifestWork and resources will have this)
+    hyperfleet.io/generation: "{{ .generationId }}"
+    hyperfleet.io/managed-by: "{{ .metadata.name }}"
+    hyperfleet.io/deployment-time: "{{ now | date \"2006-01-02T15:04:05Z07:00\" }}"
+    
+    # Documentation
+    description: "Complete cluster setup including namespace, configuration, and RBAC"
+
+spec:
+  workload:
+    # Manifests are injected by the adapter framework from business logic config
+    # The framework evaluates: resources.clusterSetup.manifests
+    # and converts them to ManifestWork manifest format using toJson filter
+    manifests: {{ .resources.clusterSetup.manifests | toJson }}
+  
+  # Delete configuration
+  deleteOption:
+    # Wait for dependents to be deleted first
+    propagationPolicy: "Foreground"
+    gracePeriodSeconds: 30
+  
+  # Per-resource configuration for updates and status feedback
+  manifestConfigs:
+    # Configuration for Namespace
+    - resourceIdentifier:
+        group: ""                        # Core API group
+        resource: "namespaces"
+        name: "{{ .clusterId | lower }}"
+      updateStrategy:
+        type: "ServerSideApply"          # Use server-side apply
+        serverSideApply:
+          fieldManager: "hyperfleet-adapter"
+          force: false                   # Fail on conflicts
+      feedbackRules:
+        - type: "JSONPaths"
+          jsonPaths:
+            - name: "phase"
+              path: ".status.phase"
+            - name: "conditions"
+              path: ".status.conditions"
+    
+    # Configuration for ConfigMap
+    - resourceIdentifier:
+        group: ""
+        resource: "configmaps"
+        name: "cluster-config"
+        namespace: "{{ .clusterId | lower }}"
+      updateStrategy:
+        type: "Update"                   # Standard update for ConfigMaps
+      feedbackRules:
+        - type: "JSONPaths"
+          jsonPaths:
+            - name: "resourceVersion"
+              path: ".metadata.resourceVersion"
+    
+    # Configuration for ServiceAccount
+    - resourceIdentifier:
+        group: ""
+        resource: "serviceaccounts"
+        name: "cluster-admin"
+        namespace: "{{ .clusterId | lower }}"
+      updateStrategy:
+        type: "ServerSideApply"
+        serverSideApply:
+          fieldManager: "hyperfleet-adapter"
+          force: false
+      feedbackRules:
+        - type: "JSONPaths"
+          jsonPaths:
+            - name: "secrets"
+              path: ".secrets"
+    
+    # Configuration for Role
+    - resourceIdentifier:
+        group: "rbac.authorization.k8s.io"
+        resource: "roles"
+        name: "cluster-namespace-admin"
+        namespace: "{{ .clusterId | lower }}"
+      updateStrategy:
+        type: "ServerSideApply"
+        serverSideApply:
+          fieldManager: "hyperfleet-adapter"
+          force: false
+    
+    # Configuration for RoleBinding
+    - resourceIdentifier:
+        group: "rbac.authorization.k8s.io"
+        resource: "rolebindings"
+        name: "cluster-admin-binding"
+        namespace: "{{ .clusterId | lower }}"
+      updateStrategy:
+        type: "ServerSideApply"
+        serverSideApply:
+          fieldManager: "hyperfleet-adapter"
+          force: false

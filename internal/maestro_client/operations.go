@@ -1,0 +1,264 @@
+package maestro_client
+
+import (
+	"context"
+	"encoding/json"
+
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/generation"
+	apperrors "github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kubetypes "k8s.io/apimachinery/pkg/types"
+	workv1 "open-cluster-management.io/api/work/v1"
+)
+
+// CreateManifestWork creates a new ManifestWork for a target cluster (consumer)
+//
+// The ManifestWork object should be pre-constructed from a template with:
+//   - hyperfleet.io/generation annotation on ManifestWork metadata
+//   - hyperfleet.io/generation annotation on each manifest within the workload
+//
+// This method validates that generation annotations are present and sets the namespace.
+//
+// Parameters:
+//   - ctx: Context for the operation
+//   - consumerName: The target cluster name (Maestro consumer) - will be set as namespace
+//   - work: Pre-constructed ManifestWork object (from template with generation annotations)
+//
+// Returns the created ManifestWork or an error
+func (c *Client) CreateManifestWork(
+	ctx context.Context,
+	consumerName string,
+	work *workv1.ManifestWork,
+) (*workv1.ManifestWork, error) {
+	if work == nil {
+		return nil, apperrors.MaestroError("work for manifestwork cannot be nil")
+	}
+
+	// Validate that generation annotations are present (set by template)
+	if err := generation.ValidateManifestWorkGeneration(work); err != nil {
+		return nil, apperrors.MaestroError("invalid ManifestWork: %v", err)
+	}
+
+	// Enrich context with common fields
+	ctx = logger.WithMaestroConsumer(ctx, consumerName)
+	ctx = logger.WithLogField(ctx, "manifestwork", work.Name)
+	ctx = logger.WithObservedGeneration(ctx, generation.GetGeneration(work.ObjectMeta))
+
+	c.log.WithFields(map[string]interface{}{
+		"manifests": len(work.Spec.Workload.Manifests),
+	}).Debug(ctx, "Creating ManifestWork")
+
+	// Set namespace to consumer name (required by Maestro)
+	work.Namespace = consumerName
+
+	// Create via the work client
+	created, err := c.workClient.ManifestWorks(consumerName).Create(ctx, work, metav1.CreateOptions{})
+	if err != nil {
+		return nil, apperrors.MaestroError("failed to create ManifestWork %s/%s: %v",
+			consumerName, work.Name, err)
+	}
+
+	c.log.Info(ctx, "Created ManifestWork")
+	return created, nil
+}
+
+// GetManifestWork retrieves a ManifestWork by name from a target cluster
+func (c *Client) GetManifestWork(
+	ctx context.Context,
+	consumerName string,
+	workName string,
+) (*workv1.ManifestWork, error) {
+	ctx = logger.WithMaestroConsumer(ctx, consumerName)
+	ctx = logger.WithLogField(ctx, "manifestwork", workName)
+
+	c.log.Debug(ctx, "Getting ManifestWork")
+
+	work, err := c.workClient.ManifestWorks(consumerName).Get(ctx, workName, metav1.GetOptions{})
+	if err != nil {
+		// Return not found error without wrapping for callers to check
+		if apierrors.IsNotFound(err) {
+			return nil, err
+		}
+		return nil, apperrors.MaestroError("failed to get ManifestWork %s/%s: %v",
+			consumerName, workName, err)
+	}
+
+	return work, nil
+}
+
+// PatchManifestWork patches an existing ManifestWork using JSON merge patch
+func (c *Client) PatchManifestWork(
+	ctx context.Context,
+	consumerName string,
+	workName string,
+	patchData []byte,
+) (*workv1.ManifestWork, error) {
+	ctx = logger.WithMaestroConsumer(ctx, consumerName)
+	ctx = logger.WithLogField(ctx, "manifestwork", workName)
+
+	c.log.Debug(ctx, "Patching ManifestWork")
+
+	patched, err := c.workClient.ManifestWorks(consumerName).Patch(
+		ctx,
+		workName,
+		kubetypes.MergePatchType,
+		patchData,
+		metav1.PatchOptions{},
+	)
+	if err != nil {
+		return nil, apperrors.MaestroError("failed to patch ManifestWork %s/%s: %v",
+			consumerName, workName, err)
+	}
+
+	c.log.Info(ctx, "Patched ManifestWork")
+	return patched, nil
+}
+
+// DeleteManifestWork deletes a ManifestWork from a target cluster
+func (c *Client) DeleteManifestWork(
+	ctx context.Context,
+	consumerName string,
+	workName string,
+) error {
+	ctx = logger.WithMaestroConsumer(ctx, consumerName)
+	ctx = logger.WithLogField(ctx, "manifestwork", workName)
+
+	c.log.Debug(ctx, "Deleting ManifestWork")
+
+	err := c.workClient.ManifestWorks(consumerName).Delete(ctx, workName, metav1.DeleteOptions{})
+	if err != nil {
+		// Ignore not found errors (already deleted)
+		if apierrors.IsNotFound(err) {
+			c.log.Debug(ctx, "ManifestWork already deleted")
+			return nil
+		}
+		return apperrors.MaestroError("failed to delete ManifestWork %s/%s: %v",
+			consumerName, workName, err)
+	}
+
+	c.log.Info(ctx, "Deleted ManifestWork")
+	return nil
+}
+
+// ListManifestWorks lists all ManifestWorks for a target cluster
+func (c *Client) ListManifestWorks(
+	ctx context.Context,
+	consumerName string,
+	labelSelector string,
+) (*workv1.ManifestWorkList, error) {
+	ctx = logger.WithMaestroConsumer(ctx, consumerName)
+
+	c.log.WithFields(map[string]interface{}{
+		"labelSelector": labelSelector,
+	}).Debug(ctx, "Listing ManifestWorks")
+
+	opts := metav1.ListOptions{}
+	if labelSelector != "" {
+		opts.LabelSelector = labelSelector
+	}
+
+	list, err := c.workClient.ManifestWorks(consumerName).List(ctx, opts)
+	if err != nil {
+		return nil, apperrors.MaestroError("failed to list ManifestWorks for consumer %s: %v",
+			consumerName, err)
+	}
+
+	c.log.WithFields(map[string]interface{}{
+		"count": len(list.Items),
+	}).Debug(ctx, "Listed ManifestWorks")
+	return list, nil
+}
+
+// ApplyManifestWork creates or updates a ManifestWork (upsert operation)
+//
+// If the ManifestWork doesn't exist, it creates it.
+// If it exists and the generation differs, it updates the ManifestWork.
+// If it exists and the generation matches, it skips the update (idempotent).
+//
+// The ManifestWork object should be pre-constructed from a template with:
+//   - hyperfleet.io/generation annotation on ManifestWork metadata
+//   - hyperfleet.io/generation annotation on each manifest within the workload
+//
+// Parameters:
+//   - ctx: Context for the operation
+//   - consumerName: The target cluster name (will be set as namespace)
+//   - work: Pre-constructed ManifestWork object (from template with generation annotations)
+//
+// Returns the created or updated ManifestWork or an error
+func (c *Client) ApplyManifestWork(
+	ctx context.Context,
+	consumerName string,
+	manifestWork *workv1.ManifestWork,
+) (*workv1.ManifestWork, error) {
+	if manifestWork == nil {
+		return nil, apperrors.MaestroError("work cannot be nil")
+	}
+
+	// Validate that generation annotations are present (set by template)
+	if err := generation.ValidateManifestWorkGeneration(manifestWork); err != nil {
+		return nil, apperrors.MaestroError("invalid ManifestWork: %v", err)
+	}
+
+	// Get generation from the work (set by template)
+	newGeneration := generation.GetGeneration(manifestWork.ObjectMeta)
+
+	// Enrich context with common fields
+	ctx = logger.WithMaestroConsumer(ctx, consumerName)
+	ctx = logger.WithLogField(ctx, "manifestwork", manifestWork.Name)
+	ctx = logger.WithObservedGeneration(ctx, newGeneration)
+
+	c.log.Debug(ctx, "Applying ManifestWork")
+
+	// Check if ManifestWork exists
+	existing, err := c.GetManifestWork(ctx, consumerName, manifestWork.Name)
+	exists := err == nil
+	if err != nil && !apierrors.IsNotFound(err) {
+		return nil, err
+	}
+
+	// Get existing generation (0 if not found)
+	var existingGeneration int64
+	if exists {
+		existingGeneration = generation.GetGeneration(existing.ObjectMeta)
+	}
+
+	// Compare generations to determine operation
+	compareResult := generation.CompareGenerations(newGeneration, existingGeneration, exists)
+
+	c.log.WithFields(map[string]interface{}{
+		"operation": compareResult.Operation,
+		"reason":    compareResult.Reason,
+	}).Debug(ctx, "Apply operation determined")
+
+	// Execute operation based on comparison result
+	switch compareResult.Operation {
+	case generation.OperationCreate:
+		return c.CreateManifestWork(ctx, consumerName, manifestWork)
+	case generation.OperationSkip:
+		return existing, nil
+	case generation.OperationUpdate:
+		// Use Patch instead of Update since Maestro gRPC doesn't support Update
+		patchData, err := createManifestWorkPatch(manifestWork)
+		if err != nil {
+			return nil, apperrors.MaestroError("failed to create patch: %v", err)
+		}
+		return c.PatchManifestWork(ctx, consumerName, manifestWork.Name, patchData)
+	}
+
+	return nil, apperrors.MaestroError("unexpected operation: %s", compareResult.Operation)
+}
+
+// createManifestWorkPatch creates a JSON merge patch for updating a ManifestWork
+func createManifestWorkPatch(work *workv1.ManifestWork) ([]byte, error) {
+	// Create patch with metadata (labels, annotations) and spec
+	patch := map[string]interface{}{
+		"metadata": map[string]interface{}{
+			"labels":      work.Labels,
+			"annotations": work.Annotations,
+		},
+		"spec": work.Spec,
+	}
+	return json.Marshal(patch)
+}

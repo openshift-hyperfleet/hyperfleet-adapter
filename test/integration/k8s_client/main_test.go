@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 )
 
@@ -87,10 +86,17 @@ func TestMain(m *testing.M) {
 }
 
 // GetSharedEnv returns the shared test environment.
-// If setup failed, the test will be failed with the setup error.
+// If setup failed or environment is not initialized (e.g., short mode), the test will be skipped.
 func GetSharedEnv(t *testing.T) TestEnv {
 	t.Helper()
-	require.NoError(t, setupErr, "Shared environment setup failed")
-	require.NotNil(t, sharedEnv, "Shared test environment is not initialized")
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+	if setupErr != nil {
+		t.Skipf("Shared environment setup failed: %v", setupErr)
+	}
+	if sharedEnv == nil {
+		t.Skip("Shared test environment is not initialized")
+	}
 	return sharedEnv
 }

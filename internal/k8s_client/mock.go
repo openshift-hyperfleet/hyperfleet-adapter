@@ -3,6 +3,7 @@ package k8s_client
 import (
 	"context"
 
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/generation"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -22,6 +23,8 @@ type MockK8sClient struct {
 	UpdateResourceResult *unstructured.Unstructured
 	UpdateResourceError  error
 	DeleteResourceError  error
+	ApplyResourceResult  *unstructured.Unstructured
+	ApplyResourceError   error
 	DiscoverResult       *unstructured.UnstructuredList
 	DiscoverError        error
 	ExtractSecretResult  string
@@ -122,6 +125,68 @@ func (m *MockK8sClient) ExtractFromConfigMap(ctx context.Context, path string) (
 		return "", m.ExtractConfigError
 	}
 	return m.ExtractConfigResult, nil
+}
+
+// ApplyResource implements K8sClient.ApplyResource
+// It creates or updates a resource based on generation comparison
+func (m *MockK8sClient) ApplyResource(ctx context.Context, obj *unstructured.Unstructured) (*unstructured.Unstructured, error) {
+	if m.ApplyResourceError != nil {
+		return nil, m.ApplyResourceError
+	}
+	if m.ApplyResourceResult != nil {
+		return m.ApplyResourceResult, nil
+	}
+
+	gvk := obj.GroupVersionKind()
+	namespace := obj.GetNamespace()
+	name := obj.GetName()
+	newGeneration := generation.GetGenerationFromUnstructured(obj)
+
+	// Check if resource exists
+	existingObj, err := m.GetResource(ctx, gvk, namespace, name)
+	exists := err == nil
+	if err != nil && !apierrors.IsNotFound(err) {
+		return nil, err
+	}
+
+	// Get existing generation (0 if not found)
+	var existingGeneration int64
+	if exists {
+		existingGeneration = generation.GetGenerationFromUnstructured(existingObj)
+	}
+
+	// Compare generations to determine operation
+	compareResult := generation.CompareGenerations(newGeneration, existingGeneration, exists)
+
+	// Execute operation based on comparison result
+	switch compareResult.Operation {
+	case generation.OperationCreate:
+		return m.CreateResource(ctx, obj)
+	case generation.OperationSkip:
+		return existingObj, nil
+	case generation.OperationUpdate:
+		obj.SetResourceVersion(existingObj.GetResourceVersion())
+		return m.UpdateResource(ctx, obj)
+	}
+
+	return nil, nil
+}
+
+// ApplyResources implements K8sClient.ApplyResources
+// It applies multiple resources in sequence
+func (m *MockK8sClient) ApplyResources(ctx context.Context, objs []*unstructured.Unstructured) ([]ApplyResourceResult, error) {
+	results := make([]ApplyResourceResult, 0, len(objs))
+
+	for _, obj := range objs {
+		resource, err := m.ApplyResource(ctx, obj)
+		if err != nil {
+			results = append(results, ApplyResourceResult{Error: err})
+			return results, err
+		}
+		results = append(results, ApplyResourceResult{Resource: resource})
+	}
+
+	return results, nil
 }
 
 // Ensure MockK8sClient implements K8sClient

@@ -104,7 +104,7 @@ func withStackTraceField(ctx context.Context, frames []string) context.Context {
 	if len(frames) == 0 {
 		return ctx
 	}
-	return WithLogField(ctx, string(StackTraceKey), frames)
+	return WithLogField(ctx, StackTraceKey, frames)
 }
 
 // CaptureStackTrace captures the current call stack and returns it as a slice of strings.

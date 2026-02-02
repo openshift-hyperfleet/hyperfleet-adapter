@@ -145,9 +145,9 @@ func NewLogger(cfg Config) (Logger, error) {
 
 	// Create base logger with required fields (per logging spec)
 	slogLogger := slog.New(handler).With(
-		string(ComponentKey), cfg.Component,
-		string(VersionKey), cfg.Version,
-		string(HostnameKey), hostname,
+		ComponentKey, cfg.Component,
+		VersionKey, cfg.Version,
+		HostnameKey, hostname,
 	)
 
 	return &logger{

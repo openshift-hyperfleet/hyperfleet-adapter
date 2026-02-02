@@ -280,10 +280,10 @@ func TestLoggerChaining(t *testing.T) {
 	})
 }
 
-func TestContextKeys(t *testing.T) {
+func TestFieldConstants(t *testing.T) {
 	tests := []struct {
 		name     string
-		key      contextKey
+		key      string
 		expected string
 	}{
 		{
@@ -316,12 +316,17 @@ func TestContextKeys(t *testing.T) {
 			key:      SubscriptionKey,
 			expected: "subscription",
 		},
+		{
+			name:     "MaestroConsumerKey",
+			key:      MaestroConsumerKey,
+			expected: "maestro_consumer",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if string(tt.key) != tt.expected {
-				t.Errorf("Expected %s, got %s", tt.expected, string(tt.key))
+			if tt.key != tt.expected {
+				t.Errorf("Expected %s, got %s", tt.expected, tt.key)
 			}
 		})
 	}

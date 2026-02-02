@@ -1,0 +1,82 @@
+# Example Adapter Deployment Configuration with Maestro Client
+#
+# This shows how to configure Maestro client settings in the adapter
+# deployment configuration file.
+#
+# This is separate from business logic config and contains infrastructure
+# settings for connecting to Maestro server.
+
+apiVersion: hyperfleet.redhat.com/v1alpha1
+kind: AdapterConfig
+metadata:
+  name: example-adapter
+  namespace: hyperfleet-system
+  labels:
+    hyperfleet.io/adapter-type: example
+    hyperfleet.io/component: adapter
+    hyperfleet.io/transport: maestro
+
+spec:
+  adapter:
+    version: "0.2.0"
+  
+  # Client configurations
+  clients:
+    # Maestro transport client configuration
+    maestro:
+      # gRPC server address (can be overridden by env var or flag)
+      # Environment variable: HYPERFLEET_MAESTRO_GRPC_SERVER_ADDRESS
+      # Flag: --maestro-grpc-server-address
+      grpcServerAddress: "maestro-grpc.maestro.svc.cluster.local:8090"
+      
+      # HTTPS server address for REST API operations (optional)
+      # Environment variable: HYPERFLEET_MAESTRO_HTTP_SERVER_ADDRESS
+      # Flag: --maestro-http-server-address
+      httpServerAddress: "https://maestro-api.maestro.svc.cluster.local"
+      
+      # Source identifier for CloudEvents routing
+      # Must be unique across adapters to avoid conflicts
+      # This becomes the SourceID in the Maestro client
+      sourceId: "example-adapter"
+      
+      # Authentication configuration
+      auth:
+        type: "tls"  # TLS certificate-based mTLS
+        
+        tlsConfig:
+          # Certificate paths (mounted from Kubernetes secrets)
+          # Environment variable: HYPERFLEET_MAESTRO_CA_FILE
+          caFile: "/etc/maestro/certs/ca.crt"
+          
+          # Environment variable: HYPERFLEET_MAESTRO_CERT_FILE
+          certFile: "/etc/maestro/certs/client.crt"
+          
+          # Environment variable: HYPERFLEET_MAESTRO_KEY_FILE
+          keyFile: "/etc/maestro/certs/client.key"
+          
+          # Server name for TLS verification
+          # Environment variable: HYPERFLEET_MAESTRO_SERVER_NAME
+          serverName: "maestro-grpc.maestro.svc.cluster.local"
+      
+      # Connection settings
+      timeout: "30s"
+      retryAttempts: 3
+      retryBackoff: "exponential"
+      
+      # Keep-alive for long-lived gRPC connections
+      keepalive:
+        time: "30s"
+        timeout: "10s"
+        permitWithoutStream: true
+    
+    # HyperFleet HTTP API client
+    httpAPI:
+      timeout: 2s
+      retryAttempts: 3
+      retryBackoff: exponential
+    
+    # Kubernetes client (for direct K8s resources)
+    kubernetes:
+      apiVersion: "v1"
+      # Uses in-cluster service account by default
+      # Or set kubeconfig path via env var or flag

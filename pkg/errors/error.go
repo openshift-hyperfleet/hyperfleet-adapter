@@ -59,6 +59,12 @@ const (
 
 	// InvalidCloudEvent occurs when a CloudEvent is invalid or malformed
 	ErrorInvalidCloudEvent ServiceErrorCode = 15
+
+	// MaestroError occurs when there's an error interacting with Maestro API
+	ErrorMaestroError ServiceErrorCode = 16
+
+	// ConfigurationError occurs when there's a configuration error
+	ErrorConfigurationError ServiceErrorCode = 17
 )
 
 type ServiceErrorCode int
@@ -91,6 +97,8 @@ func Errors() ServiceErrors {
 		ServiceError{ErrorKubernetesError, "Kubernetes API error", http.StatusInternalServerError},
 		ServiceError{ErrorHyperFleetAPIError, "HyperFleet API error", http.StatusInternalServerError},
 		ServiceError{ErrorInvalidCloudEvent, "Invalid CloudEvent", http.StatusBadRequest},
+		ServiceError{ErrorMaestroError, "Maestro API error", http.StatusInternalServerError},
+		ServiceError{ErrorConfigurationError, "Configuration error", http.StatusInternalServerError},
 	}
 }
 
@@ -210,4 +218,12 @@ func HyperFleetAPIError(reason string, values ...interface{}) *ServiceError {
 
 func InvalidCloudEvent(reason string, values ...interface{}) *ServiceError {
 	return New(ErrorInvalidCloudEvent, reason, values...)
+}
+
+func MaestroError(reason string, values ...interface{}) *ServiceError {
+	return New(ErrorMaestroError, reason, values...)
+}
+
+func ConfigurationError(reason string, values ...interface{}) *ServiceError {
+	return New(ErrorConfigurationError, reason, values...)
 }

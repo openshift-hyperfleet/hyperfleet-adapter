@@ -1,0 +1,169 @@
+# Example Business Logic Configuration - WITH Manifests
+#
+# This example demonstrates using Maestro transport with ManifestWork templates
+# that receive manifests FROM the business logic config (defined here).
+#
+# Use this pattern when:
+#   - Manifests are dynamic and parameterized
+#   - You define manifests in the business logic config
+#   - You reference ManifestWork templates like "manifestwork-prams-manifests.yaml"
+#   - The ManifestWork template uses {{ .resources.*.manifests | toJson }}
+#
+# Compare with: adapter-business-logic-without-manifests.yaml
+
+# Global parameters (extracted from CloudEvent and environment)
+params:
+  - name: "hyperfleetApiBaseUrl"
+    source: "config.hyperfleetApiBaseUrl"
+    type: "string"
+    required: true
+  
+  - name: "clusterId"
+    source: "event.id"
+    type: "string"
+    required: true
+
+# Preconditions to run before resource operations
+preconditions:
+  - name: "clusterStatus"
+    apiCall:
+      method: "GET"
+      url: "{{ .hyperfleetApiBaseUrl }}/api/hyperfleet/v1/clusters/{{ .clusterId }}"
+      timeout: 10s
+    capture:
+      - name: "generationId"
+        field: "generation"
+      - name: "placementClusterName"
+        field: "status.conditions.placement.data.clusterName"
+
+# Resources to manage
+resources:
+  # Direct Kubernetes resource (on adapter's cluster)
+  - name: "localNamespace"
+    transport:
+      client: "kubernetes"  # Direct K8s API
+    manifests:
+      - name: "namespace"
+        manifest:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ .clusterId | lower }}"
+            labels:
+              hyperfleet.io/cluster-id: "{{ .clusterId }}"
+            annotations:
+              hyperfleet.io/generation: "{{ .generationId }}"
+        discovery:
+          bySelectors:
+            labelSelector:
+              hyperfleet.io/cluster-id: "{{ .clusterId }}"
+  
+  # Maestro-managed resource (on remote cluster) - Single manifest
+  - name: "remoteNamespace"
+    transport:
+      client: "maestro"  # Via Maestro transport
+      maestro:
+        # Target cluster (from placement)
+        targetCluster: "{{ .placementClusterName }}"
+        
+        # ManifestWork template that receives manifests from business logic
+        # The template uses: {{ .resources.remoteNamespace.manifests | toJson }}
+        manifestWork:
+          ref: "./manifestwork-prams-manifests.yaml"
+    
+    # Manifests defined here (injected into ManifestWork template)
+    manifests:
+      - name: "namespace"
+        manifest:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ .clusterId | lower }}"
+            labels:
+              hyperfleet.io/cluster-id: "{{ .clusterId }}"
+            annotations:
+              # Generation at resource level for tracing on remote cluster
+              hyperfleet.io/generation: "{{ .generationId }}"
+        discovery:
+          bySelectors:
+            labelSelector:
+              hyperfleet.io/cluster-id: "{{ .clusterId }}"
+  
+  # Multi-resource package via Maestro
+  - name: "clusterSetup"
+    transport:
+      client: "maestro"
+      maestro:
+        targetCluster: "{{ .placementClusterName }}"
+        
+        # ManifestWork template that receives manifests from business logic
+        # The template uses: {{ .resources.clusterSetup.manifests | toJson }}
+        manifestWork:
+          ref: "./manifestwork-prams-manifests.yaml"
+    
+    # Multiple manifests defined here (injected into ManifestWork template)
+    manifests:
+      - name: "namespace"
+        manifest:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ .clusterId | lower }}"
+            annotations:
+              hyperfleet.io/generation: "{{ .generationId }}"
+      
+      - name: "configMap"
+        manifest:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: "cluster-config"
+            namespace: "{{ .clusterId | lower }}"
+            annotations:
+              hyperfleet.io/generation: "{{ .generationId }}"
+          data:
+            cluster-id: "{{ .clusterId }}"
+      
+      - name: "serviceAccount"
+        manifest:
+          apiVersion: v1
+          kind: ServiceAccount
+          metadata:
+            name: "cluster-admin"
+            namespace: "{{ .clusterId | lower }}"
+            annotations:
+              hyperfleet.io/generation: "{{ .generationId }}"
+
+# Post-processing (status reporting)
+post:
+  payloads:
+    - name: "clusterStatusPayload"
+      build:
+        adapter: "{{ .metadata.name }}"
+        conditions:
+          - type: "Applied"
+            status:
+              expression: |
+                resources.?remoteNamespace.namespace.?status.?phase.orValue("") == "Active" ? "True" : "False"
+            reason:
+              expression: |
+                resources.?remoteNamespace.namespace.?status.?phase.orValue("") == "Active" ? "NamespaceCreated" : "NamespacePending"
+          
+          - type: "Health"
+            status:
+              expression: |
+                adapter.?executionStatus.orValue("") == "success" ? "True" : "False"
+        
+        observed_generation:
+          expression: "generationId"
+        
+        observed_time:
+          value: "{{ now | date \"2006-01-02T15:04:05Z07:00\" }}"
+  
+  postActions:
+    - name: "reportClusterStatus"
+      apiCall:
+        method: "POST"
+        url: "{{ .hyperfleetApiBaseUrl }}/api/hyperfleet/v1/clusters/{{ .clusterId }}/statuses"
+        body: "{{ .clusterStatusPayload }}"
+        timeout: 30s

@@ -1,0 +1,102 @@
+# Example Business Logic Configuration - WITHOUT Manifests
+#
+# This example demonstrates using Maestro transport with ManifestWork templates
+# that contain INLINE manifests (defined in the ManifestWork template file itself).
+#
+# Use this pattern when:
+#   - Manifests are static and defined in the ManifestWork template
+#   - You reference ManifestWork templates like "manifestwork-inline-manifests.yaml"
+#   - The business logic config focuses on WHICH resources to deploy, not WHAT to deploy
+#
+# Compare with: adapter-business-logic-with-manifests.yaml
+
+# Global parameters (extracted from CloudEvent and environment)
+params:
+  - name: "hyperfleetApiBaseUrl"
+    source: "config.hyperfleetApiBaseUrl"
+    type: "string"
+    required: true
+  
+  - name: "clusterId"
+    source: "event.id"
+    type: "string"
+    required: true
+
+# Preconditions to run before resource operations
+preconditions:
+  - name: "clusterStatus"
+    apiCall:
+      method: "GET"
+      url: "{{ .hyperfleetApiBaseUrl }}/api/hyperfleet/v1/clusters/{{ .clusterId }}"
+      timeout: 10s
+    capture:
+      - name: "generationId"
+        field: "generation"
+      - name: "placementClusterName"
+        field: "status.conditions.placement.data.clusterName"
+
+# Resources to manage
+resources:
+  # Maestro-managed resource using inline ManifestWork template
+  # The manifests are defined INSIDE manifestwork-inline-manifests.yaml
+  - name: "simpleNamespace"
+    transport:
+      client: "maestro"
+      maestro:
+        targetCluster: "{{ .placementClusterName }}"
+        
+        # ManifestWork template with inline manifests
+        # See: manifestwork-inline-manifests.yaml
+        manifestWork:
+          ref: "./manifestwork-inline-manifests.yaml"
+    
+    # NO manifests section here!
+    # Manifests are defined inline in the ManifestWork template file
+  
+  # Another Maestro resource using a different inline template
+  - name: "clusterInfrastructure"
+    transport:
+      client: "maestro"
+      maestro:
+        targetCluster: "{{ .placementClusterName }}"
+        
+        # Reference another ManifestWork template with inline manifests
+        manifestWork:
+          ref: "./manifestwork-inline-manifests.yaml"
+    
+    # NO manifests section here either!
+    # All manifest definitions are in the ManifestWork template
+
+# Post-processing (status reporting)
+post:
+  payloads:
+    - name: "clusterStatusPayload"
+      build:
+        adapter: "{{ .metadata.name }}"
+        conditions:
+          - type: "Applied"
+            status:
+              expression: |
+                resources.?simpleNamespace.namespace.?status.?phase.orValue("") == "Active" ? "True" : "False"
+            reason:
+              expression: |
+                resources.?simpleNamespace.namespace.?status.?phase.orValue("") == "Active" ? "NamespaceCreated" : "NamespacePending"
+          
+          - type: "Health"
+            status:
+              expression: |
+                adapter.?executionStatus.orValue("") == "success" ? "True" : "False"
+        
+        observed_generation:
+          expression: "generationId"
+        
+        observed_time:
+          value: "{{ now | date \"2006-01-02T15:04:05Z07:00\" }}"
+  
+  postActions:
+    - name: "reportClusterStatus"
+      apiCall:
+        method: "POST"
+        url: "{{ .hyperfleetApiBaseUrl }}/api/hyperfleet/v1/clusters/{{ .clusterId }}/statuses"
+        body: "{{ .clusterStatusPayload }}"
+        timeout: 30s
