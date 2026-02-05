@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/generation"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
 	apperrors "github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	kubetypes "k8s.io/apimachinery/pkg/types"
 	workv1 "open-cluster-management.io/api/work/v1"
 )
@@ -37,14 +38,14 @@ func (c *Client) CreateManifestWork(
 	}
 
 	// Validate that generation annotations are present (required on ManifestWork and all manifests)
-	if err := generation.ValidateManifestWorkGeneration(work); err != nil {
+	if err := manifest.ValidateManifestWorkGeneration(work); err != nil {
 		return nil, apperrors.MaestroError("invalid ManifestWork: %v", err)
 	}
 
 	// Enrich context with common fields
 	ctx = logger.WithMaestroConsumer(ctx, consumerName)
 	ctx = logger.WithLogField(ctx, "manifestwork", work.Name)
-	ctx = logger.WithObservedGeneration(ctx, generation.GetGeneration(work.ObjectMeta))
+	ctx = logger.WithObservedGeneration(ctx, manifest.GetGeneration(work.ObjectMeta))
 
 	c.log.WithFields(map[string]interface{}{
 		"manifests": len(work.Spec.Workload.Manifests),
@@ -197,12 +198,12 @@ func (c *Client) ApplyManifestWork(
 	}
 
 	// Validate that generation annotations are present (required on ManifestWork and all manifests)
-	if err := generation.ValidateManifestWorkGeneration(manifestWork); err != nil {
+	if err := manifest.ValidateManifestWorkGeneration(manifestWork); err != nil {
 		return nil, apperrors.MaestroError("invalid ManifestWork: %v", err)
 	}
 
 	// Get generation from the work (set by template)
-	newGeneration := generation.GetGeneration(manifestWork.ObjectMeta)
+	newGeneration := manifest.GetGeneration(manifestWork.ObjectMeta)
 
 	// Enrich context with common fields
 	ctx = logger.WithMaestroConsumer(ctx, consumerName)
@@ -221,11 +222,11 @@ func (c *Client) ApplyManifestWork(
 	// Get existing generation (0 if not found)
 	var existingGeneration int64
 	if exists {
-		existingGeneration = generation.GetGeneration(existing.ObjectMeta)
+		existingGeneration = manifest.GetGeneration(existing.ObjectMeta)
 	}
 
 	// Compare generations to determine operation
-	decision := generation.CompareGenerations(newGeneration, existingGeneration, exists)
+	decision := manifest.CompareGenerations(newGeneration, existingGeneration, exists)
 
 	c.log.WithFields(map[string]interface{}{
 		"operation": decision.Operation,
@@ -234,11 +235,11 @@ func (c *Client) ApplyManifestWork(
 
 	// Execute operation based on comparison result
 	switch decision.Operation {
-	case generation.OperationCreate:
+	case manifest.OperationCreate:
 		return c.CreateManifestWork(ctx, consumerName, manifestWork)
-	case generation.OperationSkip:
+	case manifest.OperationSkip:
 		return existing, nil
-	case generation.OperationUpdate:
+	case manifest.OperationUpdate:
 		// Use Patch instead of Update since Maestro gRPC doesn't support Update
 		patchData, err := createManifestWorkPatch(manifestWork)
 		if err != nil {
@@ -261,4 +262,72 @@ func createManifestWorkPatch(work *workv1.ManifestWork) ([]byte, error) {
 		"spec": work.Spec,
 	}
 	return json.Marshal(patch)
+}
+
+// DiscoverManifest finds manifests within a ManifestWork that match the discovery criteria.
+// This is the maestro_client equivalent of k8s_client.DiscoverResources.
+//
+// Parameters:
+//   - ctx: Context for the operation
+//   - consumerName: The target cluster name (Maestro consumer)
+//   - workName: Name of the ManifestWork to search within
+//   - discovery: Discovery configuration (namespace, name, or label selector)
+//
+// Returns:
+//   - List of matching manifests as unstructured objects
+//   - Error if ManifestWork not found or discovery fails
+//
+// Example:
+//
+//	discovery := &manifest.DiscoveryConfig{
+//	    Namespace:     "default",
+//	    LabelSelector: "app=myapp",
+//	}
+//	list, err := client.DiscoverManifest(ctx, "cluster-1", "my-work", discovery)
+func (c *Client) DiscoverManifest(
+	ctx context.Context,
+	consumerName string,
+	workName string,
+	discovery manifest.Discovery,
+) (*unstructured.UnstructuredList, error) {
+	ctx = logger.WithMaestroConsumer(ctx, consumerName)
+	ctx = logger.WithLogField(ctx, "manifestwork", workName)
+
+	c.log.Debug(ctx, "Discovering manifests in ManifestWork")
+
+	// Get the ManifestWork
+	work, err := c.GetManifestWork(ctx, consumerName, workName)
+	if err != nil {
+		return nil, err
+	}
+
+	// Use shared discovery logic from manifest package
+	list, err := manifest.DiscoverInManifestWork(work, discovery)
+	if err != nil {
+		return nil, apperrors.MaestroError("failed to discover manifests in %s/%s: %v",
+			consumerName, workName, err)
+	}
+
+	c.log.WithFields(map[string]interface{}{
+		"found": len(list.Items),
+	}).Debug(ctx, "Discovered manifests in ManifestWork")
+
+	return list, nil
+}
+
+// DiscoverManifestInWork finds manifests within an already-fetched ManifestWork.
+// Use this when you already have the ManifestWork object and don't need to fetch it.
+//
+// Parameters:
+//   - work: The ManifestWork to search within
+//   - discovery: Discovery configuration (namespace, name, or label selector)
+//
+// Returns:
+//   - List of matching manifests as unstructured objects
+//   - The manifest with the highest generation if multiple match (use manifest.GetLatestGenerationFromList)
+func (c *Client) DiscoverManifestInWork(
+	work *workv1.ManifestWork,
+	discovery manifest.Discovery,
+) (*unstructured.UnstructuredList, error) {
+	return manifest.DiscoverInManifestWork(work, discovery)
 }

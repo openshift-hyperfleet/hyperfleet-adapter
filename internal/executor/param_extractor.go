@@ -1,7 +1,6 @@
 package executor
 
 import (
-	"context"
 	"fmt"
 	"math"
 	"os"
@@ -9,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/k8s_client"
 )
 
 // ParamConfig interface allows extractConfigParams to work with both AdapterConfig and Config
@@ -20,9 +18,9 @@ type ParamConfig interface {
 
 // extractConfigParams extracts all configured parameters and populates execCtx.Params
 // This is a pure function that directly modifies execCtx for simplicity
-func extractConfigParams(config ParamConfig, execCtx *ExecutionContext, k8sClient k8s_client.K8sClient) error {
+func extractConfigParams(config ParamConfig, execCtx *ExecutionContext) error {
 	for _, param := range config.GetParams() {
-		value, err := extractParam(execCtx.Ctx, param, execCtx.EventData, k8sClient)
+		value, err := extractParam(param, execCtx.EventData)
 		if err != nil {
 			if param.Required {
 				return NewExecutorError(PhaseParamExtraction, param.Name,
@@ -70,7 +68,7 @@ func extractConfigParams(config ParamConfig, execCtx *ExecutionContext, k8sClien
 }
 
 // extractParam extracts a single parameter based on its source
-func extractParam(ctx context.Context, param config_loader.Parameter, eventData map[string]interface{}, k8sClient k8s_client.K8sClient) (interface{}, error) {
+func extractParam(param config_loader.Parameter, eventData map[string]interface{}) (interface{}, error) {
 	source := param.Source
 
 	// Handle different source types
@@ -79,10 +77,6 @@ func extractParam(ctx context.Context, param config_loader.Parameter, eventData 
 		return extractFromEnv(source[4:])
 	case strings.HasPrefix(source, "event."):
 		return extractFromEvent(source[6:], eventData)
-	case strings.HasPrefix(source, "secret."):
-		return extractFromSecret(ctx, source[7:], k8sClient)
-	case strings.HasPrefix(source, "configmap."):
-		return extractFromConfigMap(ctx, source[10:], k8sClient)
 	case source == "":
 		// No source specified, return default or nil
 		return param.Default, nil
@@ -126,36 +120,6 @@ func extractFromEvent(path string, eventData map[string]interface{}) (interface{
 	}
 
 	return current, nil
-}
-
-// extractFromSecret extracts a value from a Kubernetes Secret
-// Format: secret.<namespace>.<secret-name>.<key> (namespace is required)
-func extractFromSecret(ctx context.Context, path string, k8sClient k8s_client.K8sClient) (interface{}, error) {
-	if k8sClient == nil {
-		return nil, fmt.Errorf("kubernetes client not configured, cannot extract from secret")
-	}
-
-	value, err := k8sClient.ExtractFromSecret(ctx, path)
-	if err != nil {
-		return nil, err
-	}
-
-	return value, nil
-}
-
-// extractFromConfigMap extracts a value from a Kubernetes ConfigMap
-// Format: configmap.<namespace>.<configmap-name>.<key> (namespace is required)
-func extractFromConfigMap(ctx context.Context, path string, k8sClient k8s_client.K8sClient) (interface{}, error) {
-	if k8sClient == nil {
-		return nil, fmt.Errorf("kubernetes client not configured, cannot extract from configmap")
-	}
-
-	value, err := k8sClient.ExtractFromConfigMap(ctx, path)
-	if err != nil {
-		return nil, err
-	}
-
-	return value, nil
 }
 
 // addMetadataParams adds adapter and event metadata to execCtx.Params

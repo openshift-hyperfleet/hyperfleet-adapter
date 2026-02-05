@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
+	"path"
 	"strconv"
 	"strings"
 	"text/template"
@@ -79,12 +81,14 @@ func ExecuteAPICall(ctx context.Context, apiCall *config_loader.APICall, execCtx
 		return nil, "", fmt.Errorf("apiCall is nil")
 	}
 
-	// Render URL template
-	urlTemplate := buildHyperfleetAPICallURL(apiCall.URL, execCtx)
-	url, err := renderTemplate(urlTemplate, execCtx.Params)
+	// First render the URL template to resolve variables like {{ .hyperfleetApiBaseUrl }}
+	renderedURL, err := renderTemplate(apiCall.URL, execCtx.Params)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to render URL template: %w", err)
 	}
+
+	// Then build the final URL - this handles absolute URLs vs relative paths
+	url := buildHyperfleetAPICallURL(renderedURL, execCtx)
 
 	log.Infof(ctx, "Making API call: %s %s", apiCall.Method, url)
 
@@ -216,7 +220,9 @@ func ExecuteAPICall(ctx context.Context, apiCall *config_loader.APICall, execCtx
 
 // buildHyperfleetAPICallURL builds a full HyperFleet API URL when a relative path is provided.
 // It uses hyperfleet API client settings from execution context config.
-// If the URL already includes base/version templates or is absolute, it is returned as-is.
+// Since the hyperfleet_api.Client always prepends its baseURL to the path,
+// this function returns a relative path that the client can use correctly.
+// If the URL is absolute and contains the baseURL, the relative path is extracted.
 func buildHyperfleetAPICallURL(apiCallURL string, execCtx *ExecutionContext) string {
 	if apiCallURL == "" {
 		return apiCallURL
@@ -225,22 +231,65 @@ func buildHyperfleetAPICallURL(apiCallURL string, execCtx *ExecutionContext) str
 		return apiCallURL
 	}
 
-	lowerURL := strings.ToLower(apiCallURL)
-	if strings.HasPrefix(lowerURL, "http://") || strings.HasPrefix(lowerURL, "https://") {
+	// Parse the input URL to check if it's absolute
+	parsedURL, err := url.Parse(apiCallURL)
+	if err != nil {
 		return apiCallURL
 	}
 
-	baseURL := strings.TrimRight(execCtx.Config.Spec.Clients.HyperfleetAPI.BaseURL, "/")
-	if baseURL == "" {
+	// If the URL is absolute (has a scheme like http:// or https://)
+	if parsedURL.Scheme != "" {
+		// Parse the baseURL to extract its path for comparison
+		baseURLStr := execCtx.Config.Spec.Clients.HyperfleetAPI.BaseURL
+		if baseURLStr == "" {
+			return apiCallURL
+		}
+
+		baseURL, err := url.Parse(baseURLStr)
+		if err != nil {
+			return apiCallURL
+		}
+
+		// Check if the absolute URL starts with our baseURL (same scheme, host, and path prefix)
+		if parsedURL.Scheme == baseURL.Scheme && parsedURL.Host == baseURL.Host {
+			// Extract the relative path by removing the baseURL's path prefix
+			basePath := strings.TrimSuffix(baseURL.Path, "/")
+			relativePath := parsedURL.Path
+			if basePath != "" && strings.HasPrefix(relativePath, basePath) {
+				relativePath = strings.TrimPrefix(relativePath, basePath)
+			}
+			// Ensure the path starts with /
+			if !strings.HasPrefix(relativePath, "/") {
+				relativePath = "/" + relativePath
+			}
+			return relativePath
+		}
+
+		// For absolute URLs not matching our baseURL, return as-is
 		return apiCallURL
 	}
 
-	relative := strings.TrimLeft(apiCallURL, "/")
-	if strings.HasPrefix(relative, "api/") {
-		return baseURL + "/" + relative
+	// For relative URLs, ensure proper formatting
+	baseURLStr := execCtx.Config.Spec.Clients.HyperfleetAPI.BaseURL
+	if baseURLStr == "" {
+		return apiCallURL
 	}
 
-	return fmt.Sprintf("%s/api/hyperfleet/%s/%s", baseURL, execCtx.Config.Spec.Clients.HyperfleetAPI.Version, relative)
+	// Clean the path and check if it already has the api/ prefix
+	cleanPath := path.Clean(parsedURL.Path)
+	cleanPath = strings.TrimPrefix(cleanPath, "/")
+
+	if strings.HasPrefix(cleanPath, "api/") {
+		// Already has api/ prefix, return with leading slash
+		return "/" + cleanPath
+	}
+
+	// Build the full API path using path.Join for clean path handling
+	version := execCtx.Config.Spec.Clients.HyperfleetAPI.Version
+	if version == "" {
+		version = "v1"
+	}
+	return path.Join("/api/hyperfleet", version, cleanPath)
 }
 
 // ValidateAPIResponse checks if an API response is valid and successful

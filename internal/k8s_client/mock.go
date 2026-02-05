@@ -3,6 +3,7 @@ package k8s_client
 import (
 	"context"
 
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -22,12 +23,12 @@ type MockK8sClient struct {
 	UpdateResourceResult *unstructured.Unstructured
 	UpdateResourceError  error
 	DeleteResourceError  error
+	ApplyResourceResult  *ApplyResult
+	ApplyResourceError   error
+	ApplyResourcesResult *ApplyResourcesResult
+	ApplyResourcesError  error
 	DiscoverResult       *unstructured.UnstructuredList
 	DiscoverError        error
-	ExtractSecretResult  string
-	ExtractSecretError   error
-	ExtractConfigResult  string
-	ExtractConfigError   error
 }
 
 // NewMockK8sClient creates a new mock K8s client for testing
@@ -97,8 +98,58 @@ func (m *MockK8sClient) DeleteResource(ctx context.Context, gvk schema.GroupVers
 	return nil
 }
 
+// ApplyResource implements K8sClient.ApplyResource
+func (m *MockK8sClient) ApplyResource(ctx context.Context, newManifest *unstructured.Unstructured, existing *unstructured.Unstructured, opts *ApplyOptions) (*ApplyResult, error) {
+	if m.ApplyResourceError != nil {
+		return nil, m.ApplyResourceError
+	}
+	if m.ApplyResourceResult != nil {
+		return m.ApplyResourceResult, nil
+	}
+	// Default behavior: store the resource and return create result
+	key := newManifest.GetNamespace() + "/" + newManifest.GetName()
+	m.Resources[key] = newManifest
+	return &ApplyResult{
+		Resource:  newManifest,
+		Operation: manifest.OperationCreate,
+		Reason:    "mock apply",
+	}, nil
+}
+
+// ApplyResources implements K8sClient.ApplyResources
+func (m *MockK8sClient) ApplyResources(ctx context.Context, resources []ResourceToApply) (*ApplyResourcesResult, error) {
+	if m.ApplyResourcesError != nil {
+		return nil, m.ApplyResourcesError
+	}
+	if m.ApplyResourcesResult != nil {
+		return m.ApplyResourcesResult, nil
+	}
+	// Default behavior: apply each resource using ApplyResource
+	result := &ApplyResourcesResult{
+		Results: make([]*ResourceApplyResult, 0, len(resources)),
+	}
+	for _, r := range resources {
+		applyResult, err := m.ApplyResource(ctx, r.Manifest, r.Existing, r.Options)
+		resourceResult := &ResourceApplyResult{
+			Name:         r.Name,
+			Kind:         r.Manifest.GetKind(),
+			Namespace:    r.Manifest.GetNamespace(),
+			ResourceName: r.Manifest.GetName(),
+			ApplyResult:  applyResult,
+			Error:        err,
+		}
+		result.Results = append(result.Results, resourceResult)
+		if err != nil {
+			result.FailedCount++
+			return result, err
+		}
+		result.SuccessCount++
+	}
+	return result, nil
+}
+
 // DiscoverResources implements K8sClient.DiscoverResources
-func (m *MockK8sClient) DiscoverResources(ctx context.Context, gvk schema.GroupVersionKind, discovery Discovery) (*unstructured.UnstructuredList, error) {
+func (m *MockK8sClient) DiscoverResources(ctx context.Context, gvk schema.GroupVersionKind, discovery manifest.Discovery) (*unstructured.UnstructuredList, error) {
 	if m.DiscoverError != nil {
 		return nil, m.DiscoverError
 	}
@@ -106,22 +157,6 @@ func (m *MockK8sClient) DiscoverResources(ctx context.Context, gvk schema.GroupV
 		return m.DiscoverResult, nil
 	}
 	return &unstructured.UnstructuredList{}, nil
-}
-
-// ExtractFromSecret implements K8sClient.ExtractFromSecret
-func (m *MockK8sClient) ExtractFromSecret(ctx context.Context, path string) (string, error) {
-	if m.ExtractSecretError != nil {
-		return "", m.ExtractSecretError
-	}
-	return m.ExtractSecretResult, nil
-}
-
-// ExtractFromConfigMap implements K8sClient.ExtractFromConfigMap
-func (m *MockK8sClient) ExtractFromConfigMap(ctx context.Context, path string) (string, error) {
-	if m.ExtractConfigError != nil {
-		return "", m.ExtractConfigError
-	}
-	return m.ExtractConfigResult, nil
 }
 
 // Ensure MockK8sClient implements K8sClient

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -11,12 +12,20 @@ import (
 	"strings"
 	"time"
 
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transport_client"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/constants"
 	apperrors "github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/version"
 	"github.com/openshift-online/maestro/pkg/api/openapi"
 	"github.com/openshift-online/maestro/pkg/client/cloudevents/grpcsource"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	workv1client "open-cluster-management.io/api/client/work/clientset/versioned/typed/work/v1"
+	workv1 "open-cluster-management.io/api/work/v1"
 	"open-cluster-management.io/sdk-go/pkg/cloudevents/generic/options/cert"
 	"open-cluster-management.io/sdk-go/pkg/cloudevents/generic/options/grpc"
 )
@@ -76,6 +85,14 @@ type Config struct {
 	HTTPTimeout time.Duration
 	// ServerHealthinessTimeout is the timeout for gRPC server health checks (default: 20s)
 	ServerHealthinessTimeout time.Duration
+
+	// TransportClient configuration for implementing transport_client.TransportClient
+	// ConsumerName is the target cluster name (Maestro consumer) - required for TransportClient
+	ConsumerName string
+	// WorkName is the name of the ManifestWork to manage - required for TransportClient
+	WorkName string
+	// WorkLabels are optional labels to add to the ManifestWork
+	WorkLabels map[string]string
 }
 
 // NewMaestroClient creates a new Maestro client using the official Maestro client pattern
@@ -395,4 +412,197 @@ func (c *Client) WorkClient() workv1client.WorkV1Interface {
 // SourceID returns the configured source ID
 func (c *Client) SourceID() string {
 	return c.config.SourceID
+}
+
+// ConsumerName returns the target cluster name
+func (c *Client) ConsumerName() string {
+	return c.config.ConsumerName
+}
+
+// WorkName returns the ManifestWork name
+func (c *Client) WorkName() string {
+	return c.config.WorkName
+}
+
+// =============================================================================
+// TransportClient Interface Implementation
+// =============================================================================
+
+// Ensure Client implements transport_client.TransportClient
+var _ transport_client.TransportClient = (*Client)(nil)
+
+// ApplyResources applies multiple resources by bundling them into a ManifestWork.
+// All resources are stored in a single ManifestWork for the target cluster.
+func (c *Client) ApplyResources(
+	ctx context.Context,
+	resources []transport_client.ResourceToApply,
+) (*transport_client.ApplyResourcesResult, error) {
+	result := &transport_client.ApplyResourcesResult{
+		Results: make([]*transport_client.ResourceApplyResult, 0, len(resources)),
+	}
+
+	if len(resources) == 0 {
+		return result, nil
+	}
+
+	// Build ManifestWork from resources
+	work, err := c.buildManifestWork(resources)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build ManifestWork: %w", err)
+	}
+
+	c.log.Infof(ctx, "Applying %d resources via ManifestWork %s/%s",
+		len(resources), c.config.ConsumerName, c.config.WorkName)
+
+	// Apply the ManifestWork (create or update)
+	appliedWork, err := c.ApplyManifestWork(ctx, c.config.ConsumerName, work)
+	if err != nil {
+		// Convert to result with error
+		for _, r := range resources {
+			resourceResult := &transport_client.ResourceApplyResult{
+				Name:         r.Name,
+				Kind:         r.Manifest.GetKind(),
+				Namespace:    r.Manifest.GetNamespace(),
+				ResourceName: r.Manifest.GetName(),
+				Error:        err,
+			}
+			result.Results = append(result.Results, resourceResult)
+			result.FailedCount++
+		}
+		return result, fmt.Errorf("failed to apply ManifestWork: %w", err)
+	}
+
+	// Determine operation based on ManifestWork result
+	op := c.determineOperation(appliedWork)
+
+	// Build success results for all resources
+	for _, r := range resources {
+		resourceResult := &transport_client.ResourceApplyResult{
+			Name:         r.Name,
+			Kind:         r.Manifest.GetKind(),
+			Namespace:    r.Manifest.GetNamespace(),
+			ResourceName: r.Manifest.GetName(),
+			ApplyResult: &transport_client.ApplyResult{
+				Resource:  r.Manifest,
+				Operation: op,
+				Reason:    fmt.Sprintf("applied via ManifestWork %s", c.config.WorkName),
+			},
+		}
+		result.Results = append(result.Results, resourceResult)
+		result.SuccessCount++
+	}
+
+	c.log.Infof(ctx, "Successfully applied %d resources via ManifestWork", result.SuccessCount)
+	return result, nil
+}
+
+// GetResource retrieves a resource from the ManifestWork's manifest list.
+func (c *Client) GetResource(
+	ctx context.Context,
+	gvk schema.GroupVersionKind,
+	namespace, name string,
+) (*unstructured.Unstructured, error) {
+	work, err := c.GetManifestWork(ctx, c.config.ConsumerName, c.config.WorkName)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			gr := schema.GroupResource{Group: gvk.Group, Resource: gvk.Kind}
+			return nil, apierrors.NewNotFound(gr, name)
+		}
+		return nil, err
+	}
+
+	// Search for the resource in the manifests
+	for _, m := range work.Spec.Workload.Manifests {
+		obj, err := manifestToUnstructured(m)
+		if err != nil {
+			continue
+		}
+
+		if obj.GetKind() == gvk.Kind &&
+			obj.GetAPIVersion() == gvk.GroupVersion().String() &&
+			obj.GetNamespace() == namespace &&
+			obj.GetName() == name {
+			return obj, nil
+		}
+	}
+
+	gr := schema.GroupResource{Group: gvk.Group, Resource: gvk.Kind}
+	return nil, apierrors.NewNotFound(gr, name)
+}
+
+// DiscoverResources discovers resources within the ManifestWork that match the discovery criteria.
+func (c *Client) DiscoverResources(
+	ctx context.Context,
+	gvk schema.GroupVersionKind,
+	discovery manifest.Discovery,
+) (*unstructured.UnstructuredList, error) {
+	return c.DiscoverManifest(ctx, c.config.ConsumerName, c.config.WorkName, discovery)
+}
+
+// buildManifestWork creates a ManifestWork containing all resources as manifests.
+func (c *Client) buildManifestWork(resources []transport_client.ResourceToApply) (*workv1.ManifestWork, error) {
+	manifests := make([]workv1.Manifest, 0, len(resources))
+
+	// Find the highest generation among all resources
+	var maxGeneration int64
+	for _, r := range resources {
+		gen := manifest.GetGenerationFromUnstructured(r.Manifest)
+		if gen > maxGeneration {
+			maxGeneration = gen
+		}
+	}
+
+	// Convert each resource to a Manifest
+	for _, r := range resources {
+		raw, err := json.Marshal(r.Manifest.Object)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal manifest %s: %w", r.Name, err)
+		}
+		manifests = append(manifests, workv1.Manifest{
+			RawExtension: runtime.RawExtension{Raw: raw},
+		})
+	}
+
+	// Build the ManifestWork
+	work := &workv1.ManifestWork{}
+	work.Name = c.config.WorkName
+	work.Namespace = c.config.ConsumerName
+
+	if c.config.WorkLabels != nil {
+		work.Labels = c.config.WorkLabels
+	}
+
+	if work.Annotations == nil {
+		work.Annotations = make(map[string]string)
+	}
+	work.Annotations[constants.AnnotationGeneration] = fmt.Sprintf("%d", maxGeneration)
+
+	work.Spec.Workload.Manifests = manifests
+
+	return work, nil
+}
+
+// determineOperation determines the operation that was performed based on the ManifestWork.
+func (c *Client) determineOperation(work *workv1.ManifestWork) manifest.Operation {
+	if work == nil {
+		return manifest.OperationCreate
+	}
+	if work.ResourceVersion == "" {
+		return manifest.OperationCreate
+	}
+	return manifest.OperationUpdate
+}
+
+// manifestToUnstructured converts a workv1.Manifest to an unstructured object.
+func manifestToUnstructured(m workv1.Manifest) (*unstructured.Unstructured, error) {
+	if m.Raw == nil {
+		return nil, fmt.Errorf("manifest has no raw data")
+	}
+
+	var obj map[string]interface{}
+	if err := json.Unmarshal(m.Raw, &obj); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal manifest: %w", err)
+	}
+
+	return &unstructured.Unstructured{Object: obj}, nil
 }

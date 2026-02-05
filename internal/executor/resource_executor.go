@@ -4,12 +4,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/mitchellh/copystructure"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/generation"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/k8s_client"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transport_client"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/constants"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -19,16 +18,16 @@ import (
 
 // ResourceExecutor creates and updates Kubernetes resources
 type ResourceExecutor struct {
-	k8sClient k8s_client.K8sClient
-	log       logger.Logger
+	client transport_client.TransportClient
+	log    logger.Logger
 }
 
 // newResourceExecutor creates a new resource executor
 // NOTE: Caller (NewExecutor) is responsible for config validation
 func newResourceExecutor(config *ExecutorConfig) *ResourceExecutor {
 	return &ResourceExecutor{
-		k8sClient: config.K8sClient,
-		log:       config.Logger,
+		client: config.TransportClient,
+		log:    config.Logger,
 	}
 }
 
@@ -85,25 +84,25 @@ func (re *ResourceExecutor) executeResource(ctx context.Context, resource config
 	return re.applyResource(ctx, resource, manifest, execCtx)
 }
 
-// applyResource handles resource discovery, generation comparison, and execution of operations.
-// It discovers existing resources (via Discovery config or by name), compares generations,
-// and performs the appropriate operation (create, update, recreate, or skip).
-func (re *ResourceExecutor) applyResource(ctx context.Context, resource config_loader.Resource, manifest *unstructured.Unstructured, execCtx *ExecutionContext) (ResourceResult, error) {
+// applyResource handles resource discovery and applies the resource using the transport client.
+// It discovers existing resources (via Discovery config or by name), then delegates to
+// the transport client to handle generation comparison and operations.
+func (re *ResourceExecutor) applyResource(ctx context.Context, resource config_loader.Resource, resourceManifest *unstructured.Unstructured, execCtx *ExecutionContext) (ResourceResult, error) {
 	result := ResourceResult{
 		Name:         resource.Name,
-		Kind:         manifest.GetKind(),
-		Namespace:    manifest.GetNamespace(),
-		ResourceName: manifest.GetName(),
+		Kind:         resourceManifest.GetKind(),
+		Namespace:    resourceManifest.GetNamespace(),
+		ResourceName: resourceManifest.GetName(),
 		Status:       StatusSuccess,
 	}
 
-	if re.k8sClient == nil {
+	if re.client == nil {
 		result.Status = StatusFailed
-		result.Error = fmt.Errorf("kubernetes client not configured")
-		return result, NewExecutorError(PhaseResources, resource.Name, "kubernetes client not configured", result.Error)
+		result.Error = fmt.Errorf("transport client not configured")
+		return result, NewExecutorError(PhaseResources, resource.Name, "transport client not configured", result.Error)
 	}
 
-	gvk := manifest.GroupVersionKind()
+	gvk := resourceManifest.GroupVersionKind()
 
 	// Discover existing resource
 	var existingResource *unstructured.Unstructured
@@ -115,7 +114,7 @@ func (re *ResourceExecutor) applyResource(ctx context.Context, resource config_l
 	} else {
 		// No Discovery config - lookup by name from manifest
 		re.log.Debugf(ctx, "Looking up existing resource by name...")
-		existingResource, err = re.k8sClient.GetResource(ctx, gvk, manifest.GetNamespace(), manifest.GetName())
+		existingResource, err = re.client.GetResource(ctx, gvk, resourceManifest.GetNamespace(), resourceManifest.GetName())
 	}
 
 	// Fail fast on any error except NotFound (which means resource doesn't exist yet)
@@ -131,47 +130,31 @@ func (re *ResourceExecutor) applyResource(ctx context.Context, resource config_l
 		re.log.Debugf(ctx, "No existing resource found, will create")
 	}
 
-	// Extract manifest generation once for use in comparison and logging
-	manifestGen := generation.GetGenerationFromUnstructured(manifest)
-
-	// Add observed_generation to context early so it appears in all subsequent logs
+	// Extract manifest generation for logging
+	manifestGen := manifest.GetGenerationFromUnstructured(resourceManifest)
 	ctx = logger.WithObservedGeneration(ctx, manifestGen)
 
-	// Get existing generation (0 if not found)
-	var existingGen int64
-	if existingResource != nil {
-		existingGen = generation.GetGenerationFromUnstructured(existingResource)
+	// Prepare apply options
+	var applyOpts *transport_client.ApplyOptions
+	if resource.RecreateOnChange {
+		applyOpts = &transport_client.ApplyOptions{RecreateOnChange: true}
 	}
 
-	// Compare generations to determine operation
-	decision := generation.CompareGenerations(manifestGen, existingGen, existingResource != nil)
+	// Use transport client to apply the resource
+	applyResult, err := re.client.ApplyResources(ctx, []transport_client.ResourceToApply{
+		{
+			Name:     resource.Name,
+			Manifest: resourceManifest,
+			Existing: existingResource,
+			Options:  applyOpts,
+		},
+	})
 
-	// Handle recreateOnChange override
-	result.Operation = decision.Operation
-	result.OperationReason = decision.Reason
-	if decision.Operation == generation.OperationUpdate && resource.RecreateOnChange {
-		result.Operation = generation.OperationRecreate
-		result.OperationReason = fmt.Sprintf("%s, recreateOnChange=true", decision.Reason)
-	}
-
-	// Log the operation decision
-	re.log.Infof(ctx, "Resource[%s] is processing: operation=%s reason=%s",
-		resource.Name, strings.ToUpper(string(result.Operation)), result.OperationReason)
-
-	// Execute the operation
-	switch result.Operation {
-	case generation.OperationCreate:
-		result.Resource, err = re.createResource(ctx, manifest)
-	case generation.OperationUpdate:
-		result.Resource, err = re.updateResource(ctx, existingResource, manifest)
-	case generation.OperationRecreate:
-		result.Resource, err = re.recreateResource(ctx, existingResource, manifest)
-	case generation.OperationSkip:
-		result.Resource = existingResource
-	}
-
-	if err != nil {
+	if err != nil || applyResult.Failed() {
 		result.Status = StatusFailed
+		if err == nil && len(applyResult.Results) > 0 {
+			err = applyResult.Results[0].Error
+		}
 		result.Error = err
 		// Set ExecutionError for K8s operation failure
 		execCtx.Adapter.ExecutionError = &ExecutionError{
@@ -181,14 +164,23 @@ func (re *ResourceExecutor) applyResource(ctx context.Context, resource config_l
 		}
 		errCtx := logger.WithK8sResult(ctx, "FAILED")
 		errCtx = logger.WithErrorField(errCtx, err)
-		re.log.Errorf(errCtx, "Resource[%s] processed: operation=%s reason=%s",
-			resource.Name, result.Operation, result.OperationReason)
-		return result, NewExecutorError(PhaseResources, resource.Name,
-			fmt.Sprintf("failed to %s resource", result.Operation), err)
+		re.log.Errorf(errCtx, "Resource[%s] processed: FAILED", resource.Name)
+		return result, NewExecutorError(PhaseResources, resource.Name, "failed to apply resource", err)
 	}
+
+	// Extract result from ApplyResourcesResult
+	if len(applyResult.Results) > 0 {
+		r := applyResult.Results[0]
+		if r.ApplyResult != nil {
+			result.Operation = r.Operation
+			result.OperationReason = r.Reason
+			result.Resource = r.Resource
+		}
+	}
+
 	successCtx := logger.WithK8sResult(ctx, "SUCCESS")
 	re.log.Infof(successCtx, "Resource[%s] processed: operation=%s reason=%s",
-		resource.Name, result.Operation, result.OperationReason)
+		resource.Name, strings.ToUpper(string(result.Operation)), result.OperationReason)
 
 	// Store resource in execution context
 	if result.Resource != nil {
@@ -251,7 +243,7 @@ func validateManifest(obj *unstructured.Unstructured) error {
 	}
 
 	// Validate required generation annotation
-	if generation.GetGenerationFromUnstructured(obj) == 0 {
+	if manifest.GetGenerationFromUnstructured(obj) == 0 {
 		return fmt.Errorf("manifest missing required annotation %q", constants.AnnotationGeneration)
 	}
 
@@ -260,8 +252,8 @@ func validateManifest(obj *unstructured.Unstructured) error {
 
 // discoverExistingResource discovers an existing resource using the discovery config
 func (re *ResourceExecutor) discoverExistingResource(ctx context.Context, gvk schema.GroupVersionKind, discovery *config_loader.DiscoveryConfig, execCtx *ExecutionContext) (*unstructured.Unstructured, error) {
-	if re.k8sClient == nil {
-		return nil, fmt.Errorf("kubernetes client not configured")
+	if re.client == nil {
+		return nil, fmt.Errorf("transport client not configured")
 	}
 
 	// Render discovery namespace template
@@ -277,7 +269,7 @@ func (re *ResourceExecutor) discoverExistingResource(ctx context.Context, gvk sc
 		if err != nil {
 			return nil, fmt.Errorf("failed to render byName template: %w", err)
 		}
-		return re.k8sClient.GetResource(ctx, gvk, namespace, name)
+		return re.client.GetResource(ctx, gvk, namespace, name)
 	}
 
 	// Discover by label selector
@@ -296,14 +288,14 @@ func (re *ResourceExecutor) discoverExistingResource(ctx context.Context, gvk sc
 			renderedLabels[renderedK] = renderedV
 		}
 
-		labelSelector := k8s_client.BuildLabelSelector(renderedLabels)
+		labelSelector := manifest.BuildLabelSelector(renderedLabels)
 
-		discoveryConfig := &k8s_client.DiscoveryConfig{
+		discoveryConfig := &manifest.DiscoveryConfig{
 			Namespace:     namespace,
 			LabelSelector: labelSelector,
 		}
 
-		list, err := re.k8sClient.DiscoverResources(ctx, gvk, discoveryConfig)
+		list, err := re.client.DiscoverResources(ctx, gvk, discoveryConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -312,93 +304,10 @@ func (re *ResourceExecutor) discoverExistingResource(ctx context.Context, gvk sc
 			return nil, apierrors.NewNotFound(schema.GroupResource{Group: gvk.Group, Resource: gvk.Kind}, "")
 		}
 
-		return generation.GetLatestGenerationFromList(list), nil
+		return manifest.GetLatestGenerationFromList(list), nil
 	}
 
 	return nil, fmt.Errorf("discovery config must specify byName or bySelectors")
-}
-
-// createResource creates a new Kubernetes resource
-func (re *ResourceExecutor) createResource(ctx context.Context, manifest *unstructured.Unstructured) (*unstructured.Unstructured, error) {
-	if re.k8sClient == nil {
-		return nil, fmt.Errorf("kubernetes client not configured")
-	}
-
-	return re.k8sClient.CreateResource(ctx, manifest)
-}
-
-// updateResource updates an existing Kubernetes resource
-func (re *ResourceExecutor) updateResource(ctx context.Context, existing, manifest *unstructured.Unstructured) (*unstructured.Unstructured, error) {
-	if re.k8sClient == nil {
-		return nil, fmt.Errorf("kubernetes client not configured")
-	}
-
-	// Preserve resourceVersion from existing for update
-	manifest.SetResourceVersion(existing.GetResourceVersion())
-	manifest.SetUID(existing.GetUID())
-
-	return re.k8sClient.UpdateResource(ctx, manifest)
-}
-
-// recreateResource deletes and recreates a Kubernetes resource
-// It waits for the resource to be fully deleted before creating the new one
-// to avoid race conditions with Kubernetes asynchronous deletion
-func (re *ResourceExecutor) recreateResource(ctx context.Context, existing, manifest *unstructured.Unstructured) (*unstructured.Unstructured, error) {
-	if re.k8sClient == nil {
-		return nil, fmt.Errorf("kubernetes client not configured")
-	}
-
-	gvk := existing.GroupVersionKind()
-	namespace := existing.GetNamespace()
-	name := existing.GetName()
-
-	// Delete the existing resource
-	re.log.Debugf(ctx, "Deleting resource for recreation")
-	if err := re.k8sClient.DeleteResource(ctx, gvk, namespace, name); err != nil {
-		return nil, fmt.Errorf("failed to delete resource for recreation: %w", err)
-	}
-
-	// Wait for the resource to be fully deleted
-	re.log.Debugf(ctx, "Waiting for resource deletion to complete")
-	if err := re.waitForDeletion(ctx, gvk, namespace, name); err != nil {
-		return nil, fmt.Errorf("failed waiting for resource deletion: %w", err)
-	}
-
-	// Create the new resource
-	re.log.Debugf(ctx, "Creating new resource after deletion confirmed")
-	return re.k8sClient.CreateResource(ctx, manifest)
-}
-
-// waitForDeletion polls until the resource is confirmed deleted or context times out
-// Returns nil when the resource is confirmed gone (NotFound), or an error otherwise
-func (re *ResourceExecutor) waitForDeletion(ctx context.Context, gvk schema.GroupVersionKind, namespace, name string) error {
-	const pollInterval = 100 * time.Millisecond
-
-	ticker := time.NewTicker(pollInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			re.log.Warnf(ctx, "Context cancelled/timed out while waiting for deletion")
-			return fmt.Errorf("context cancelled while waiting for resource deletion: %w", ctx.Err())
-		case <-ticker.C:
-			_, err := re.k8sClient.GetResource(ctx, gvk, namespace, name)
-			if err != nil {
-				// NotFound means the resource is deleted - this is success
-				if apierrors.IsNotFound(err) {
-					re.log.Debugf(ctx, "Resource deletion confirmed")
-					return nil
-				}
-				// Any other error is unexpected
-				errCtx := logger.WithErrorField(ctx, err)
-				re.log.Errorf(errCtx, "Error checking resource deletion status")
-				return fmt.Errorf("error checking deletion status: %w", err)
-			}
-			// Resource still exists, continue polling
-			re.log.Debugf(ctx, "Resource still exists, waiting for deletion...")
-		}
-	}
 }
 
 // convertToStringKeyMap converts map[interface{}]interface{} to map[string]interface{}

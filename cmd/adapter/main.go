@@ -290,7 +290,7 @@ func runServe() error {
 	exec, err := executor.NewBuilder().
 		WithConfig(config).
 		WithAPIClient(apiClient).
-		WithK8sClient(k8sClient).
+		WithTransportClient(k8sClient).
 		WithLogger(log).
 		Build()
 	if err != nil {
