@@ -79,23 +79,38 @@ make fmt
 ```
 hyperfleet-adapter/
 ├── cmd/
-│   └── adapter/          # Main application entry point
+│   └── adapter/            # Main application entry point
 ├── pkg/
-│   ├── errors/           # Error handling utilities
-│   └── logger/           # Structured logging with context support
+│   ├── constants/          # Shared constants (annotations, labels)
+│   ├── errors/             # Error handling utilities
+│   ├── health/             # Health and metrics servers
+│   ├── logger/             # Structured logging with context support
+│   ├── otel/               # OpenTelemetry tracing utilities
+│   ├── utils/              # General utility functions
+│   └── version/            # Version information
 ├── internal/
-│   ├── broker_consumer/  # Message broker consumer implementations
-│   ├── config_loader/    # Configuration loading logic
-│   ├── criteria/         # Precondition and CEL evaluation
-│   ├── executor/         # Event execution engine
-│   ├── hyperfleet_api/   # HyperFleet API client
-│   └── k8s_client/       # Kubernetes client wrapper
-├── test/                 # Integration tests
-├── charts/               # Helm chart for Kubernetes deployment
-├── Dockerfile            # Multi-stage Docker build
-├── Makefile              # Build and test automation
-├── go.mod                # Go module dependencies
-└── README.md             # This file
+│   ├── config_loader/      # Configuration loading and validation
+│   ├── criteria/           # Precondition and CEL evaluation
+│   ├── executor/           # Event execution engine (phases pipeline)
+│   ├── hyperfleet_api/     # HyperFleet API client
+│   ├── k8s_client/         # Kubernetes client wrapper
+│   ├── maestro_client/     # Maestro/OCM ManifestWork client
+│   ├── manifest/           # Manifest utilities (generation, rendering)
+│   └── resource_applier/   # ResourceApplier interface (unified apply)
+├── test/
+│   └── integration/        # Integration tests
+│       ├── config-loader/  # Config loader integration tests
+│       ├── executor/       # Executor integration tests
+│       ├── k8s_client/     # K8s client integration tests
+│       ├── maestro_client/ # Maestro client integration tests
+│       └── testutil/       # Test utilities
+├── charts/                 # Helm chart for Kubernetes deployment
+├── configs/                # Configuration templates and examples
+├── scripts/                # Build and test scripts
+├── Dockerfile              # Multi-stage Docker build
+├── Makefile                # Build and test automation
+├── go.mod                  # Go module dependencies
+└── README.md               # This file
 ```
 
 ### Available Make Targets

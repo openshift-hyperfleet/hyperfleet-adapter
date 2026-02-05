@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/cloudevents/sdk-go/v2/event"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleet_api"
@@ -14,16 +13,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// testPAE creates a PostActionExecutor for tests
-func testPAE() *PostActionExecutor {
-	return newPostActionExecutor(&ExecutorConfig{
-		Logger:    logger.NewTestLogger(),
-		APIClient: newMockAPIClient(),
-	})
+// testPostActionsPhase creates a PostActionsPhase for tests
+func testPostActionsPhase() *PostActionsPhase {
+	return NewPostActionsPhase(
+		newMockAPIClient(),
+		&config_loader.Config{},
+		logger.NewTestLogger(),
+	)
 }
 
 func TestBuildPayload(t *testing.T) {
-	pae := testPAE()
+	phase := testPostActionsPhase()
 
 	tests := []struct {
 		name        string
@@ -95,10 +95,10 @@ func TestBuildPayload(t *testing.T) {
 			for k, v := range tt.params {
 				evalCtx.Set(k, v)
 			}
-			evaluator, err := criteria.NewEvaluator(context.Background(), evalCtx, pae.log)
+			evaluator, err := criteria.NewEvaluator(context.Background(), evalCtx, phase.log)
 			assert.NoError(t, err)
 
-			result, err := pae.buildPayload(context.Background(), tt.build, evaluator, tt.params)
+			result, err := phase.buildPayload(context.Background(), tt.build, evaluator, tt.params)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -112,7 +112,7 @@ func TestBuildPayload(t *testing.T) {
 }
 
 func TestBuildMapPayload(t *testing.T) {
-	pae := testPAE()
+	phase := testPostActionsPhase()
 
 	tests := []struct {
 		name        string
@@ -175,9 +175,9 @@ func TestBuildMapPayload(t *testing.T) {
 			for k, v := range tt.params {
 				evalCtx.Set(k, v)
 			}
-			evaluator, err := criteria.NewEvaluator(context.Background(), evalCtx, pae.log)
+			evaluator, err := criteria.NewEvaluator(context.Background(), evalCtx, phase.log)
 			require.NoError(t, err)
-			result, err := pae.buildMapPayload(context.Background(), tt.input, evaluator, tt.params)
+			result, err := phase.buildMapPayload(context.Background(), tt.input, evaluator, tt.params)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -191,7 +191,7 @@ func TestBuildMapPayload(t *testing.T) {
 }
 
 func TestProcessValue(t *testing.T) {
-	pae := testPAE()
+	phase := testPostActionsPhase()
 
 	tests := []struct {
 		name        string
@@ -285,9 +285,9 @@ func TestProcessValue(t *testing.T) {
 			for k, v := range tt.evalCtxData {
 				evalCtx.Set(k, v)
 			}
-			evaluator, err := criteria.NewEvaluator(context.Background(), evalCtx, pae.log)
+			evaluator, err := criteria.NewEvaluator(context.Background(), evalCtx, phase.log)
 			require.NoError(t, err)
-			result, err := pae.processValue(context.Background(), tt.value, evaluator, tt.params)
+			result, err := phase.processValue(context.Background(), tt.value, evaluator, tt.params)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -300,7 +300,7 @@ func TestProcessValue(t *testing.T) {
 	}
 }
 
-func TestPostActionExecutor_ExecuteAll(t *testing.T) {
+func TestPostActionsPhase_ExecuteAll(t *testing.T) {
 	tests := []struct {
 		name            string
 		postConfig      *config_loader.PostConfig
@@ -376,16 +376,15 @@ func TestPostActionExecutor_ExecuteAll(t *testing.T) {
 				mockClient.DoResponse = tt.mockResponse
 			}
 
-			pae := newPostActionExecutor(&ExecutorConfig{
-				APIClient: mockClient,
-				Logger:    logger.NewTestLogger(),
-			})
+			phase := NewPostActionsPhase(
+				mockClient,
+				&config_loader.Config{},
+				logger.NewTestLogger(),
+			)
 
-			evt := event.New()
-			evt.SetID("test-event")
 			execCtx := NewExecutionContext(context.Background(), map[string]interface{}{}, nil)
 
-			results, err := pae.ExecuteAll(
+			results, err := phase.executeAll(
 				context.Background(),
 				tt.postConfig,
 				execCtx,
