@@ -3,6 +3,7 @@ package k8s_client
 import (
 	"context"
 
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/resource_applier"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -10,12 +11,25 @@ import (
 // K8sClient defines the interface for Kubernetes operations.
 // This interface allows for easy mocking in unit tests without requiring
 // a real Kubernetes cluster or DryRun mode.
+//
+// K8sClient embeds ResourceApplier, providing unified resource apply operations
+// that work across different backends (direct K8s, Maestro, etc.).
 type K8sClient interface {
-	// Resource CRUD operations
+	// Embed ResourceApplier for unified apply operations
+	// This provides: ApplyResources, GetResource, DiscoverResources
+	resource_applier.ResourceApplier
 
-	// GetResource retrieves a single Kubernetes resource by GVK, namespace, and name.
-	// Returns the resource or an error if not found.
-	GetResource(ctx context.Context, gvk schema.GroupVersionKind, namespace, name string) (*unstructured.Unstructured, error)
+	// ApplyResource creates or updates a single Kubernetes resource based on generation comparison.
+	// This is a K8sClient-specific convenience method for single resource operations.
+	//
+	// If the resource doesn't exist, it creates it.
+	// If it exists and the generation differs, it updates (or recreates if RecreateOnChange=true).
+	// If it exists and the generation matches, it skips the update (idempotent).
+	//
+	// The manifest must have the hyperfleet.io/generation annotation set.
+	ApplyResource(ctx context.Context, newManifest *unstructured.Unstructured, existing *unstructured.Unstructured, opts *ApplyOptions) (*ApplyResult, error)
+
+	// Resource CRUD operations (additional to ResourceApplier)
 
 	// CreateResource creates a new Kubernetes resource.
 	// Returns the created resource with server-generated fields populated.
@@ -27,13 +41,6 @@ type K8sClient interface {
 
 	// DeleteResource deletes a Kubernetes resource by GVK, namespace, and name.
 	DeleteResource(ctx context.Context, gvk schema.GroupVersionKind, namespace, name string) error
-
-	// Discovery operations
-
-	// DiscoverResources discovers Kubernetes resources based on the Discovery configuration.
-	// If Discovery.IsSingleResource() is true, it fetches a single resource by name.
-	// Otherwise, it lists resources matching the label selector.
-	DiscoverResources(ctx context.Context, gvk schema.GroupVersionKind, discovery Discovery) (*unstructured.UnstructuredList, error)
 
 	// Data extraction operations
 
@@ -48,3 +55,6 @@ type K8sClient interface {
 
 // Ensure Client implements K8sClient interface
 var _ K8sClient = (*Client)(nil)
+
+// Ensure Client implements ResourceApplier interface
+var _ resource_applier.ResourceApplier = (*Client)(nil)

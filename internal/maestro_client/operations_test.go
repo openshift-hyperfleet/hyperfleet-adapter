@@ -1,14 +1,14 @@
 // Package maestro_client tests
 //
-// Note: Tests for generation.ValidateGeneration, generation.ValidateGenerationFromUnstructured,
-// and generation.ValidateManifestWorkGeneration are in internal/generation/generation_test.go.
+// Note: Tests for manifest.ValidateGeneration, manifest.ValidateGenerationFromUnstructured,
+// and manifest.ValidateManifestWorkGeneration are in internal/generation/generation_test.go.
 // This file contains tests specific to maestro_client functionality.
 package maestro_client
 
 import (
 	"testing"
 
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/generation"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/constants"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	workv1 "open-cluster-management.io/api/work/v1"
@@ -73,7 +73,7 @@ func TestGetGenerationFromManifestWork(t *testing.T) {
 			if tt.work == nil {
 				result = 0
 			} else {
-				result = generation.GetGeneration(tt.work.ObjectMeta)
+				result = manifest.GetGeneration(tt.work.ObjectMeta)
 			}
 			if result != tt.expected {
 				t.Errorf("expected generation %d, got %d", tt.expected, result)

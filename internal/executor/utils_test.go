@@ -12,6 +12,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleet_api"
 	apierrors "github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -783,7 +784,7 @@ func TestExecuteLogAction(t *testing.T) {
 	}
 }
 
-// TestConvertToStringKeyMap tests map key conversion
+// TestConvertToStringKeyMap tests map key conversion (now in utils package)
 func TestConvertToStringKeyMap(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -860,76 +861,7 @@ func TestConvertToStringKeyMap(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := convertToStringKeyMap(tt.input)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
-
-// TestConvertSlice tests slice element conversion
-func TestConvertSlice(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    []interface{}
-		expected []interface{}
-	}{
-		{
-			name:     "empty slice",
-			input:    []interface{}{},
-			expected: []interface{}{},
-		},
-		{
-			name:     "simple values",
-			input:    []interface{}{"a", "b", "c"},
-			expected: []interface{}{"a", "b", "c"},
-		},
-		{
-			name:     "numeric values",
-			input:    []interface{}{1, 2, 3},
-			expected: []interface{}{1, 2, 3},
-		},
-		{
-			name: "nested maps in slice",
-			input: []interface{}{
-				map[interface{}]interface{}{"key": "value1"},
-				map[interface{}]interface{}{"key": "value2"},
-			},
-			expected: []interface{}{
-				map[string]interface{}{"key": "value1"},
-				map[string]interface{}{"key": "value2"},
-			},
-		},
-		{
-			name: "nested slices",
-			input: []interface{}{
-				[]interface{}{"a", "b"},
-				[]interface{}{"c", "d"},
-			},
-			expected: []interface{}{
-				[]interface{}{"a", "b"},
-				[]interface{}{"c", "d"},
-			},
-		},
-		{
-			name: "mixed types",
-			input: []interface{}{
-				"string",
-				123,
-				map[interface{}]interface{}{"nested": "map"},
-				[]interface{}{"nested", "slice"},
-			},
-			expected: []interface{}{
-				"string",
-				123,
-				map[string]interface{}{"nested": "map"},
-				[]interface{}{"nested", "slice"},
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := convertSlice(tt.input)
+			result := utils.ConvertToStringKeyMap(tt.input)
 			assert.Equal(t, tt.expected, result)
 		})
 	}

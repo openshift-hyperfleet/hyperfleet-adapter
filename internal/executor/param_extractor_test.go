@@ -3,6 +3,7 @@ package executor
 import (
 	"testing"
 
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -86,7 +87,7 @@ func TestConvertToString(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := convertToString(tt.value)
+			got, err := utils.ConvertToString(tt.value)
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
 		})
@@ -114,7 +115,7 @@ func TestConvertToInt64(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := convertToInt64(tt.value)
+			got, err := utils.ConvertToInt64(tt.value)
 			if tt.wantErr {
 				require.Error(t, err)
 			} else {
@@ -146,7 +147,7 @@ func TestConvertToFloat64(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := convertToFloat64(tt.value)
+			got, err := utils.ConvertToFloat64(tt.value)
 			if tt.wantErr {
 				require.Error(t, err)
 			} else {
@@ -190,7 +191,7 @@ func TestConvertToBool(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := convertToBool(tt.value)
+			got, err := utils.ConvertToBool(tt.value)
 			if tt.wantErr {
 				require.Error(t, err)
 			} else {
