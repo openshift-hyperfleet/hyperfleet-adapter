@@ -17,13 +17,14 @@ DEV_TAG ?= dev-$(GIT_COMMIT)
 BUILD_DATE := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 
 # LDFLAGS for build
-# Note: Variables are in package main, so use main.varName (not full import path)
+# Version info is set in pkg/version package for use across the codebase
+VERSION_PKG := github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/version
 LDFLAGS := -w -s
-LDFLAGS += -X main.version=$(VERSION)
-LDFLAGS += -X main.commit=$(GIT_COMMIT)
-LDFLAGS += -X main.buildDate=$(BUILD_DATE)
+LDFLAGS += -X $(VERSION_PKG).Version=$(VERSION)
+LDFLAGS += -X $(VERSION_PKG).Commit=$(GIT_COMMIT)
+LDFLAGS += -X $(VERSION_PKG).BuildDate=$(BUILD_DATE)
 ifneq ($(GIT_TAG),)
-LDFLAGS += -X main.tag=$(GIT_TAG)
+LDFLAGS += -X $(VERSION_PKG).Tag=$(GIT_TAG)
 endif
 
 # Go parameters

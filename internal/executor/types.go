@@ -7,6 +7,7 @@ import (
 
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/generation"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleet_api"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/k8s_client"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
@@ -132,8 +133,8 @@ type ResourceResult struct {
 	ResourceName string
 	// Status is the result status
 	Status ExecutionStatus
-	// Operation is the operation performed (create, update, skip)
-	Operation ResourceOperation
+	// Operation is the operation performed (create, update, recreate, skip)
+	Operation generation.Operation
 	// Resource is the created/updated resource (if successful)
 	Resource *unstructured.Unstructured
 	// OperationReason explains why this operation was performed
@@ -142,20 +143,6 @@ type ResourceResult struct {
 	// Error is the error if Status is StatusFailed
 	Error error
 }
-
-// ResourceOperation represents the operation performed on a resource
-type ResourceOperation string
-
-const (
-	// OperationCreate indicates a resource was created
-	OperationCreate ResourceOperation = "create"
-	// OperationUpdate indicates a resource was updated
-	OperationUpdate ResourceOperation = "update"
-	// OperationRecreate indicates a resource was deleted and recreated
-	OperationRecreate ResourceOperation = "recreate"
-	// OperationSkip indicates no operation was needed
-	OperationSkip ResourceOperation = "skip"
-)
 
 // PostActionResult contains the result of a single post-action execution
 type PostActionResult struct {

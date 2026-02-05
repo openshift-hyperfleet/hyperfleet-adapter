@@ -21,6 +21,7 @@ import (
 func TestMain(m *testing.M) {
 	// Set required environment variables for tests
 	os.Setenv("HYPERFLEET_API_BASE_URL", "http://test-api.example.com")
+	os.Setenv("HYPERFLEET_API_TOKEN", "test-token-for-integration-tests")
 	os.Exit(m.Run())
 }
 

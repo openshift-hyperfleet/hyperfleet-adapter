@@ -16,17 +16,10 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/health"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/otel"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/version"
 	"github.com/openshift-hyperfleet/hyperfleet-broker/broker"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-)
-
-// Build-time variables set via ldflags
-var (
-	version   = "0.1.0"
-	commit    = "none"
-	buildDate = "unknown"
-	tag       = "none"
 )
 
 // Command-line flags
@@ -107,11 +100,12 @@ and HyperFleet API calls.`,
 		Use:   "version",
 		Short: "Print version information",
 		Run: func(cmd *cobra.Command, args []string) {
+			info := version.Info()
 			fmt.Printf("HyperFleet Adapter\n")
-			fmt.Printf("  Version:    %s\n", version)
-			fmt.Printf("  Commit:     %s\n", commit)
-			fmt.Printf("  Built:      %s\n", buildDate)
-			fmt.Printf("  Tag:        %s\n", tag)
+			fmt.Printf("  Version:    %s\n", info.Version)
+			fmt.Printf("  Commit:     %s\n", info.Commit)
+			fmt.Printf("  Built:      %s\n", info.BuildDate)
+			fmt.Printf("  Tag:        %s\n", info.Tag)
 		},
 	}
 
@@ -142,7 +136,7 @@ func buildLoggerConfig(component string) logger.Config {
 	}
 
 	cfg.Component = component
-	cfg.Version = version
+	cfg.Version = version.Version
 
 	return cfg
 }
@@ -159,12 +153,12 @@ func runServe() error {
 		return fmt.Errorf("failed to create logger: %w", err)
 	}
 
-	log.Infof(ctx, "Starting Hyperfleet Adapter version=%s commit=%s built=%s tag=%s", version, commit, buildDate, tag)
+	log.Infof(ctx, "Starting Hyperfleet Adapter version=%s commit=%s built=%s tag=%s", version.Version, version.Commit, version.BuildDate, version.Tag)
 
 	// Load adapter configuration
 	// If configPath flag is empty, config_loader.Load will read from ADAPTER_CONFIG_PATH env var
 	log.Info(ctx, "Loading adapter configuration...")
-	adapterConfig, err := config_loader.Load(configPath, config_loader.WithAdapterVersion(version))
+	adapterConfig, err := config_loader.Load(configPath, config_loader.WithAdapterVersion(version.Version))
 	if err != nil {
 		errCtx := logger.WithErrorField(ctx, err)
 		log.Errorf(errCtx, "Failed to load adapter configuration")
@@ -187,7 +181,7 @@ func runServe() error {
 	sampleRatio := otel.GetTraceSampleRatio(log, ctx)
 
 	// Initialize OpenTelemetry for trace_id/span_id generation and HTTP propagation
-	tp, err := otel.InitTracer(adapterConfig.Metadata.Name, version, sampleRatio)
+	tp, err := otel.InitTracer(adapterConfig.Metadata.Name, version.Version, sampleRatio)
 	if err != nil {
 		errCtx := logger.WithErrorField(ctx, err)
 		log.Errorf(errCtx, "Failed to initialize OpenTelemetry")
@@ -223,8 +217,8 @@ func runServe() error {
 	// Start metrics server with build info
 	metricsServer := health.NewMetricsServer(log, MetricsServerPort, health.MetricsConfig{
 		Component: adapterConfig.Metadata.Name,
-		Version:   version,
-		Commit:    commit,
+		Version:   version.Version,
+		Commit:    version.Commit,
 	})
 	if err := metricsServer.Start(ctx); err != nil {
 		errCtx := logger.WithErrorField(ctx, err)

@@ -40,6 +40,7 @@ func getProjectRoot() string {
 func TestLoadTemplateConfig(t *testing.T) {
 	// Set required environment variables for the template config
 	t.Setenv("HYPERFLEET_API_BASE_URL", "http://test-api.example.com")
+	t.Setenv("HYPERFLEET_API_TOKEN", "test-token-for-integration-tests")
 
 	projectRoot := getProjectRoot()
 	configPath := filepath.Join(projectRoot, "configs/adapterconfig-template.yaml")

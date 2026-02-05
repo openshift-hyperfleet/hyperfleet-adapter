@@ -8,8 +8,9 @@ import (
 
 	"github.com/mitchellh/copystructure"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/generation"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/k8s_client"
-	apperrors "github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/errors"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/constants"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -80,61 +81,77 @@ func (re *ResourceExecutor) executeResource(ctx context.Context, resource config
 
 	re.log.Debugf(ctx, "Resource[%s] manifest built: namespace=%s", resource.Name, manifest.GetNamespace())
 
-	// Step 2: Check for existing resource using discovery
-	var existingResource *unstructured.Unstructured
-	if resource.Discovery != nil {
-		re.log.Debugf(ctx, "Discovering existing resource...")
-		existingResource, err = re.discoverExistingResource(ctx, gvk, resource.Discovery, execCtx)
-		if err != nil && !apierrors.IsNotFound(err) {
-			if apperrors.IsRetryableDiscoveryError(err) {
-				// Transient/network error - log and continue, we'll try to create
-				re.log.Warnf(ctx, "Transient discovery error (continuing): %v", err)
-			} else {
-				// Fatal error (auth, permission, validation) - fail fast
-				result.Status = StatusFailed
-				result.Error = err
-				return result, NewExecutorError(PhaseResources, resource.Name, "failed to discover existing resource", err)
-			}
-		}
-		if existingResource != nil {
-			re.log.Debugf(ctx, "Existing resource found: %s/%s", existingResource.GetNamespace(), existingResource.GetName())
-		} else {
-			re.log.Debugf(ctx, "No existing resource found, will create")
-		}
+	// Step 2: Delegate to applyResource which handles discovery, generation comparison, and operations
+	return re.applyResource(ctx, resource, manifest, execCtx)
+}
+
+// applyResource handles resource discovery, generation comparison, and execution of operations.
+// It discovers existing resources (via Discovery config or by name), compares generations,
+// and performs the appropriate operation (create, update, recreate, or skip).
+func (re *ResourceExecutor) applyResource(ctx context.Context, resource config_loader.Resource, manifest *unstructured.Unstructured, execCtx *ExecutionContext) (ResourceResult, error) {
+	result := ResourceResult{
+		Name:         resource.Name,
+		Kind:         manifest.GetKind(),
+		Namespace:    manifest.GetNamespace(),
+		ResourceName: manifest.GetName(),
+		Status:       StatusSuccess,
 	}
 
-	// Step 3: Determine and perform the appropriate operation
-	// Extract manifest generation once for use in comparison and logging
-	manifestGen := k8s_client.GetGenerationAnnotation(manifest)
+	if re.k8sClient == nil {
+		result.Status = StatusFailed
+		result.Error = fmt.Errorf("kubernetes client not configured")
+		return result, NewExecutorError(PhaseResources, resource.Name, "kubernetes client not configured", result.Error)
+	}
 
-	// Add observed_generation to context early so it appears in all subsequent logs
-	if manifestGen > 0 {
-		ctx = logger.WithObservedGeneration(ctx, manifestGen)
+	gvk := manifest.GroupVersionKind()
+
+	// Discover existing resource
+	var existingResource *unstructured.Unstructured
+	var err error
+	if resource.Discovery != nil {
+		// Use Discovery config to find existing resource (e.g., by label selector)
+		re.log.Debugf(ctx, "Discovering existing resource using discovery config...")
+		existingResource, err = re.discoverExistingResource(ctx, gvk, resource.Discovery, execCtx)
+	} else {
+		// No Discovery config - lookup by name from manifest
+		re.log.Debugf(ctx, "Looking up existing resource by name...")
+		existingResource, err = re.k8sClient.GetResource(ctx, gvk, manifest.GetNamespace(), manifest.GetName())
+	}
+
+	// Fail fast on any error except NotFound (which means resource doesn't exist yet)
+	if err != nil && !apierrors.IsNotFound(err) {
+		result.Status = StatusFailed
+		result.Error = err
+		return result, NewExecutorError(PhaseResources, resource.Name, "failed to find existing resource", err)
 	}
 
 	if existingResource != nil {
-		// Check if generation annotations match - skip update if unchanged
-		existingGen := k8s_client.GetGenerationAnnotation(existingResource)
-
-		if existingGen == manifestGen {
-			// Generations match - no action needed
-			result.Operation = OperationSkip
-			result.Resource = existingResource
-			result.OperationReason = fmt.Sprintf("generation %d unchanged", existingGen)
-		} else {
-			// Generations do not match - perform the appropriate action
-			if resource.RecreateOnChange {
-				result.Operation = OperationRecreate
-				result.OperationReason = fmt.Sprintf("generation changed %d->%d, recreateOnChange=true", existingGen, manifestGen)
-			} else {
-				result.Operation = OperationUpdate
-				result.OperationReason = fmt.Sprintf("generation changed %d->%d", existingGen, manifestGen)
-			}
-		}
+		re.log.Debugf(ctx, "Existing resource found: %s/%s", existingResource.GetNamespace(), existingResource.GetName())
 	} else {
-		// Create new resource
-		result.Operation = OperationCreate
-		result.OperationReason = "resource not found"
+		re.log.Debugf(ctx, "No existing resource found, will create")
+	}
+
+	// Extract manifest generation once for use in comparison and logging
+	manifestGen := generation.GetGenerationFromUnstructured(manifest)
+
+	// Add observed_generation to context early so it appears in all subsequent logs
+	ctx = logger.WithObservedGeneration(ctx, manifestGen)
+
+	// Get existing generation (0 if not found)
+	var existingGen int64
+	if existingResource != nil {
+		existingGen = generation.GetGenerationFromUnstructured(existingResource)
+	}
+
+	// Compare generations to determine operation
+	decision := generation.CompareGenerations(manifestGen, existingGen, existingResource != nil)
+
+	// Handle recreateOnChange override
+	result.Operation = decision.Operation
+	result.OperationReason = decision.Reason
+	if decision.Operation == generation.OperationUpdate && resource.RecreateOnChange {
+		result.Operation = generation.OperationRecreate
+		result.OperationReason = fmt.Sprintf("%s, recreateOnChange=true", decision.Reason)
 	}
 
 	// Log the operation decision
@@ -143,14 +160,14 @@ func (re *ResourceExecutor) executeResource(ctx context.Context, resource config
 
 	// Execute the operation
 	switch result.Operation {
-	case OperationCreate:
+	case generation.OperationCreate:
 		result.Resource, err = re.createResource(ctx, manifest)
-	case OperationUpdate:
+	case generation.OperationUpdate:
 		result.Resource, err = re.updateResource(ctx, existingResource, manifest)
-	case OperationRecreate:
+	case generation.OperationRecreate:
 		result.Resource, err = re.recreateResource(ctx, existingResource, manifest)
-	case OperationSkip:
-		// No action needed, resource already set above
+	case generation.OperationSkip:
+		result.Resource = existingResource
 	}
 
 	if err != nil {
@@ -234,8 +251,8 @@ func validateManifest(obj *unstructured.Unstructured) error {
 	}
 
 	// Validate required generation annotation
-	if k8s_client.GetGenerationAnnotation(obj) == 0 {
-		return fmt.Errorf("manifest missing required annotation %q", k8s_client.AnnotationGeneration)
+	if generation.GetGenerationFromUnstructured(obj) == 0 {
+		return fmt.Errorf("manifest missing required annotation %q", constants.AnnotationGeneration)
 	}
 
 	return nil
@@ -295,7 +312,7 @@ func (re *ResourceExecutor) discoverExistingResource(ctx context.Context, gvk sc
 			return nil, apierrors.NewNotFound(schema.GroupResource{Group: gvk.Group, Resource: gvk.Kind}, "")
 		}
 
-		return k8s_client.GetLatestGenerationResource(list), nil
+		return generation.GetLatestGenerationFromList(list), nil
 	}
 
 	return nil, fmt.Errorf("discovery config must specify byName or bySelectors")

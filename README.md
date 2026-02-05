@@ -157,12 +157,26 @@ A  HyperFleet Adapter requires several files for configuration:
 
 The adapter supports multiple configuration sources with the following priority order:
 
-1. **Environment Variable** (`ADAPTER_CONFIG_FILE`) - Highest priority
-2. **Default location Mount** (`/etc/adapter/adapterconfig.yaml`)
+1. **Environment Variable** (`ADAPTER_CONFIG_PATH`) - Highest priority
+2. **ConfigMap Mount** (`/etc/adapter/config/adapter-deployment-config.yaml`)
 
 See `configs/adapterconfig-template.yaml` for configuration template.
 
-#### Broker Configuration
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ADAPTER_CONFIG_PATH` | Path to adapter configuration file | `/etc/adapter/config/adapter-deployment-config.yaml` |
+| `HYPERFLEET_USER_AGENT` | Custom User-Agent string for HTTP clients (Maestro, HyperFleet API) | `hyperfleet-adapter/{version}` |
+| `HYPERFLEET_API_BASE_URL` | Base URL for HyperFleet API | (from config) |
+| `HYPERFLEET_API_VERSION` | API version for HyperFleet API | (from config) |
+| `BROKER_SUBSCRIPTION_ID` | Message broker subscription ID | (required) |
+| `BROKER_TOPIC` | Message broker topic | (required) |
+| `LOG_LEVEL` | Log level (debug, info, warn, error) | `info` |
+| `LOG_FORMAT` | Log format (text, json) | `json` |
+| `LOG_OUTPUT` | Log output (stdout, stderr) | `stdout` |
+
+### Broker Configuration
 
 Broker configuration is managed separately and can be provided via:
 

@@ -10,39 +10,45 @@ import (
 // contextKey is a custom type for context keys to avoid collisions
 type contextKey string
 
+// Context keys for storing values in context.Context
+const (
+	LogFieldsKey contextKey = "log_fields"
+)
+
+// Log field name constants - use these directly in WithFields maps
 const (
 	// Required fields (per logging spec)
-	ComponentKey contextKey = "component"
-	VersionKey   contextKey = "version"
-	HostnameKey  contextKey = "hostname"
+	ComponentKey = "component"
+	VersionKey   = "version"
+	HostnameKey  = "hostname"
 
 	// Error fields (per logging spec)
-	ErrorKey      contextKey = "error"
-	StackTraceKey contextKey = "stack_trace"
+	ErrorKey      = "error"
+	StackTraceKey = "stack_trace"
 
 	// Correlation fields (distributed tracing)
-	TraceIDKey contextKey = "trace_id"
-	SpanIDKey  contextKey = "span_id"
-	EventIDKey contextKey = "event_id"
+	TraceIDKey = "trace_id"
+	SpanIDKey  = "span_id"
+	EventIDKey = "event_id"
 
 	// Resource fields (from event data)
-	ClusterIDKey    contextKey = "cluster_id"
-	ResourceTypeKey contextKey = "resource_type"
-	ResourceIDKey   contextKey = "resource_id"
+	ClusterIDKey    = "cluster_id"
+	ResourceTypeKey = "resource_type"
+	ResourceIDKey   = "resource_id"
 
 	// K8s manifest fields
-	K8sKindKey      contextKey = "k8s_kind"
-	K8sNameKey      contextKey = "k8s_name"
-	K8sNamespaceKey contextKey = "k8s_namespace"
-	K8sResultKey    contextKey = "k8s_result"
+	K8sKindKey      = "k8s_kind"
+	K8sNameKey      = "k8s_name"
+	K8sNamespaceKey = "k8s_namespace"
+	K8sResultKey    = "k8s_result"
 
 	// Adapter-specific fields
-	AdapterKey            contextKey = "adapter"
-	ObservedGenerationKey contextKey = "observed_generation"
-	SubscriptionKey       contextKey = "subscription"
+	AdapterKey            = "adapter"
+	ObservedGenerationKey = "observed_generation"
+	SubscriptionKey       = "subscription"
 
-	// Dynamic log fields
-	LogFieldsKey contextKey = "log_fields"
+	// Maestro-specific fields
+	MaestroConsumerKey = "maestro_consumer"
 )
 
 // LogFields holds dynamic key-value pairs for logging
@@ -85,67 +91,72 @@ func WithDynamicResourceID(ctx context.Context, resourceType string, resourceID 
 
 // WithTraceID returns a context with the trace ID set
 func WithTraceID(ctx context.Context, traceID string) context.Context {
-	return WithLogField(ctx, string(TraceIDKey), traceID)
+	return WithLogField(ctx, TraceIDKey, traceID)
 }
 
 // WithSpanID returns a context with the span ID set
 func WithSpanID(ctx context.Context, spanID string) context.Context {
-	return WithLogField(ctx, string(SpanIDKey), spanID)
+	return WithLogField(ctx, SpanIDKey, spanID)
 }
 
 // WithEventID returns a context with the event ID set
 func WithEventID(ctx context.Context, eventID string) context.Context {
-	return WithLogField(ctx, string(EventIDKey), eventID)
+	return WithLogField(ctx, EventIDKey, eventID)
 }
 
 // WithClusterID returns a context with the cluster ID set
 func WithClusterID(ctx context.Context, clusterID string) context.Context {
-	return WithLogField(ctx, string(ClusterIDKey), clusterID)
+	return WithLogField(ctx, ClusterIDKey, clusterID)
 }
 
 // WithResourceType returns a context with the event resource type set (e.g., "cluster", "nodepool")
 func WithResourceType(ctx context.Context, resourceType string) context.Context {
-	return WithLogField(ctx, string(ResourceTypeKey), resourceType)
+	return WithLogField(ctx, ResourceTypeKey, resourceType)
 }
 
 // WithResourceID returns a context with the event resource ID set
 func WithResourceID(ctx context.Context, resourceID string) context.Context {
-	return WithLogField(ctx, string(ResourceIDKey), resourceID)
+	return WithLogField(ctx, ResourceIDKey, resourceID)
 }
 
 // WithK8sKind returns a context with the K8s resource kind set (e.g., "Deployment", "Job")
 func WithK8sKind(ctx context.Context, kind string) context.Context {
-	return WithLogField(ctx, string(K8sKindKey), kind)
+	return WithLogField(ctx, K8sKindKey, kind)
 }
 
 // WithK8sName returns a context with the K8s resource name set
 func WithK8sName(ctx context.Context, name string) context.Context {
-	return WithLogField(ctx, string(K8sNameKey), name)
+	return WithLogField(ctx, K8sNameKey, name)
 }
 
 // WithK8sNamespace returns a context with the K8s resource namespace set
 func WithK8sNamespace(ctx context.Context, namespace string) context.Context {
-	return WithLogField(ctx, string(K8sNamespaceKey), namespace)
+	return WithLogField(ctx, K8sNamespaceKey, namespace)
 }
 
 // WithK8sResult returns a context with the K8s resource operation result set (SUCCESS/FAILED)
 func WithK8sResult(ctx context.Context, result string) context.Context {
-	return WithLogField(ctx, string(K8sResultKey), result)
+	return WithLogField(ctx, K8sResultKey, result)
 }
 
 // WithAdapter returns a context with the adapter name set
 func WithAdapter(ctx context.Context, adapter string) context.Context {
-	return WithLogField(ctx, string(AdapterKey), adapter)
+	return WithLogField(ctx, AdapterKey, adapter)
 }
 
 // WithObservedGeneration returns a context with the observed generation set
 func WithObservedGeneration(ctx context.Context, generation int64) context.Context {
-	return WithLogField(ctx, string(ObservedGenerationKey), generation)
+	return WithLogField(ctx, ObservedGenerationKey, generation)
 }
 
 // WithSubscription returns a context with the subscription name set
 func WithSubscription(ctx context.Context, subscription string) context.Context {
-	return WithLogField(ctx, string(SubscriptionKey), subscription)
+	return WithLogField(ctx, SubscriptionKey, subscription)
+}
+
+// WithMaestroConsumer returns a context with the Maestro consumer name set
+func WithMaestroConsumer(ctx context.Context, consumer string) context.Context {
+	return WithLogField(ctx, MaestroConsumerKey, consumer)
 }
 
 // WithErrorField returns a context with the error message set.
@@ -157,7 +168,7 @@ func WithErrorField(ctx context.Context, err error) context.Context {
 	if err == nil {
 		return ctx
 	}
-	ctx = WithLogField(ctx, string(ErrorKey), err.Error())
+	ctx = WithLogField(ctx, ErrorKey, err.Error())
 
 	// Only capture stack trace for unexpected/internal errors
 	if shouldCaptureStackTrace(err) {
@@ -196,12 +207,12 @@ func WithOTelTraceContext(ctx context.Context) context.Context {
 
 	// Add trace_id if valid
 	if spanCtx.HasTraceID() {
-		ctx = WithLogField(ctx, string(TraceIDKey), spanCtx.TraceID().String())
+		ctx = WithLogField(ctx, TraceIDKey, spanCtx.TraceID().String())
 	}
 
 	// Add span_id if valid
 	if spanCtx.HasSpanID() {
-		ctx = WithLogField(ctx, string(SpanIDKey), spanCtx.SpanID().String())
+		ctx = WithLogField(ctx, SpanIDKey, spanCtx.SpanID().String())
 	}
 
 	return ctx
