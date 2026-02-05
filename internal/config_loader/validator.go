@@ -3,13 +3,13 @@ package config_loader
 import (
 	"fmt"
 	"os"
-	"reflect"
 	"regexp"
 	"strings"
 
 	"github.com/google/cel-go/cel"
 
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/utils"
 )
 
 // templateVarRegex matches Go template variables like {{ .varName }} or {{ .nested.var }}
@@ -206,18 +206,10 @@ func (v *Validator) validateConditionValue(operator string, value interface{}, p
 	}
 
 	if op == criteria.OperatorIn || op == criteria.OperatorNotIn {
-		if !isSliceOrArray(value) {
+		if !utils.IsSliceOrArray(value) {
 			v.errors.Add(path, fmt.Sprintf("value must be a list for operator %q", operator))
 		}
 	}
-}
-
-func isSliceOrArray(value interface{}) bool {
-	if value == nil {
-		return false
-	}
-	kind := reflect.TypeOf(value).Kind()
-	return kind == reflect.Slice || kind == reflect.Array
 }
 
 // =============================================================================

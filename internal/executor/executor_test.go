@@ -288,7 +288,7 @@ func TestExecute_ParamExtraction(t *testing.T) {
 	}
 }
 
-func TestParamExtractor(t *testing.T) {
+func TestParamExtractionPhase(t *testing.T) {
 	t.Setenv("TEST_ENV", "env-value")
 
 	evt := event.New()
@@ -364,8 +364,9 @@ func TestParamExtractor(t *testing.T) {
 				},
 			}
 
-			// Extract params using pure function
-			err := extractConfigParams(config, execCtx, nil)
+			// Create ParamExtractionPhase and extract params
+			phase := NewParamExtractionPhase(config, nil, logger.NewTestLogger())
+			err := phase.extractConfigParams(execCtx)
 
 			if tt.expectError {
 				assert.Error(t, err)
