@@ -7,10 +7,9 @@ metadata:
     {{- include "hyperfleet-adapter.labels" . | nindent 4 }}
     app.kubernetes.io/component: adapter-config
 data:
-
   {{- if .Values.adapterConfig.yaml }}
-  # Task YAML configuration
-  adapterconfig.yaml: |
+  # AdapterConfig YAML
+  adapter-config.yaml: |
     {{- if kindIs "string" .Values.adapterConfig.yaml }}
 {{ .Values.adapterConfig.yaml | nindent 4 }}
     {{- else }}

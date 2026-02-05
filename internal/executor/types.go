@@ -56,8 +56,8 @@ type EventData struct {
 
 // ExecutorConfig holds configuration for the executor
 type ExecutorConfig struct {
-	// AdapterConfig is the loaded adapter configuration
-	AdapterConfig *config_loader.AdapterConfig
+	// Config is the unified configuration (merged from deployment and task configs)
+	Config *config_loader.Config
 	// APIClient is the HyperFleet API client
 	APIClient hyperfleet_api.Client
 	// K8sClient is the Kubernetes client
@@ -168,6 +168,8 @@ type PostActionResult struct {
 type ExecutionContext struct {
 	// Ctx is the Go context
 	Ctx context.Context
+	// Config is the unified adapter configuration
+	Config *config_loader.Config
 	// EventData is the parsed event data payload
 	EventData map[string]interface{}
 	// Params holds extracted parameters and captured fields
@@ -238,9 +240,10 @@ type ExecutionError struct {
 }
 
 // NewExecutionContext creates a new execution context
-func NewExecutionContext(ctx context.Context, eventData map[string]interface{}) *ExecutionContext {
+func NewExecutionContext(ctx context.Context, eventData map[string]interface{}, config *config_loader.Config) *ExecutionContext {
 	return &ExecutionContext{
 		Ctx:         ctx,
+		Config:      config,
 		EventData:   eventData,
 		Params:      make(map[string]interface{}),
 		Resources:   make(map[string]*unstructured.Unstructured),

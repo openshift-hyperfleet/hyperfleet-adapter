@@ -130,8 +130,7 @@ func createK8sTestEvent(clusterId string) *event.Event {
 	evt.SetTime(time.Now())
 
 	eventData := map[string]interface{}{
-		"cluster_id":    clusterId,
-		"resource_id":   "resource-" + clusterId,
+		"id":            clusterId,
 		"resource_type": "cluster",
 		"generation":    "gen-001",
 		"href":          "/api/v1/clusters/" + clusterId,
@@ -142,23 +141,25 @@ func createK8sTestEvent(clusterId string) *event.Event {
 	return &evt
 }
 
-// createK8sTestConfig creates an AdapterConfig with K8s resources
-func createK8sTestConfig(apiBaseURL, testNamespace string) *config_loader.AdapterConfig {
-	return &config_loader.AdapterConfig{
-		APIVersion: "hyperfleet.redhat.com/v1alpha1",
-		Kind:       "AdapterConfig",
+// createK8sTestConfig creates a unified Config with K8s resources
+func createK8sTestConfig(apiBaseURL, testNamespace string) *config_loader.Config {
+	_ = apiBaseURL // Base URL is pulled from env params
+	return &config_loader.Config{
+		APIVersion: config_loader.APIVersionV1Alpha1,
+		Kind:       config_loader.ExpectedKindConfig,
 		Metadata: config_loader.Metadata{
-			Name:      "k8s-test-adapter",
-			Namespace: testNamespace,
+			Name: "k8s-test-adapter",
 		},
-		Spec: config_loader.AdapterConfigSpec{
+		Spec: config_loader.ConfigSpec{
 			Adapter: config_loader.AdapterInfo{
 				Version: "1.0.0",
 			},
-			HyperfleetAPI: config_loader.HyperfleetAPIConfig{
-				Timeout:       "10s",
-				RetryAttempts: 1,
-				RetryBackoff:  "constant",
+			Clients: config_loader.ClientsConfig{
+				HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+					Timeout:       10 * time.Second,
+					RetryAttempts: 1,
+					RetryBackoff:  hyperfleet_api.BackoffConstant,
+				},
 			},
 			Params: []config_loader.Parameter{
 				{
@@ -174,7 +175,7 @@ func createK8sTestConfig(apiBaseURL, testNamespace string) *config_loader.Adapte
 				},
 				{
 					Name:     "clusterId",
-					Source:   "event.cluster_id",
+					Source:   "event.id",
 					Required: true,
 				},
 				{
@@ -338,7 +339,7 @@ func TestExecutor_K8s_CreateResources(t *testing.T) {
 
 	// Create executor with real K8s client
 	exec, err := executor.NewBuilder().
-		WithAdapterConfig(config).
+		WithConfig(config).
 		WithAPIClient(apiClient).
 		WithK8sClient(k8sEnv.Client).
 		WithLogger(k8sEnv.Log).
@@ -486,7 +487,7 @@ func TestExecutor_K8s_UpdateExistingResource(t *testing.T) {
 	apiClient, err := hyperfleet_api.NewClient(testLog())
 	require.NoError(t, err)
 	exec, err := executor.NewBuilder().
-		WithAdapterConfig(config).
+		WithConfig(config).
 		WithAPIClient(apiClient).
 		WithK8sClient(k8sEnv.Client).
 		WithLogger(k8sEnv.Log).
@@ -593,7 +594,7 @@ func TestExecutor_K8s_DiscoveryByLabels(t *testing.T) {
 	apiClient, err := hyperfleet_api.NewClient(testLog())
 	require.NoError(t, err)
 	exec, err := executor.NewBuilder().
-		WithAdapterConfig(config).
+		WithConfig(config).
 		WithAPIClient(apiClient).
 		WithK8sClient(k8sEnv.Client).
 		WithLogger(k8sEnv.Log).
@@ -664,7 +665,7 @@ func TestExecutor_K8s_RecreateOnChange(t *testing.T) {
 	apiClient, err := hyperfleet_api.NewClient(testLog())
 	require.NoError(t, err)
 	exec, err := executor.NewBuilder().
-		WithAdapterConfig(config).
+		WithConfig(config).
 		WithAPIClient(apiClient).
 		WithK8sClient(k8sEnv.Client).
 		WithLogger(k8sEnv.Log).
@@ -722,7 +723,7 @@ func TestExecutor_K8s_MultipleResourceTypes(t *testing.T) {
 	apiClient, err := hyperfleet_api.NewClient(testLog())
 	require.NoError(t, err)
 	exec, err := executor.NewBuilder().
-		WithAdapterConfig(config).
+		WithConfig(config).
 		WithAPIClient(apiClient).
 		WithK8sClient(k8sEnv.Client).
 		WithLogger(k8sEnv.Log).
@@ -770,7 +771,7 @@ func TestExecutor_K8s_ResourceCreationFailure(t *testing.T) {
 	apiClient, err := hyperfleet_api.NewClient(testLog())
 	require.NoError(t, err)
 	exec, err := executor.NewBuilder().
-		WithAdapterConfig(config).
+		WithConfig(config).
 		WithAPIClient(apiClient).
 		WithK8sClient(k8sEnv.Client).
 		WithLogger(k8sEnv.Log).
@@ -879,22 +880,23 @@ func TestExecutor_K8s_MultipleMatchingResources(t *testing.T) {
 
 	// Create config WITHOUT discovery - just create a new resource
 	// Discovery-based update logic is not yet implemented
-	config := &config_loader.AdapterConfig{
-		APIVersion: "hyperfleet.redhat.com/v1alpha1",
-		Kind:       "AdapterConfig",
+	config := &config_loader.Config{
+		APIVersion: config_loader.APIVersionV1Alpha1,
+		Kind:       config_loader.ExpectedKindConfig,
 		Metadata: config_loader.Metadata{
-			Name:      "multi-match-test",
-			Namespace: testNamespace,
+			Name: "multi-match-test",
 		},
-		Spec: config_loader.AdapterConfigSpec{
+		Spec: config_loader.ConfigSpec{
 			Adapter: config_loader.AdapterInfo{Version: "1.0.0"},
-			HyperfleetAPI: config_loader.HyperfleetAPIConfig{
-				Timeout: "10s", RetryAttempts: 1,
+			Clients: config_loader.ClientsConfig{
+				HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+					Timeout: 10 * time.Second, RetryAttempts: 1,
+				},
 			},
 			Params: []config_loader.Parameter{
 				{Name: "hyperfleetApiBaseUrl", Source: "env.HYPERFLEET_API_BASE_URL", Required: true},
 				{Name: "hyperfleetApiVersion", Default: "v1"},
-				{Name: "clusterId", Source: "event.cluster_id", Required: true},
+				{Name: "clusterId", Source: "event.id", Required: true},
 			},
 			// No preconditions - this test focuses on resource creation
 			Resources: []config_loader.Resource{
@@ -904,8 +906,7 @@ func TestExecutor_K8s_MultipleMatchingResources(t *testing.T) {
 						"apiVersion": "v1",
 						"kind":       "ConfigMap",
 						"metadata": map[string]interface{}{
-							"name":      "config-{{ .clusterId }}-new",
-							"namespace": testNamespace,
+							"name": "config-{{ .clusterId }}-new",
 							"labels": map[string]interface{}{
 								"hyperfleet.io/cluster-id": "{{ .clusterId }}",
 								"app":                      "multi-match-test",
@@ -925,7 +926,7 @@ func TestExecutor_K8s_MultipleMatchingResources(t *testing.T) {
 	apiClient, err := hyperfleet_api.NewClient(testLog())
 	require.NoError(t, err)
 	exec, err := executor.NewBuilder().
-		WithAdapterConfig(config).
+		WithConfig(config).
 		WithAPIClient(apiClient).
 		WithK8sClient(k8sEnv.Client).
 		WithLogger(k8sEnv.Log).
@@ -997,7 +998,7 @@ func TestExecutor_K8s_PostActionsAfterPreconditionNotMet(t *testing.T) {
 	apiClient, err := hyperfleet_api.NewClient(testLog())
 	require.NoError(t, err)
 	exec, err := executor.NewBuilder().
-		WithAdapterConfig(config).
+		WithConfig(config).
 		WithAPIClient(apiClient).
 		WithK8sClient(k8sEnv.Client).
 		WithLogger(k8sEnv.Log).

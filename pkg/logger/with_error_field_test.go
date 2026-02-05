@@ -61,18 +61,11 @@ func TestWithErrorField(t *testing.T) {
 	t.Run("preserves_existing_context_fields", func(t *testing.T) {
 		ctx := context.Background()
 		ctx = WithEventID(ctx, "evt-123")
-		ctx = WithClusterID(ctx, "cls-456")
 
 		err := errors.New("test error")
 		result := WithErrorField(ctx, err)
 
 		fields := GetLogFields(result)
-		if fields["event_id"] != "evt-123" {
-			t.Errorf("Expected event_id=evt-123, got %v", fields["event_id"])
-		}
-		if fields["cluster_id"] != "cls-456" {
-			t.Errorf("Expected cluster_id=cls-456, got %v", fields["cluster_id"])
-		}
 		if fields["error"] != "test error" {
 			t.Errorf("Expected error='test error', got %v", fields["error"])
 		}

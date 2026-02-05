@@ -3,7 +3,7 @@
 
 ## Application configuration section
 ## ================================
-# AdapterConfig can be created:
+# AdapterConfig (deployment/client config) can be created:
 # - option1: from an existing ConfigMap by setting configMapName
 # - option2: from a YAML file by setting yaml
 # - option3: from a set of files by setting files
@@ -13,16 +13,16 @@ adapterConfig:
   # option1: ConfigMap name (if different from default, and set create: false)
   #configMapName: ""
 
-  # option2: Adapter YAML configuration (creates adapterconfig.yaml key in ConfigMap)
-  # yaml: 
+  # option2: AdapterConfig YAML (creates adapter-config.yaml key in ConfigMap)
+  # yaml:
   #  apiVersion: hyperfleet.redhat.com/v1alpha1
   #  kind: AdapterConfig
 
-  # option3: Task YAML files packaged with the chart
+  # option3: AdapterConfig YAML files packaged with the chart
   # files:
-    # adapterconfig.yaml: examples/provider-adapterconfig.yaml
-    # deployment.yaml: examples/provider-deployment.yaml
-  # HyperFleet API configuration
+    # adapter-config.yaml: examples/adapter-config.yaml
+
+  # HyperFleet API env vars used by task params
   hyperfleetApi:
     # Base URL for HyperFleet API (HYPERFLEET_API_BASE_URL)
     baseUrl: http://hyperfleet-api:8000
@@ -31,6 +31,25 @@ adapterConfig:
 
   log:
     level: info
+
+# AdapterTaskConfig (business logic) can be created:
+# - option1: from an existing ConfigMap by setting configMapName
+# - option2: from a YAML file by setting yaml
+# - option3: from a set of files by setting files
+adapterTaskConfig:
+  create: true
+
+  # option1: ConfigMap name (if different from default, and set create: false)
+  #configMapName: ""
+
+  # option2: AdapterTaskConfig YAML (creates task-config.yaml key in ConfigMap)
+  # yaml:
+  #  apiVersion: hyperfleet.redhat.com/v1alpha1
+  #  kind: AdapterTaskConfig
+
+  # option3: AdapterTaskConfig YAML files packaged with the chart
+  # files:
+    # task-config.yaml: examples/adapter-task-config.yaml
 
 
 # Broker configuration can be created:
@@ -46,7 +65,7 @@ broker:
   # yaml: ""
 
   # option3: Broker type identifier (googlepubsub, rabbitmq, etc.) - used as label
-  # Subscription ID for the adapter to consume from (BROKER_SUBSCRIPTION_ID env var)
+  # Subscription/topic are used to set adapter broker config overrides
   googlepubsub:
     projectId: ""
     subscriptionId: ""
@@ -114,7 +133,9 @@ command:
 args:
   - serve
   - --config
-  - /etc/adapter/adapterconfig.yaml
+  - /etc/adapter/adapter-config.yaml
+  - --task-config
+  - /etc/adapter/task-config.yaml
 
 serviceAccount:
   # Specifies whether a service account should be created

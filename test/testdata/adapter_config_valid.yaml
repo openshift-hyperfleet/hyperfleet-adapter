@@ -4,7 +4,6 @@ apiVersion: hyperfleet.redhat.com/v1alpha1
 kind: AdapterConfig
 metadata:
   name: example-adapter
-  namespace: hyperfleet-system
   labels:
     hyperfleet.io/adapter-type: example
     hyperfleet.io/component: adapter
@@ -34,12 +33,7 @@ spec:
       default: "v1"
 
     - name: "clusterId"
-      source: "event.cluster_id"
-      type: "string"
-      required: true
-
-    - name: "resourceId"
-      source: "event.resource_id"
+      source: "event.id"
       type: "string"
       required: true
 
@@ -172,13 +166,9 @@ spec:
                 resources.clusterNamespace.status.phase == "Active"
               description: "Cluster namespace is active"
 
-          observed_generation:
-            value: "{{ .resourceId }}"
-            description: "Resource ID processed"
+          observed_generation: "{{ .generationId }}"
 
-          lastUpdated:
-            value: "{{ now | date \"2006-01-02T15:04:05Z07:00\" }}"
-            description: "Timestamp of status update"
+          lastUpdated: "{{ now | date \"2006-01-02T15:04:05Z07:00\" }}"
 
     postActions:
       - name: "reportClusterStatus"

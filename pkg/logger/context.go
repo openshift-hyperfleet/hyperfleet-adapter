@@ -32,9 +32,7 @@ const (
 	EventIDKey = "event_id"
 
 	// Resource fields (from event data)
-	ClusterIDKey    = "cluster_id"
 	ResourceTypeKey = "resource_type"
-	ResourceIDKey   = "resource_id"
 
 	// K8s manifest fields
 	K8sKindKey      = "k8s_kind"
@@ -104,19 +102,9 @@ func WithEventID(ctx context.Context, eventID string) context.Context {
 	return WithLogField(ctx, EventIDKey, eventID)
 }
 
-// WithClusterID returns a context with the cluster ID set
-func WithClusterID(ctx context.Context, clusterID string) context.Context {
-	return WithLogField(ctx, ClusterIDKey, clusterID)
-}
-
 // WithResourceType returns a context with the event resource type set (e.g., "cluster", "nodepool")
 func WithResourceType(ctx context.Context, resourceType string) context.Context {
 	return WithLogField(ctx, ResourceTypeKey, resourceType)
-}
-
-// WithResourceID returns a context with the event resource ID set
-func WithResourceID(ctx context.Context, resourceID string) context.Context {
-	return WithLogField(ctx, ResourceIDKey, resourceID)
 }
 
 // WithK8sKind returns a context with the K8s resource kind set (e.g., "Deployment", "Job")

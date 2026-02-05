@@ -525,9 +525,9 @@ func TestRenderTemplateBytes(t *testing.T) {
 		},
 		{
 			name:     "JSON body template",
-			template: `{"cluster_id": "{{ .clusterId }}", "region": "{{ .region }}"}`,
+			template: `{"id": "{{ .clusterId }}", "region": "{{ .region }}"}`,
 			data:     map[string]interface{}{"clusterId": "cluster-123", "region": "us-east-1"},
-			expected: []byte(`{"cluster_id": "cluster-123", "region": "us-east-1"}`),
+			expected: []byte(`{"id": "cluster-123", "region": "us-east-1"}`),
 		},
 		{
 			name:        "missing variable error",

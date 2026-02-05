@@ -383,7 +383,7 @@ func TestPostActionExecutor_ExecuteAll(t *testing.T) {
 
 			evt := event.New()
 			evt.SetID("test-event")
-			execCtx := NewExecutionContext(context.Background(), map[string]interface{}{})
+			execCtx := NewExecutionContext(context.Background(), map[string]interface{}{}, nil)
 
 			results, err := pae.ExecuteAll(
 				context.Background(),
@@ -593,7 +593,7 @@ func TestExecuteAPICall(t *testing.T) {
 				mockClient.DoError = tt.mockError
 			}
 
-			execCtx := NewExecutionContext(context.Background(), map[string]interface{}{})
+			execCtx := NewExecutionContext(context.Background(), map[string]interface{}{}, nil)
 			execCtx.Params = tt.params
 
 			resp, url, err := ExecuteAPICall(

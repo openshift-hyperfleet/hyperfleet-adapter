@@ -76,13 +76,14 @@ resp, err := client.Post(ctx, url, xmlBody,
 func createAPIClient(apiConfig config_loader.HyperfleetAPIConfig) (hyperfleet_api.Client, error) {
     var opts []hyperfleet_api.ClientOption
 
-    // Parse and set timeout using the accessor method
-    timeout, err := apiConfig.ParseTimeout()
-    if err != nil {
-        return nil, fmt.Errorf("invalid timeout %q: %w", apiConfig.Timeout, err)
+    // Set base URL if configured (env fallback handled in NewClient)
+    if apiConfig.BaseURL != "" {
+        opts = append(opts, hyperfleet_api.WithBaseURL(apiConfig.BaseURL))
     }
-    if timeout > 0 {
-        opts = append(opts, hyperfleet_api.WithTimeout(timeout))
+
+    // Set timeout if configured (0 means use default)
+    if apiConfig.Timeout > 0 {
+        opts = append(opts, hyperfleet_api.WithTimeout(apiConfig.Timeout))
     }
 
     // Set retry attempts
@@ -90,15 +91,26 @@ func createAPIClient(apiConfig config_loader.HyperfleetAPIConfig) (hyperfleet_ap
         opts = append(opts, hyperfleet_api.WithRetryAttempts(apiConfig.RetryAttempts))
     }
 
-    // Parse and validate retry backoff strategy
+    // Validate and set retry backoff strategy
     if apiConfig.RetryBackoff != "" {
-        backoff := hyperfleet_api.BackoffStrategy(apiConfig.RetryBackoff)
-        switch backoff {
+        switch apiConfig.RetryBackoff {
         case hyperfleet_api.BackoffExponential, hyperfleet_api.BackoffLinear, hyperfleet_api.BackoffConstant:
-            opts = append(opts, hyperfleet_api.WithRetryBackoff(backoff))
+            opts = append(opts, hyperfleet_api.WithRetryBackoff(apiConfig.RetryBackoff))
         default:
             return nil, fmt.Errorf("invalid retry backoff strategy %q (supported: exponential, linear, constant)", apiConfig.RetryBackoff)
         }
+    }
+
+    if apiConfig.BaseDelay > 0 {
+        opts = append(opts, hyperfleet_api.WithBaseDelay(apiConfig.BaseDelay))
+    }
+
+    if apiConfig.MaxDelay > 0 {
+        opts = append(opts, hyperfleet_api.WithMaxDelay(apiConfig.MaxDelay))
+    }
+
+    for key, value := range apiConfig.DefaultHeaders {
+        opts = append(opts, hyperfleet_api.WithDefaultHeader(key, value))
     }
 
     return hyperfleet_api.NewClient(opts...), nil

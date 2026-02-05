@@ -1,14 +1,19 @@
 adapterConfig:
   create: true
   files:
-    adapterconfig.yaml: examples/adapterconfig.yaml
-    job.yaml: examples/job.yaml
-    job-serviceaccount.yaml: examples/job-serviceaccount.yaml
-    job-role.yaml: examples/job-role.yaml
-    job-rolebinding.yaml: examples/job-rolebinding.yaml
-    deployment.yaml: examples/deployment.yaml
+    adapter-config.yaml: examples/adapter-config.yaml
   log:
     level: debug
+
+adapterTaskConfig:
+  create: true
+  files:
+    task-config.yaml: examples/adapter-task-config.yaml
+    job.yaml: examples/adapter-task-resource-job.yaml
+    job-serviceaccount.yaml: examples/adapter-task-resource-job-serviceaccount.yaml
+    job-role.yaml: examples/adapter-task-resource-job-role.yaml
+    job-rolebinding.yaml: examples/adapter-task-resource-job-rolebinding.yaml
+    deployment.yaml: examples/adapter-task-resource-deployment.yaml
 
 broker:
   create: true

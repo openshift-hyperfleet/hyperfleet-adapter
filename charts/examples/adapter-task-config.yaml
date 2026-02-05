@@ -1,24 +1,12 @@
-# Simple valid HyperFleet Adapter Configuration for testing
-
+# Example HyperFleet Adapter task configuration
 apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterConfig
+kind: AdapterTaskConfig
 metadata:
   name: example1-namespace
   labels:
     hyperfleet.io/adapter-type: example1-namespace
     hyperfleet.io/component: adapter
 spec:
-  adapter:
-    version: "0.1.0"
-  
-  hyperfleetApi:
-    timeout: 2s
-    retryAttempts: 3
-    retryBackoff: exponential
-
-  kubernetes:
-    apiVersion: "v1"
-
   # Parameters with all required variables
   params:
     - name: "hyperfleetApiBaseUrl"
@@ -61,7 +49,7 @@ spec:
     - name: "clusterStatus"
       apiCall:
         method: "GET"
-        url: "{{ .hyperfleetApiBaseUrl }}/api/hyperfleet/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}"
+        url: "/clusters/{{ .clusterId }}"
         timeout: 10s
         retryAttempts: 3
         retryBackoff: "exponential"
@@ -150,7 +138,6 @@ spec:
             hyperfleet.io/generation: "{{ .generationSpec }}"
             hyperfleet.io/cluster-id: "{{ .clusterId }}"
 
-
     # the following configuration is for a deployment that will be created in the cluster
     # in the same namespace as the adapter
     # and using the same service account as the adapter
@@ -228,7 +215,7 @@ spec:
       - name: "reportClusterStatus"
         apiCall:
           method: "POST"
-          url: "{{ .hyperfleetApiBaseUrl }}/api/hyperfleet/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}/statuses"
+          url: "/clusters/{{ .clusterId }}/statuses"
           headers:
             - name: "Content-Type"
               value: "application/json"

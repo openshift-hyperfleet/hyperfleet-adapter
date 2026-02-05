@@ -16,11 +16,20 @@ import (
 // API version constants
 const (
 	APIVersionV1Alpha1 = "hyperfleet.redhat.com/v1alpha1"
-	ExpectedKind       = "AdapterConfig"
 )
 
-// Environment variable for config file path
-const EnvConfigPath = "ADAPTER_CONFIG_PATH"
+// Kind constants for configuration types
+const (
+	ExpectedKindAdapter = "AdapterConfig"     // Deployment config kind
+	ExpectedKindTask    = "AdapterTaskConfig" // Task config kind
+	ExpectedKindConfig  = "Config"            // Unified merged config kind
+)
+
+// Environment variable for config file paths
+const (
+	EnvAdapterConfig  = "HYPERFLEET_ADAPTER_CONFIG" // Path to deployment config
+	EnvTaskConfigPath = "HYPERFLEET_TASK_CONFIG"    // Path to task config
+)
 
 // SupportedAPIVersions contains all supported apiVersion values
 var SupportedAPIVersions = []string{
@@ -31,36 +40,52 @@ var SupportedAPIVersions = []string{
 var ValidHTTPMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE"}
 
 // -----------------------------------------------------------------------------
-// Loader Options (Functional Options Pattern)
+// Load Options (Functional Options Pattern)
 // -----------------------------------------------------------------------------
 
-// LoaderOption configures the loader behavior
-type LoaderOption func(*loaderConfig)
+// LoadOption configures the loading behavior
+type LoadOption func(*loadOptions)
 
-type loaderConfig struct {
+type loadOptions struct {
+	adapterConfigPath      string
+	taskConfigPath         string
+	flags                  interface{} // *pflag.FlagSet
 	adapterVersion         string
 	skipSemanticValidation bool
-	baseDir                string // Base directory for resolving relative paths (buildRef, manifest.ref)
+}
+
+// WithAdapterConfigPath sets the path to the deployment config file
+func WithAdapterConfigPath(path string) LoadOption {
+	return func(o *loadOptions) {
+		o.adapterConfigPath = path
+	}
+}
+
+// WithTaskConfigPath sets the path to the task config file
+func WithTaskConfigPath(path string) LoadOption {
+	return func(o *loadOptions) {
+		o.taskConfigPath = path
+	}
+}
+
+// WithFlags sets the CLI flags for Viper binding
+func WithFlags(flags interface{}) LoadOption {
+	return func(o *loadOptions) {
+		o.flags = flags
+	}
 }
 
 // WithAdapterVersion validates config against expected adapter version
-func WithAdapterVersion(version string) LoaderOption {
-	return func(c *loaderConfig) {
-		c.adapterVersion = version
+func WithAdapterVersion(version string) LoadOption {
+	return func(o *loadOptions) {
+		o.adapterVersion = version
 	}
 }
 
 // WithSkipSemanticValidation skips CEL, template, and K8s manifest validation
-func WithSkipSemanticValidation() LoaderOption {
-	return func(c *loaderConfig) {
-		c.skipSemanticValidation = true
-	}
-}
-
-// WithBaseDir sets the base directory for resolving relative paths (buildRef, manifest.ref)
-func WithBaseDir(dir string) LoaderOption {
-	return func(c *loaderConfig) {
-		c.baseDir = dir
+func WithSkipSemanticValidation() LoadOption {
+	return func(o *loadOptions) {
+		o.skipSemanticValidation = true
 	}
 }
 
@@ -68,106 +93,107 @@ func WithBaseDir(dir string) LoaderOption {
 // Public API
 // -----------------------------------------------------------------------------
 
-// ConfigPathFromEnv returns the config file path from the ADAPTER_CONFIG_PATH environment variable
-func ConfigPathFromEnv() string {
-	return os.Getenv(EnvConfigPath)
-}
-
-// Load loads an adapter configuration from a YAML file.
-// If filePath is empty, it will read from ADAPTER_CONFIG_PATH environment variable.
-// The base directory for relative paths (buildRef, manifest.ref) is automatically
-// set to the config file's directory.
-func Load(filePath string, opts ...LoaderOption) (*AdapterConfig, error) {
-	if filePath == "" {
-		filePath = ConfigPathFromEnv()
-	}
-	if filePath == "" {
-		return nil, fmt.Errorf("config file path is required (pass as parameter or set %s environment variable)", EnvConfigPath)
-	}
-
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read config file %q: %w", filePath, err)
-	}
-
-	// Automatically set base directory from config file path
-	absPath, err := filepath.Abs(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get absolute path for %q: %w", filePath, err)
-	}
-	baseDir := filepath.Dir(absPath)
-
-	// Prepend WithBaseDir option so it can be overridden by user opts
-	allOpts := append([]LoaderOption{WithBaseDir(baseDir)}, opts...)
-	return Parse(data, allOpts...)
-}
-
-// Parse parses adapter configuration from YAML bytes
-func Parse(data []byte, opts ...LoaderOption) (*AdapterConfig, error) {
-	cfg := &loaderConfig{}
+// LoadConfig loads both deployment and task configurations, validates them,
+// and returns a unified Config struct.
+// Priority for deployment config values: CLI flags > Environment variables > Config file > Defaults
+func LoadConfig(opts ...LoadOption) (*Config, error) {
+	o := &loadOptions{}
 	for _, opt := range opts {
-		opt(cfg)
+		opt(o)
 	}
 
-	var config AdapterConfig
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("YAML parse error: %w", err)
+	// 1. Load AdapterConfig with Viper (env/CLI overrides)
+	adapterCfg, err := loadAdapterConfigWithViperGeneric(o.adapterConfigPath, o.flags)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load adapter config: %w", err)
 	}
 
-	if err := runValidationPipeline(&config, cfg); err != nil {
-		return nil, err
+	// Get base directory from adapter config path for file references
+	adapterConfigPath := o.adapterConfigPath
+	if adapterConfigPath == "" {
+		adapterConfigPath = os.Getenv(EnvAdapterConfig)
+	}
+	adapterBaseDir := ""
+	if adapterConfigPath != "" {
+		var errBaseDir error
+		adapterBaseDir, errBaseDir = getBaseDir(adapterConfigPath)
+		if errBaseDir != nil {
+			return nil, fmt.Errorf("failed to get base directory for adapter config: %w", errBaseDir)
+		}
 	}
 
-	return &config, nil
+	// Validate AdapterConfig structure
+	adapterValidator := NewAdapterConfigValidator(adapterCfg, adapterBaseDir)
+	if err := adapterValidator.ValidateStructure(); err != nil {
+		return nil, fmt.Errorf("adapter config validation failed: %w", err)
+	}
+
+	// Validate adapter version if specified
+	if o.adapterVersion != "" {
+		if err := ValidateAdapterVersion(adapterCfg, o.adapterVersion); err != nil {
+			return nil, fmt.Errorf("adapter version validation failed: %w", err)
+		}
+	}
+
+	// 2. Load AdapterTaskConfig from YAML (no env binding)
+	taskCfg, err := loadTaskConfig(o.taskConfigPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load task config: %w", err)
+	}
+
+	// Get base directory from task config path
+	taskConfigPath := o.taskConfigPath
+	if taskConfigPath == "" {
+		taskConfigPath = os.Getenv(EnvTaskConfigPath)
+	}
+	taskBaseDir := ""
+	if taskConfigPath != "" {
+		var errBaseDir error
+		taskBaseDir, errBaseDir = getBaseDir(taskConfigPath)
+		if errBaseDir != nil {
+			return nil, fmt.Errorf("failed to get base directory for task config: %w", errBaseDir)
+		}
+	}
+
+	// Validate AdapterTaskConfig structure
+	taskValidator := NewTaskConfigValidator(taskCfg, taskBaseDir)
+	if err := taskValidator.ValidateStructure(); err != nil {
+		return nil, fmt.Errorf("task config validation failed: %w", err)
+	}
+
+	// Validate and load file references in task config
+	if taskBaseDir != "" {
+		if err := taskValidator.ValidateFileReferences(); err != nil {
+			return nil, fmt.Errorf("task config file reference validation failed: %w", err)
+		}
+
+		if err := loadTaskConfigFileReferences(taskCfg, taskBaseDir); err != nil {
+			return nil, fmt.Errorf("failed to load task config file references: %w", err)
+		}
+	}
+
+	// Semantic validation for task config (optional)
+	if !o.skipSemanticValidation {
+		if err := taskValidator.ValidateSemantic(); err != nil {
+			return nil, fmt.Errorf("task config semantic validation failed: %w", err)
+		}
+	}
+
+	// 3. Merge into unified Config
+	config := Merge(adapterCfg, taskCfg)
+	if config == nil {
+		return nil, fmt.Errorf("failed to merge configurations")
+	}
+
+	return config, nil
 }
 
 // -----------------------------------------------------------------------------
-// Validation Pipeline
+// Internal Functions
 // -----------------------------------------------------------------------------
 
-// runValidationPipeline executes all validators in sequence
-func runValidationPipeline(config *AdapterConfig, cfg *loaderConfig) error {
-	validator := NewValidator(config, cfg.baseDir)
-
-	// 1. Structural validation (fail-fast)
-	if err := validator.ValidateStructure(); err != nil {
-		return fmt.Errorf("validation failed: %w", err)
-	}
-
-	// 2. Adapter version validation (optional)
-	if cfg.adapterVersion != "" {
-		if err := ValidateAdapterVersion(config, cfg.adapterVersion); err != nil {
-			return fmt.Errorf("adapter version validation failed: %w", err)
-		}
-	}
-
-	// 3. File reference validation and loading (only if baseDir is set)
-	if cfg.baseDir != "" {
-		if err := validator.ValidateFileReferences(); err != nil {
-			return fmt.Errorf("file reference validation failed: %w", err)
-		}
-
-		if err := loadFileReferences(config, cfg.baseDir); err != nil {
-			return fmt.Errorf("failed to load file references: %w", err)
-		}
-	}
-
-	// 4. Semantic validation (optional, can be skipped for performance)
-	if !cfg.skipSemanticValidation {
-		if err := validator.ValidateSemantic(); err != nil {
-			return fmt.Errorf("semantic validation failed: %w", err)
-		}
-	}
-
-	return nil
-}
-
-// -----------------------------------------------------------------------------
-// File Reference Loading
-// -----------------------------------------------------------------------------
-
-// loadFileReferences loads content from file references into the config
-func loadFileReferences(config *AdapterConfig, baseDir string) error {
+// loadTaskConfigFileReferences loads content from file references into the task config
+func loadTaskConfigFileReferences(config *AdapterTaskConfig, baseDir string) error {
 	// Load manifest.ref in spec.resources
 	for i := range config.Spec.Resources {
 		resource := &config.Spec.Resources[i]

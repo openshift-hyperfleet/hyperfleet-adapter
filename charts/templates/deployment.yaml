@@ -1,5 +1,6 @@
 {{- $brokerConfigValid := include "hyperfleet-adapter.helmValidateBrokerIsConfigured" . }}
 {{- $adapterConfigValid := include "hyperfleet-adapter.helmValidateAdapterIsConfigured" . }}
+{{- $adapterTaskConfigValid := include "hyperfleet-adapter.helmValidateAdapterTaskIsConfigured" . }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -34,7 +35,10 @@ spec:
     metadata:
       annotations:
         {{- if .Values.adapterConfig.create }}
-        checksum/config: {{ include (print $.Template.BasePath "/configmap-adapterconfig.yaml") . | sha256sum }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap-adapter.yaml") . | sha256sum }}
+        {{- end }}
+        {{- if .Values.adapterTaskConfig.create }}
+        checksum/task-config: {{ include (print $.Template.BasePath "/configmap-adapter-task.yaml") . | sha256sum }}
         {{- end }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
@@ -94,9 +98,9 @@ spec:
               value: /etc/broker/broker.yaml
             {{- $brokerType := include "hyperfleet-adapter.brokerType" . }}
             {{- if eq $brokerType "googlepubsub" }}
-            - name: BROKER_SUBSCRIPTION_ID
+            - name: HYPERFLEET_BROKER_SUBSCRIPTION_ID
               value: {{ .Values.broker.googlepubsub.subscriptionId | quote }}
-            - name: BROKER_TOPIC
+            - name: HYPERFLEET_BROKER_TOPIC
               value: {{ .Values.broker.googlepubsub.topic | quote }}
             {{- end }}
             {{- if eq $brokerType "rabbitmq" }}
@@ -124,7 +128,7 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           volumeMounts:
-            - name: config
+            - name: adapter-config
               mountPath: /etc/adapter
               readOnly: true
             - name: broker-config
@@ -138,9 +142,18 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       volumes:
-        - name: config
-          configMap:
-            name: {{ include "hyperfleet-adapter.adapterConfigMapName" . }}
+        - name: adapter-config
+          projected:
+            sources:
+              - configMap:
+                  name: {{ include "hyperfleet-adapter.adapterConfigMapName" . }}
+                  items:
+                    - key: adapter-config.yaml
+                      path: adapter-config.yaml
+              - configMap:
+                  name: {{ include "hyperfleet-adapter.adapterTaskConfigMapName" . }}
+              - configMap:
+                  name: {{ include "hyperfleet-adapter.brokerConfigMapName" . }}
         - name: broker-config
           configMap:
             name: {{ include "hyperfleet-adapter.brokerConfigMapName" . }}

@@ -135,7 +135,7 @@ Extracts parameters from various sources:
 ```yaml
 params:
   - name: "clusterId"
-    source: "event.cluster_id"
+    source: "event.id"
     type: "string"
     required: true
   - name: "apiToken"
@@ -502,11 +502,10 @@ broker_consumer.Subscribe(ctx, subscriber, topic, exec.CreateHandler())
 
 </details>
 
-### Environment Variables
+### Configuration
 
-| Variable | Description |
-|----------|-------------|
-| `KUBECONFIG` | Path to kubeconfig (for local dev) |
+Kubernetes client settings are read from the adapter deployment config at
+`spec.clients.kubernetes` (kubeconfig path or in-cluster).
 
 ## Testing
 

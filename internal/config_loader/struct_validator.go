@@ -77,8 +77,11 @@ func getStructValidator() *validator.Validate {
 		// Use yaml tag names for field names in errors
 		structValidator.RegisterTagNameFunc(extractYamlTagName)
 
-		// Build field name cache by reflecting on AdapterConfig
-		buildFieldNameCache(reflect.TypeOf(AdapterConfig{}), make(map[reflect.Type]bool))
+		// Build field name cache by reflecting on all config types
+		visited := make(map[reflect.Type]bool)
+		buildFieldNameCache(reflect.TypeOf(AdapterConfig{}), visited)
+		buildFieldNameCache(reflect.TypeOf(AdapterTaskConfig{}), visited)
+		buildFieldNameCache(reflect.TypeOf(Config{}), visited)
 	})
 	return structValidator
 }

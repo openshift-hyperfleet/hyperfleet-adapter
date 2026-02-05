@@ -150,38 +150,47 @@ Tool versions are tracked in `.bingo/*.mod` files and loaded automatically via `
 
 A  HyperFleet Adapter requires several files for configuration:
 
-- **Adapter runtime**: Configures the adapter framework application
+- **Adapter config**: Configures the adapter framework application
+- **Adapter Task config**: Configures the adapter task steps that will create resources
 - **Broker configuration**: Configures the specific broker to use by the adapter framework to receive CloudEvents
 
-#### Adapter task
+To see all configuration options read [configuration.md](configuration.md) file
 
-The adapter supports multiple configuration sources with the following priority order:
+#### Adapter configuration
+The adapter deployment configuration (`AdapterConfig`) controls runtime and infrastructure
+settings for the adapter process, such as client connections, retries, and broker
+subscription details. It is loaded with Viper, so values can be overridden by CLI flags
+and environment variables in this priority order: CLI flags > env vars > file > defaults.
 
-1. **Environment Variable** (`ADAPTER_CONFIG_PATH`) - Highest priority
-2. **ConfigMap Mount** (`/etc/adapter/config/adapter-deployment-config.yaml`)
+- **Path**: `HYPERFLEET_ADAPTER_CONFIG` (required)
+- **Common fields**: `spec.adapter.version`, `spec.debugConfig`, `spec.clients.*`
+  (HyperFleet API, Maestro, broker, Kubernetes)
 
-See `configs/adapterconfig-template.yaml` for configuration template.
+Reference examples:
+- `configs/adapter-deployment-config.yaml` (full reference with env/flag notes)
+- `charts/examples/adapter-config.yaml` (minimal deployment example)
 
-### Environment Variables
+#### Adapter task configuration
+The adapter task configuration (`AdapterTaskConfig`) defines the **business logic** for
+processing events: parameters, preconditions, resources to create, and post-actions.
+This file is loaded as **static YAML** (no Viper overrides) and is required at runtime.
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `ADAPTER_CONFIG_PATH` | Path to adapter configuration file | `/etc/adapter/config/adapter-deployment-config.yaml` |
-| `HYPERFLEET_USER_AGENT` | Custom User-Agent string for HTTP clients (Maestro, HyperFleet API) | `hyperfleet-adapter/{version}` |
-| `HYPERFLEET_API_BASE_URL` | Base URL for HyperFleet API | (from config) |
-| `HYPERFLEET_API_VERSION` | API version for HyperFleet API | (from config) |
-| `BROKER_SUBSCRIPTION_ID` | Message broker subscription ID | (required) |
-| `BROKER_TOPIC` | Message broker topic | (required) |
-| `LOG_LEVEL` | Log level (debug, info, warn, error) | `info` |
-| `LOG_FORMAT` | Log format (text, json) | `json` |
-| `LOG_OUTPUT` | Log output (stdout, stderr) | `stdout` |
+- **Path**: `HYPERFLEET_TASK_CONFIG` (required)
+- **Key sections**: `spec.params`, `spec.preconditions`, `spec.resources`, `spec.post`
+- **Resource manifests**: inline YAML or external file via `manifest.ref`
+
+Reference examples:
+- `charts/examples/adapter-task-config.yaml` (worked example)
+- `configs/adapter-task-config-template.yaml` (complete schema reference)
+
 
 ### Broker Configuration
 
-Broker configuration is managed separately and can be provided via:
-
-- **ConfigMap**: Mounted at deployment time
-- **Environment Variables**: For broker-specific settings
+Broker configuration is particular since responsibility is split between:
+- **Hyperfleet broker library**: configures the connection to a concrete broker (google pubsub, rabbitmq, ...)
+  - Configured using a YAML file specified by the `BROKER_CONFIG_FILE` environment variable
+- **Adapter**: configures which topic/subscriptions to use on the broker
+  - Configure topic/subscription in the `adapter-config.yaml` but can be overriden with env variables or cli params
 
 See the Helm chart documentation for broker configuration options.
 

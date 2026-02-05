@@ -1,6 +1,6 @@
 # Adapter example to create resources in a regional cluster
 
-This `values.yaml` deploys an `adapterconfig.yaml` that creates:
+This `values.yaml` deploys an `adapter-task-config.yaml` that creates:
 
 - A new namespace with the name of the cluster ID from the CloudEvent
 - A service account, role and role bindings in that new namespace
@@ -11,7 +11,7 @@ This `values.yaml` deploys an `adapterconfig.yaml` that creates:
 
 This example showcases:
 
-- **Inline manifests**: Defines the Kubernetes Namespace resource directly in the adapterconfig
+- **Inline manifests**: Defines the Kubernetes Namespace resource directly in the adapter task config
 - **External file references**: References external YAML files for Job, ServiceAccount, Role, RoleBinding, and Deployment
 - **Preconditions**: Fetches cluster status from the Hyperfleet API before proceeding
 - **Resource discovery**: Finds existing resources using label selectors
@@ -25,12 +25,13 @@ This example showcases:
 | File | Description |
 |------|-------------|
 | `values.yaml` | Helm values that configure the adapter, broker, image, environment variables, and RBAC permissions |
-| `adapterconfig.yaml` | Adapter configuration with inline namespace manifest, external file references, params, preconditions, and post-processing |
-| `job.yaml` | Kubernetes Job template with a main container and status-reporter sidecar |
-| `job-serviceaccount.yaml` | ServiceAccount for the Job to use in the cluster namespace |
-| `job-role.yaml` | Role granting permissions for the status-reporter to update job status |
-| `job-rolebinding.yaml` | RoleBinding connecting the ServiceAccount to the Role |
-| `deployment.yaml` | Nginx deployment template created in the adapter's namespace |
+| `adapter-config.yaml` | Adapter deployment config (clients, broker, Kubernetes settings) |
+| `adapter-task-config.yaml` | Task configuration with inline namespace manifest, external file references, params, preconditions, and post-processing |
+| `adapter-task-resource-job.yaml` | Kubernetes Job template with a main container and status-reporter sidecar |
+| `adapter-task-resource-job-serviceaccount.yaml` | ServiceAccount for the Job to use in the cluster namespace |
+| `adapter-task-resource-job-role.yaml` | Role granting permissions for the status-reporter to update job status |
+| `adapter-task-resource-job-rolebinding.yaml` | RoleBinding connecting the ServiceAccount to the Role |
+| `adapter-task-resource-deployment.yaml` | Nginx deployment template created in the adapter's namespace |
 
 ## Key Features
 
