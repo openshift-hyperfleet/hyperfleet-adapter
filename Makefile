@@ -229,15 +229,15 @@ test-helm: ## 📊 Test Helm charts (lint, template, validate)
 	@echo "📋 Testing template with broker enabled..."
 	helm template test-release charts/ \
 		--set broker.create=true \
-		--set broker.subscriptionId=test-sub \
-		--set broker.topic=test-topic \
+		--set broker.googlepubsub.subscriptionId=test-sub \
+		--set broker.googlepubsub.topic=test-topic \
 		--set broker.type=googlepubsub > /dev/null
 	@echo "✅ Broker config template OK"
 	@echo ""
 	@echo "📋 Testing template with HyperFleet API config..."
 	helm template test-release charts/ \
-		--set hyperfleetApi.baseUrl=http://localhost:8000 \
-		--set hyperfleetApi.version=v1 > /dev/null
+		--set adapterConfig.hyperfleetApi.baseUrl=http://localhost:8000 \
+		--set adapterConfig.hyperfleetApi.version=v1 > /dev/null
 	@echo "✅ HyperFleet API config template OK"
 	@echo ""
 	@echo "📋 Testing template with PDB enabled..."
@@ -248,9 +248,8 @@ test-helm: ## 📊 Test Helm charts (lint, template, validate)
 	@echo ""
 	@echo "📋 Testing template with adapter config..."
 	helm template test-release charts/ \
-		--set config.enabled=true \
-		--set config.adapterType=example \
-		--set config.adapterYaml="apiVersion: hyperfleet.redhat.com/v1alpha1" > /dev/null
+		--set adapterConfig.create=true \
+		--set adapterConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" > /dev/null
 	@echo "✅ Adapter config template OK"
 	@echo ""
 	@echo "📋 Testing template with autoscaling..."

@@ -1,17 +1,18 @@
 # HyperFleet Adapter
 
-HyperFleet Adapter Framework - Event-driven adapter services for HyperFleet cluster provisioning. Handles CloudEvents consumption, AdapterConfig CRD integration, precondition evaluation, Kubernetes Job creation/monitoring, and status reporting via API. Supports GCP Pub/Sub, RabbitMQ broker abstraction.
+HyperFleet Adapter Framework - configuration driven framework to run tasks for cluster provisioning.
 
-## Features
+An instance of an adapter targets an specific resource such as a Cluster or NodePool. And provides a clear workflow:
 
-- **CloudEvents Processing**: Consumes and processes CloudEvents from message brokers
-- **Broker Agnostic**: Supports multiple message brokers (GCP Pub/Sub, RabbitMQ)
-- **Kubernetes Integration**: Creates and monitors Kubernetes Jobs for cluster provisioning
-- **AdapterConfig CRD**: Integrates with Kubernetes Custom Resource Definitions
-- **Precondition Evaluation**: Evaluates preconditions before cluster provisioning
-- **Status Reporting**: Provides API endpoints for status reporting
-- **Structured Logging**: Context-aware logging with operation IDs and transaction tracking
-- **Error Handling**: Comprehensive error handling with error codes and API references
+- **Listens to events**: A CloudEvent informs what resource to process.
+  - Supports different types of brokers via hyperfleet-broker lib.
+- **Param phase**: Gets parameters from environment, event and current resource status (by querying HyperFleet API)
+- **Decision phase**: Computes where an action has to be performed to a resource using the params
+- **Resource phase**: Creates resources using a configured client
+  - Kubernetes client: local or remote cluster
+  - Maestro client: remote cluster via Maestro server
+- **Status reporting**: Reports result of task execution to HyperFleet API
+  - Builds the payload evaluating the status of the resources created in the resource phase
 
 ## Prerequisites
 
@@ -123,10 +124,12 @@ hyperfleet-adapter/
 HyperFleet Adapter uses [bingo](https://github.com/bwplotka/bingo) to manage Go tool dependencies with pinned versions.
 
 **Managed tools**:
+
 - `goimports` - Code formatting and import organization
 - `golangci-lint` - Code linting
 
 **Common operations**:
+
 ```bash
 # Install all tools
 bingo get
@@ -145,14 +148,21 @@ Tool versions are tracked in `.bingo/*.mod` files and loaded automatically via `
 
 ### Configuration
 
+A  HyperFleet Adapter requires several files for configuration:
+
+- **Adapter runtime**: Configures the adapter framework application
+- **Broker configuration**: Configures the specific broker to use by the adapter framework to receive CloudEvents
+
+#### Adapter task
+
 The adapter supports multiple configuration sources with the following priority order:
 
 1. **Environment Variable** (`ADAPTER_CONFIG_FILE`) - Highest priority
-2. **ConfigMap Mount** (`/etc/adapter/config/adapter.yaml`)
+2. **Default location Mount** (`/etc/adapter/adapterconfig.yaml`)
 
-See `configs/adapter-config-template.yaml` for configuration template.
+See `configs/adapterconfig-template.yaml` for configuration template.
 
-### Broker Configuration
+#### Broker Configuration
 
 Broker configuration is managed separately and can be provided via:
 
@@ -172,7 +182,7 @@ The project includes a Helm chart for Kubernetes deployment.
 helm install hyperfleet-adapter ./charts/
 
 # Install with custom values
-helm install hyperfleet-adapter ./charts/ -f custom-values.yaml
+helm install hyperfleet-adapter ./charts/ -f ./charts/examples/values.yaml
 
 # Upgrade deployment
 helm upgrade hyperfleet-adapter ./charts/
@@ -219,11 +229,13 @@ make test
 ```
 
 Unit tests include:
+
 - Logger functionality and context handling
 - Error handling and error codes
 - Operation ID middleware
 - Template rendering and parsing
 - Kubernetes client logic
+
 ### Integration Tests
 
 Integration tests use **Testcontainers** with **dynamically installed envtest** - works in any CI/CD platform without requiring privileged containers.
@@ -269,6 +281,7 @@ The first run will download golang:alpine and install envtest (~20-30 seconds). 
 **Performance**: ~30-40 seconds for complete test suite (10 suites, 24 test cases).
 
 **Alternative**: Use K3s (`make test-integration-k3s`) for 2x faster tests if privileged containers are available.
+
 - ⚠️ Requires Docker or rootful Podman
 - ✅ Makefile automatically checks Podman mode and provides helpful instructions if incompatible
 
