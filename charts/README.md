@@ -47,31 +47,31 @@ If the adapter requires creating kubernetes objects in the cluster, it needs to 
 
 ### Adapter + Task Configuration
 
-An adapter instance configures its behavior using a config file of `kind: AdapterConfig`, which can be:
+An adapter instance now loads two configs:
 
-1. An existing configmap (using `adapterConfig.configMapName`), or it can be created by the Helm chart.
-1. Created via the helm chart, the `AdapterConfig` can be embedded in the same file as the `AdapterConfig` or providing an object of `files` referencing local files that will be added to a `ConfigMap`
+- **AdapterConfig** (deployment/client config) via `adapterConfig.*`
+- **AdapterTaskConfig** (business logic) via `adapterTaskConfig.*`
 
-In both cases the `ConfigMap` will be mounted in the adapter pod at `/etc/adapter/adapterconfig.yaml`
-The purpose of adding more entries to the `files` object is for the `AdapterConfig` to reference external YAML files, so the whole `AdapterConfig` doesn't grow massively.
+Each config can be sourced from an existing ConfigMap (`configMapName`) or created by the Helm chart from inline `yaml` or `files`.
 
-Beware of template resolution within files referenced in an `AdapterConfig`. These files are not processed by Helm, but you can use go templates to resolve dynamic values (e.g. `property: "{{ .paramFromAdapterConfig }}"`)
+Beware of template resolution within files referenced in an `AdapterTaskConfig`. These files are not processed by Helm, but you can use go templates to resolve dynamic values (e.g. `property: "{{ .paramFromAdapterConfig }}"`).
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `adapterConfig.create` | Enable adapter ConfigMap | `true` |
-| `adapterConfig.configMapName` | Custom ConfigMap name | `""` |
-| `adapterConfig.yaml` | Adapter YAML config content | `""` |
-| `adapterConfig.files` | Task YAML files packaged with chart | `{}` |
+| `adapterConfig.create` | Enable AdapterConfig ConfigMap | `true` |
+| `adapterConfig.configMapName` | AdapterConfig ConfigMap name | `""` |
+| `adapterConfig.yaml` | AdapterConfig YAML content | `""` |
+| `adapterConfig.files` | AdapterConfig YAML files packaged with chart | `{}` |
 | `adapterConfig.hyperfleetApi.baseUrl` | HyperFleet API base URL (HYPERFLEET_API_BASE_URL) | `"http://hyperfleet-api:8000"` |
 | `adapterConfig.hyperfleetApi.version` | API version (HYPERFLEET_API_VERSION) | `"v1"` |
 | `adapterConfig.log.level` | Adapter log level | `"info"` |
+| `adapterTaskConfig.create` | Enable AdapterTaskConfig ConfigMap | `true` |
+| `adapterTaskConfig.configMapName` | AdapterTaskConfig ConfigMap name | `""` |
+| `adapterTaskConfig.yaml` | AdapterTaskConfig YAML content | `""` |
+| `adapterTaskConfig.files` | AdapterTaskConfig YAML files packaged with chart | `{}` |
 
-When `adapterConfig.create` is set:
-
-- Creates `adapter.yaml` key in ConfigMap
-- Mounts at `/etc/adapter/adapter.yaml`
-- Sets `ADAPTER_CONFIG_PATH=/etc/adapter/adapter.yaml`
+AdapterConfig supports `spec.debugConfig` to log the full merged configuration after load
+(default: `false`). It can also be set via `HYPERFLEET_DEBUG_CONFIG` or `--debug-config`.
 
 ### Broker Configuration
 
@@ -92,8 +92,8 @@ The `ConfigMap` will be:
 | `broker.create` | Create broker ConfigMap | `true` |
 | `broker.configMapName` | Broker ConfigMap name | `""` |
 | `broker.googlepubsub.projectId` |   Google Cloud project ID | `""` |
-| `broker.googlepubsub.subscriptionId` | Subscription ID (BROKER_SUBSCRIPTION_ID) | `""` |
-| `broker.googlepubsub.topic` | Topic name (BROKER_TOPIC) | `""` |
+| `broker.googlepubsub.subscriptionId` | Subscription ID override (HYPERFLEET_BROKER_SUBSCRIPTION_ID) | `""` |
+| `broker.googlepubsub.topic` | Topic name override (HYPERFLEET_BROKER_TOPIC) | `""` |
 | `broker.yaml` | Broker YAML config content | `""` |
 
 When `broker.yaml` is set:
@@ -163,8 +163,8 @@ The deployment sets these environment variables automatically:
 | `HYPERFLEET_API_BASE_URL` | From `adapterConfig.hyperfleetApi.baseUrl` | When `adapterConfig.hyperfleetApi.baseUrl` is set |
 | `HYPERFLEET_API_VERSION` | From `adapterConfig.hyperfleetApi.version` | Always (default: v1) |
 | `BROKER_CONFIG_FILE` | `/etc/broker/broker.yaml` | When `broker.yaml` is set |
-| `BROKER_SUBSCRIPTION_ID` | From ConfigMap | When `broker.googlepubsub.subscriptionId` is set |
-| `BROKER_TOPIC` | From ConfigMap | When `broker.googlepubsub.topic` is set |
+| `HYPERFLEET_BROKER_SUBSCRIPTION_ID` | From values | When `broker.googlepubsub.subscriptionId` is set |
+| `HYPERFLEET_BROKER_TOPIC` | From values | When `broker.googlepubsub.topic` is set |
 
 ## GCP Workload Identity Setup
 

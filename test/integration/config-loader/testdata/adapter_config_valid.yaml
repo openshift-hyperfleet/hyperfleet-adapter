@@ -4,7 +4,6 @@ apiVersion: hyperfleet.redhat.com/v1alpha1
 kind: AdapterConfig
 metadata:
   name: example-adapter
-  namespace: hyperfleet-system
   labels:
     hyperfleet.io/adapter-type: example
     hyperfleet.io/component: adapter
@@ -39,7 +38,7 @@ spec:
       required: true
 
     - name: "clusterId"
-      source: "event.cluster_id"
+      source: "event.id"
       type: "string"
       required: true
 

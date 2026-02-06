@@ -42,26 +42,26 @@ func TestNewExecutor(t *testing.T) {
 		{
 			name: "missing API client",
 			config: &ExecutorConfig{
-				AdapterConfig: &config_loader.AdapterConfig{},
-				Logger:        logger.NewTestLogger(),
+				Config: &config_loader.Config{},
+				Logger: logger.NewTestLogger(),
 			},
 			expectError: true,
 		},
 		{
 			name: "missing logger",
 			config: &ExecutorConfig{
-				AdapterConfig: &config_loader.AdapterConfig{},
-				APIClient:     newMockAPIClient(),
+				Config:    &config_loader.Config{},
+				APIClient: newMockAPIClient(),
 			},
 			expectError: true,
 		},
 		{
 			name: "valid config",
 			config: &ExecutorConfig{
-				AdapterConfig: &config_loader.AdapterConfig{},
-				APIClient:     newMockAPIClient(),
-				K8sClient:     k8s_client.NewMockK8sClient(),
-				Logger:        logger.NewTestLogger(),
+				Config:    &config_loader.Config{},
+				APIClient: newMockAPIClient(),
+				K8sClient: k8s_client.NewMockK8sClient(),
+				Logger:    logger.NewTestLogger(),
 			},
 			expectError: false,
 		},
@@ -80,15 +80,14 @@ func TestNewExecutor(t *testing.T) {
 }
 
 func TestExecutorBuilder(t *testing.T) {
-	config := &config_loader.AdapterConfig{
+	config := &config_loader.Config{
 		Metadata: config_loader.Metadata{
-			Name:      "test-adapter",
-			Namespace: "test-ns",
+			Name: "test-adapter",
 		},
 	}
 
 	exec, err := NewBuilder().
-		WithAdapterConfig(config).
+		WithConfig(config).
 		WithAPIClient(newMockAPIClient()).
 		WithK8sClient(k8s_client.NewMockK8sClient()).
 		WithLogger(logger.NewTestLogger()).
@@ -101,12 +100,12 @@ func TestExecutorBuilder(t *testing.T) {
 func TestExecutionContext(t *testing.T) {
 	ctx := context.Background()
 	eventData := map[string]interface{}{
-		"cluster_id": "test-cluster",
+		"id": "test-cluster",
 	}
 
-	execCtx := NewExecutionContext(ctx, eventData)
+	execCtx := NewExecutionContext(ctx, eventData, nil)
 
-	assert.Equal(t, "test-cluster", execCtx.EventData["cluster_id"])
+	assert.Equal(t, "test-cluster", execCtx.EventData["id"])
 	assert.Empty(t, execCtx.Params)
 	assert.Empty(t, execCtx.Resources)
 	assert.Equal(t, string(StatusSuccess), execCtx.Adapter.ExecutionStatus)
@@ -114,7 +113,7 @@ func TestExecutionContext(t *testing.T) {
 
 func TestExecutionContext_SetError(t *testing.T) {
 	ctx := context.Background()
-	execCtx := NewExecutionContext(ctx, map[string]interface{}{})
+	execCtx := NewExecutionContext(ctx, map[string]interface{}{}, nil)
 	execCtx.SetError("TestReason", "Test message")
 
 	assert.Equal(t, string(StatusFailed), execCtx.Adapter.ExecutionStatus)
@@ -124,7 +123,7 @@ func TestExecutionContext_SetError(t *testing.T) {
 
 func TestExecutionContext_EvaluationTracking(t *testing.T) {
 	ctx := context.Background()
-	execCtx := NewExecutionContext(ctx, map[string]interface{}{})
+	execCtx := NewExecutionContext(ctx, map[string]interface{}{}, nil)
 
 	// Verify evaluations are empty initially
 	assert.Empty(t, execCtx.Evaluations, "expected empty evaluations initially")
@@ -176,7 +175,7 @@ func TestExecutionContext_EvaluationTracking(t *testing.T) {
 
 func TestExecutionContext_GetEvaluationsByPhase(t *testing.T) {
 	ctx := context.Background()
-	execCtx := NewExecutionContext(ctx, map[string]interface{}{})
+	execCtx := NewExecutionContext(ctx, map[string]interface{}{}, nil)
 
 	// Add evaluations in different phases
 	execCtx.AddCELEvaluation(PhasePreconditions, "precond-1", "true", true)
@@ -198,7 +197,7 @@ func TestExecutionContext_GetEvaluationsByPhase(t *testing.T) {
 
 func TestExecutionContext_GetFailedEvaluations(t *testing.T) {
 	ctx := context.Background()
-	execCtx := NewExecutionContext(ctx, map[string]interface{}{})
+	execCtx := NewExecutionContext(ctx, map[string]interface{}{}, nil)
 
 	// Add mixed evaluations
 	execCtx.AddCELEvaluation(PhasePreconditions, "passed-1", "true", true)
@@ -235,12 +234,11 @@ func TestExecute_ParamExtraction(t *testing.T) {
 	// Set up environment variable for test
 	t.Setenv("TEST_VAR", "test-value")
 
-	config := &config_loader.AdapterConfig{
+	config := &config_loader.Config{
 		Metadata: config_loader.Metadata{
-			Name:      "test-adapter",
-			Namespace: "test-ns",
+			Name: "test-adapter",
 		},
-		Spec: config_loader.AdapterConfigSpec{
+		Spec: config_loader.ConfigSpec{
 			Params: []config_loader.Parameter{
 				{
 					Name:     "testParam",
@@ -249,7 +247,7 @@ func TestExecute_ParamExtraction(t *testing.T) {
 				},
 				{
 					Name:     "eventParam",
-					Source:   "event.cluster_id",
+					Source:   "event.id",
 					Required: true,
 				},
 			},
@@ -257,7 +255,7 @@ func TestExecute_ParamExtraction(t *testing.T) {
 	}
 
 	exec, err := NewBuilder().
-		WithAdapterConfig(config).
+		WithConfig(config).
 		WithAPIClient(newMockAPIClient()).
 		WithK8sClient(k8s_client.NewMockK8sClient()).
 		WithLogger(logger.NewTestLogger()).
@@ -269,7 +267,7 @@ func TestExecute_ParamExtraction(t *testing.T) {
 
 	// Create event data
 	eventData := map[string]interface{}{
-		"cluster_id": "cluster-456",
+		"id": "cluster-456",
 	}
 
 	// Execute with event ID in context
@@ -293,7 +291,7 @@ func TestParamExtractor(t *testing.T) {
 
 	evt := event.New()
 	eventData := map[string]interface{}{
-		"cluster_id": "test-cluster",
+		"id": "test-cluster",
 		"nested": map[string]interface{}{
 			"value": "nested-value",
 		},
@@ -318,7 +316,7 @@ func TestParamExtractor(t *testing.T) {
 		{
 			name: "extract from event",
 			params: []config_loader.Parameter{
-				{Name: "clusterId", Source: "event.cluster_id"},
+				{Name: "clusterId", Source: "event.id"},
 			},
 			expectKey:   "clusterId",
 			expectValue: "test-cluster",
@@ -351,15 +349,14 @@ func TestParamExtractor(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create fresh context for each test
-			execCtx := NewExecutionContext(context.Background(), eventData)
+			execCtx := NewExecutionContext(context.Background(), eventData, nil)
 
 			// Create config with test params
-			config := &config_loader.AdapterConfig{
+			config := &config_loader.Config{
 				Metadata: config_loader.Metadata{
-					Name:      "test",
-					Namespace: "default",
+					Name: "test",
 				},
-				Spec: config_loader.AdapterConfigSpec{
+				Spec: config_loader.ConfigSpec{
 					Params: tt.params,
 				},
 			}
@@ -499,18 +496,17 @@ func TestSequentialExecution_Preconditions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			config := &config_loader.AdapterConfig{
+			config := &config_loader.Config{
 				Metadata: config_loader.Metadata{
-					Name:      "test-adapter",
-					Namespace: "test-ns",
+					Name: "test-adapter",
 				},
-				Spec: config_loader.AdapterConfigSpec{
+				Spec: config_loader.ConfigSpec{
 					Preconditions: tt.preconditions,
 				},
 			}
 
 			exec, err := NewBuilder().
-				WithAdapterConfig(config).
+				WithConfig(config).
 				WithAPIClient(newMockAPIClient()).
 				WithK8sClient(k8s_client.NewMockK8sClient()).
 				WithLogger(logger.NewTestLogger()).
@@ -602,18 +598,17 @@ func TestSequentialExecution_Resources(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			config := &config_loader.AdapterConfig{
+			config := &config_loader.Config{
 				Metadata: config_loader.Metadata{
-					Name:      "test-adapter",
-					Namespace: "test-ns",
+					Name: "test-adapter",
 				},
-				Spec: config_loader.AdapterConfigSpec{
+				Spec: config_loader.ConfigSpec{
 					Resources: tt.resources,
 				},
 			}
 
 			exec, err := NewBuilder().
-				WithAdapterConfig(config).
+				WithConfig(config).
 				WithAPIClient(newMockAPIClient()).
 				WithK8sClient(k8s_client.NewMockK8sClient()).
 				WithLogger(logger.NewTestLogger()).
@@ -668,12 +663,11 @@ func TestSequentialExecution_PostActions(t *testing.T) {
 				PostActions: tt.postActions,
 			}
 
-			config := &config_loader.AdapterConfig{
+			config := &config_loader.Config{
 				Metadata: config_loader.Metadata{
-					Name:      "test-adapter",
-					Namespace: "test-ns",
+					Name: "test-adapter",
 				},
-				Spec: config_loader.AdapterConfigSpec{
+				Spec: config_loader.ConfigSpec{
 					Post: postConfig,
 				},
 			}
@@ -685,7 +679,7 @@ func TestSequentialExecution_PostActions(t *testing.T) {
 			mockClient.PostError = tt.mockError
 
 			exec, err := NewBuilder().
-				WithAdapterConfig(config).
+				WithConfig(config).
 				WithAPIClient(mockClient).
 				WithK8sClient(k8s_client.NewMockK8sClient()).
 				WithLogger(logger.NewTestLogger()).
@@ -745,18 +739,17 @@ func TestSequentialExecution_SkipReasonCapture(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			config := &config_loader.AdapterConfig{
+			config := &config_loader.Config{
 				Metadata: config_loader.Metadata{
-					Name:      "test-adapter",
-					Namespace: "test-ns",
+					Name: "test-adapter",
 				},
-				Spec: config_loader.AdapterConfigSpec{
+				Spec: config_loader.ConfigSpec{
 					Preconditions: tt.preconditions,
 				},
 			}
 
 			exec, err := NewBuilder().
-				WithAdapterConfig(config).
+				WithConfig(config).
 				WithAPIClient(newMockAPIClient()).
 				WithK8sClient(k8s_client.NewMockK8sClient()).
 				WithLogger(logger.NewTestLogger()).

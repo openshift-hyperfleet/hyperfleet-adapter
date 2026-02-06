@@ -32,7 +32,6 @@ kind: AdapterConfig
 metadata:
   # Adapter name (used as resource name and in logs/metrics)
   name: example-adapter
-  namespace: hyperfleet-system
   labels:
     hyperfleet.io/adapter-type: example
     hyperfleet.io/component: adapter
@@ -91,7 +90,7 @@ spec:
     
     # Extract from CloudEvent data
     - name: "clusterId"
-      source: "event.cluster_id"
+      source: "event.id"
       type: "string"
       description: "Unique identifier for the target cluster"
       required: true

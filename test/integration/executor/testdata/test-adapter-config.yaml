@@ -2,7 +2,6 @@ apiVersion: hyperfleet.redhat.com/v1alpha1
 kind: AdapterConfig
 metadata:
   name: test-adapter
-  namespace: test-ns
 
 spec:
   adapter:
@@ -24,13 +23,9 @@ spec:
       required: false
     
     - name: clusterId
-      source: event.cluster_id
+      source: event.id
       required: true
     
-    - name: resourceId
-      source: event.resource_id
-      required: true
-
   preconditions:
     - name: clusterStatus
       apiCall:

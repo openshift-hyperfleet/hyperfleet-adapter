@@ -5,8 +5,10 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleet_api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -35,35 +37,39 @@ func getProjectRoot() string {
 	panic("could not find project root: no .git directory found upwards from path: " + filename)
 }
 
-// TestLoadTemplateConfig tests loading the actual adapter-config-template.yaml
-// This is an integration test that validates the shipped template configuration.
-func TestLoadTemplateConfig(t *testing.T) {
-	// Set required environment variables for the template config
+// TestLoadSplitConfig tests loading split adapter and task config files
+func TestLoadSplitConfig(t *testing.T) {
+	// Set required environment variables for the test config
 	t.Setenv("HYPERFLEET_API_BASE_URL", "http://test-api.example.com")
-	t.Setenv("HYPERFLEET_API_TOKEN", "test-token-for-integration-tests")
 
 	projectRoot := getProjectRoot()
-	configPath := filepath.Join(projectRoot, "configs/adapterconfig-template.yaml")
+	adapterConfigPath := filepath.Join(projectRoot, "test/testdata/adapter-config.yaml")
+	taskConfigPath := filepath.Join(projectRoot, "test/testdata/task-config.yaml")
 
-	config, err := config_loader.Load(configPath)
-	require.NoError(t, err, "should be able to load template config")
+	config, err := config_loader.LoadConfig(
+		config_loader.WithAdapterConfigPath(adapterConfigPath),
+		config_loader.WithTaskConfigPath(taskConfigPath),
+		config_loader.WithSkipSemanticValidation(),
+	)
+	require.NoError(t, err, "should be able to load split config files")
 	require.NotNil(t, config)
 
-	// Verify basic structure
+	// Verify merged structure
 	assert.Equal(t, "hyperfleet.redhat.com/v1alpha1", config.APIVersion)
-	assert.Equal(t, "AdapterConfig", config.Kind)
-	assert.Equal(t, "example-adapter", config.Metadata.Name)
-	assert.Equal(t, "hyperfleet-system", config.Metadata.Namespace)
+	assert.Equal(t, "Config", config.Kind)
 
-	// Verify adapter info
+	// Metadata comes from task config
+	assert.Equal(t, "example-adapter", config.Metadata.Name)
+
+	// Adapter info comes from adapter config
 	assert.Equal(t, "0.1.0", config.Spec.Adapter.Version)
 
-	// Verify HyperFleet API config
-	assert.Equal(t, "2s", config.Spec.HyperfleetAPI.Timeout)
-	assert.Equal(t, 3, config.Spec.HyperfleetAPI.RetryAttempts)
-	assert.Equal(t, "exponential", config.Spec.HyperfleetAPI.RetryBackoff)
+	// Clients config comes from adapter config
+	assert.Equal(t, 2*time.Second, config.Spec.Clients.HyperfleetAPI.Timeout)
+	assert.Equal(t, 3, config.Spec.Clients.HyperfleetAPI.RetryAttempts)
+	assert.Equal(t, hyperfleet_api.BackoffExponential, config.Spec.Clients.HyperfleetAPI.RetryBackoff)
 
-	// Verify params exist
+	// Verify params exist (from task config)
 	assert.NotEmpty(t, config.Spec.Params)
 	assert.GreaterOrEqual(t, len(config.Spec.Params), 3, "should have at least 3 parameters")
 
@@ -73,7 +79,7 @@ func TestLoadTemplateConfig(t *testing.T) {
 	assert.Equal(t, "event.id", clusterIdParam.Source)
 	assert.True(t, clusterIdParam.Required)
 
-	// Verify preconditions
+	// Verify preconditions (from task config)
 	assert.NotEmpty(t, config.Spec.Preconditions)
 	assert.GreaterOrEqual(t, len(config.Spec.Preconditions), 1, "should have at least 1 precondition")
 
@@ -88,7 +94,7 @@ func TestLoadTemplateConfig(t *testing.T) {
 	// Verify captured fields
 	clusterNameCapture := findCaptureByName(firstPrecond.Capture, "clusterName")
 	require.NotNil(t, clusterNameCapture)
-	assert.Equal(t, "name", clusterNameCapture.Field)
+	assert.Equal(t, "metadata.name", clusterNameCapture.Field)
 
 	// Verify conditions in precondition
 	assert.GreaterOrEqual(t, len(firstPrecond.Conditions), 1)
@@ -96,7 +102,7 @@ func TestLoadTemplateConfig(t *testing.T) {
 	assert.Equal(t, "readyConditionStatus", firstCondition.Field)
 	assert.Equal(t, "equals", firstCondition.Operator)
 
-	// Verify resources
+	// Verify resources (from task config)
 	assert.NotEmpty(t, config.Spec.Resources)
 	assert.GreaterOrEqual(t, len(config.Spec.Resources), 1, "should have at least 1 resource")
 
@@ -106,7 +112,7 @@ func TestLoadTemplateConfig(t *testing.T) {
 	assert.NotNil(t, firstResource.Manifest)
 	assert.NotNil(t, firstResource.Discovery)
 
-	// Verify post configuration
+	// Verify post configuration (from task config)
 	if config.Spec.Post != nil {
 		assert.NotEmpty(t, config.Spec.Post.Payloads)
 		assert.NotEmpty(t, config.Spec.Post.PostActions)
@@ -123,25 +129,27 @@ func TestLoadTemplateConfig(t *testing.T) {
 	}
 }
 
-// TestLoadValidTestConfig tests loading the valid test config
-func TestLoadValidTestConfig(t *testing.T) {
+// TestLoadSplitConfigWithResourceByName tests the GetResourceByName accessor on merged config
+func TestLoadSplitConfigWithResourceByName(t *testing.T) {
 	// Set required environment variables for the test config
 	t.Setenv("HYPERFLEET_API_BASE_URL", "http://test-api.example.com")
 
 	projectRoot := getProjectRoot()
-	configPath := filepath.Join(projectRoot, "test/testdata/adapter_config_valid.yaml")
+	adapterConfigPath := filepath.Join(projectRoot, "test/testdata/adapter-config.yaml")
+	taskConfigPath := filepath.Join(projectRoot, "test/testdata/task-config.yaml")
 
-	config, err := config_loader.Load(configPath)
+	config, err := config_loader.LoadConfig(
+		config_loader.WithAdapterConfigPath(adapterConfigPath),
+		config_loader.WithTaskConfigPath(taskConfigPath),
+		config_loader.WithSkipSemanticValidation(),
+	)
 	require.NoError(t, err)
 	require.NotNil(t, config)
 
-	assert.Equal(t, "hyperfleet.redhat.com/v1alpha1", config.APIVersion)
-	assert.Equal(t, "AdapterConfig", config.Kind)
-	assert.Equal(t, "example-adapter", config.Metadata.Name)
-
-	// Verify resource exists
-	configMapResource := findResourceByName(config.Spec.Resources, "clusterConfigMap")
+	// Verify resource exists using accessor
+	configMapResource := config.GetResourceByName("clusterConfigMap")
 	require.NotNil(t, configMapResource, "clusterConfigMap resource should exist")
+	assert.Equal(t, "clusterConfigMap", configMapResource.Name)
 }
 
 // Helper function to find a capture field by name
@@ -149,16 +157,6 @@ func findCaptureByName(captures []config_loader.CaptureField, name string) *conf
 	for i := range captures {
 		if captures[i].Name == name {
 			return &captures[i]
-		}
-	}
-	return nil
-}
-
-// Helper function to find a resource by name
-func findResourceByName(resources []config_loader.Resource, name string) *config_loader.Resource {
-	for i := range resources {
-		if resources[i].Name == name {
-			return &resources[i]
 		}
 	}
 	return nil

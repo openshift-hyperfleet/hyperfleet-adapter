@@ -4,8 +4,75 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleet_api"
 	"gopkg.in/yaml.v3"
 )
+
+// Config is the unified configuration passed throughout the application.
+// Created by merging AdapterConfig (deployment) and AdapterTaskConfig (task).
+type Config struct {
+	APIVersion string     `yaml:"apiVersion"`
+	Kind       string     `yaml:"kind"`
+	Metadata   Metadata   `yaml:"metadata"`
+	Spec       ConfigSpec `yaml:"spec"`
+}
+
+// ConfigSpec contains the merged specification from both deployment and task configs
+type ConfigSpec struct {
+	// From AdapterConfig (deployment)
+	Adapter     AdapterInfo   `yaml:"adapter"`
+	Clients     ClientsConfig `yaml:"clients"`
+	DebugConfig bool          `yaml:"debugConfig,omitempty"`
+
+	// From AdapterTaskConfig (business logic)
+	Params        []Parameter    `yaml:"params,omitempty"`
+	Preconditions []Precondition `yaml:"preconditions,omitempty"`
+	Resources     []Resource     `yaml:"resources,omitempty"`
+	Post          *PostConfig    `yaml:"post,omitempty"`
+}
+
+// GetParams returns the parameters from the config spec
+func (c *Config) GetParams() []Parameter {
+	if c == nil {
+		return nil
+	}
+	return c.Spec.Params
+}
+
+// GetMetadata returns the metadata from the config
+func (c *Config) GetMetadata() Metadata {
+	if c == nil {
+		return Metadata{}
+	}
+	return c.Metadata
+}
+
+// Merge combines AdapterConfig (deployment) and AdapterTaskConfig (task) into a unified Config.
+// The metadata is taken from the task config since it contains the adapter task name.
+// The adapter info and clients come from the deployment config.
+// The params, preconditions, resources, and post-processing come from the task config.
+func Merge(adapterCfg *AdapterConfig, taskCfg *AdapterTaskConfig) *Config {
+	if adapterCfg == nil || taskCfg == nil {
+		return nil
+	}
+
+	return &Config{
+		APIVersion: adapterCfg.APIVersion,
+		Kind:       ExpectedKindConfig,
+		Metadata:   taskCfg.Metadata, // Use task metadata for adapter name
+		Spec: ConfigSpec{
+			// From deployment config
+			Adapter:     adapterCfg.Spec.Adapter,
+			Clients:     adapterCfg.Spec.Clients,
+			DebugConfig: adapterCfg.Spec.DebugConfig,
+			// From task config
+			Params:        taskCfg.Spec.Params,
+			Preconditions: taskCfg.Spec.Preconditions,
+			Resources:     taskCfg.Spec.Resources,
+			Post:          taskCfg.Spec.Post,
+		},
+	}
+}
 
 // FieldExpressionDef represents a common pattern for value extraction.
 // Used when a value should be computed via field extraction (JSONPath) or CEL expression.
@@ -65,48 +132,36 @@ func ParseValueDef(v any) (*ValueDef, bool) {
 	return &valueDef, true
 }
 
-// AdapterConfig represents the complete adapter configuration structure
-type AdapterConfig struct {
-	APIVersion string            `yaml:"apiVersion" validate:"required"`
-	Kind       string            `yaml:"kind" validate:"required,eq=AdapterConfig"`
-	Metadata   Metadata          `yaml:"metadata"`
-	Spec       AdapterConfigSpec `yaml:"spec"`
-}
-
 // Metadata contains the adapter metadata
 type Metadata struct {
-	Name      string            `yaml:"name" validate:"required"`
-	Namespace string            `yaml:"namespace"`
-	Labels    map[string]string `yaml:"labels,omitempty"`
-}
-
-// AdapterConfigSpec contains the adapter specification
-type AdapterConfigSpec struct {
-	Adapter       AdapterInfo         `yaml:"adapter"`
-	HyperfleetAPI HyperfleetAPIConfig `yaml:"hyperfleetApi"`
-	Kubernetes    KubernetesConfig    `yaml:"kubernetes"`
-	Params        []Parameter         `yaml:"params,omitempty" validate:"dive"`
-	Preconditions []Precondition      `yaml:"preconditions,omitempty" validate:"dive"`
-	Resources     []Resource          `yaml:"resources,omitempty" validate:"unique=Name,dive"`
-	Post          *PostConfig         `yaml:"post,omitempty" validate:"omitempty"`
+	Name   string            `yaml:"name" mapstructure:"name" validate:"required"`
+	Labels map[string]string `yaml:"labels,omitempty" mapstructure:"labels"`
 }
 
 // AdapterInfo contains basic adapter information
 type AdapterInfo struct {
-	Version string `yaml:"version" validate:"required"`
+	Version string `yaml:"version" mapstructure:"version" validate:"required"`
 }
 
-// HyperfleetAPIConfig contains HyperFleet API configuration
-type HyperfleetAPIConfig struct {
-	BaseURL       string `yaml:"baseUrl,omitempty"`
-	Timeout       string `yaml:"timeout"`
-	RetryAttempts int    `yaml:"retryAttempts"`
-	RetryBackoff  string `yaml:"retryBackoff"`
+// HyperfleetAPIConfig is the HyperFleet API client configuration.
+// Alias to hyperfleet_api.ClientConfig to ensure shared schema.
+type HyperfleetAPIConfig = hyperfleet_api.ClientConfig
+
+// BrokerConfig contains broker consumer configuration
+type BrokerConfig struct {
+	SubscriptionID string `yaml:"subscriptionId,omitempty" mapstructure:"subscriptionId"`
+	Topic          string `yaml:"topic,omitempty" mapstructure:"topic"`
 }
 
 // KubernetesConfig contains Kubernetes configuration
 type KubernetesConfig struct {
-	APIVersion string `yaml:"apiVersion"`
+	APIVersion string `yaml:"apiVersion" mapstructure:"apiVersion"`
+	// KubeConfigPath is the path to a kubeconfig file. Empty means in-cluster auth.
+	KubeConfigPath string `yaml:"kubeConfigPath,omitempty" mapstructure:"kubeConfigPath"`
+	// QPS is the client-side rate limit. Zero uses defaults.
+	QPS float32 `yaml:"qps,omitempty" mapstructure:"qps"`
+	// Burst is the client-side burst rate. Zero uses defaults.
+	Burst int `yaml:"burst,omitempty" mapstructure:"burst"`
 }
 
 // Parameter represents a parameter extraction configuration.
@@ -336,4 +391,79 @@ func (ve *ValidationErrors) Count() int {
 
 func (ve *ValidationErrors) HasErrors() bool {
 	return len(ve.Errors) > 0
+}
+
+// AdapterConfig represents the deployment-level configuration.
+// Contains infrastructure settings that can be overridden via environment variables
+// and CLI flags using Viper.
+type AdapterConfig struct {
+	APIVersion string            `yaml:"apiVersion" mapstructure:"apiVersion" validate:"required"`
+	Kind       string            `yaml:"kind" mapstructure:"kind" validate:"required,eq=AdapterConfig"`
+	Metadata   Metadata          `yaml:"metadata" mapstructure:"metadata"`
+	Spec       AdapterConfigSpec `yaml:"spec" mapstructure:"spec"`
+}
+
+// AdapterConfigSpec contains the deployment specification
+type AdapterConfigSpec struct {
+	Adapter     AdapterInfo   `yaml:"adapter" mapstructure:"adapter"`
+	Clients     ClientsConfig `yaml:"clients" mapstructure:"clients"`
+	DebugConfig bool          `yaml:"debugConfig,omitempty" mapstructure:"debugConfig"`
+}
+
+// ClientsConfig contains configuration for all external clients
+type ClientsConfig struct {
+	Maestro       *MaestroClientConfig `yaml:"maestro,omitempty" mapstructure:"maestro"`
+	HyperfleetAPI HyperfleetAPIConfig  `yaml:"hyperfleetApi" mapstructure:"hyperfleetApi"`
+	Broker        BrokerConfig         `yaml:"broker,omitempty" mapstructure:"broker"`
+	Kubernetes    KubernetesConfig     `yaml:"kubernetes" mapstructure:"kubernetes"`
+}
+
+// MaestroClientConfig contains Maestro client configuration
+type MaestroClientConfig struct {
+	GRPCServerAddress string            `yaml:"grpcServerAddress" mapstructure:"grpcServerAddress"`
+	HTTPServerAddress string            `yaml:"httpServerAddress" mapstructure:"httpServerAddress"`
+	SourceID          string            `yaml:"sourceId" mapstructure:"sourceId"`
+	ClientID          string            `yaml:"clientId" mapstructure:"clientId"`
+	Auth              MaestroAuthConfig `yaml:"auth" mapstructure:"auth"`
+	Timeout           string            `yaml:"timeout" mapstructure:"timeout"`
+	RetryAttempts     int               `yaml:"retryAttempts" mapstructure:"retryAttempts"`
+	Keepalive         *KeepaliveConfig  `yaml:"keepalive,omitempty" mapstructure:"keepalive"`
+	Insecure          bool              `yaml:"insecure,omitempty" mapstructure:"insecure"`
+}
+
+// MaestroAuthConfig contains authentication configuration for Maestro
+type MaestroAuthConfig struct {
+	Type      string     `yaml:"type" mapstructure:"type"` // "tls" or "none"
+	TLSConfig *TLSConfig `yaml:"tlsConfig,omitempty" mapstructure:"tlsConfig"`
+}
+
+// TLSConfig contains TLS certificate configuration
+type TLSConfig struct {
+	CAFile   string `yaml:"caFile" mapstructure:"caFile"`
+	CertFile string `yaml:"certFile" mapstructure:"certFile"`
+	KeyFile  string `yaml:"keyFile" mapstructure:"keyFile"`
+}
+
+// KeepaliveConfig contains gRPC keepalive configuration
+type KeepaliveConfig struct {
+	Time    string `yaml:"time" mapstructure:"time"`
+	Timeout string `yaml:"timeout" mapstructure:"timeout"`
+}
+
+// AdapterTaskConfig represents the business logic configuration.
+// Contains params, preconditions, resources, and post-processing actions.
+// This config is loaded from YAML without environment variable overrides.
+type AdapterTaskConfig struct {
+	APIVersion string          `yaml:"apiVersion" validate:"required"`
+	Kind       string          `yaml:"kind" validate:"required,eq=AdapterTaskConfig"`
+	Metadata   Metadata        `yaml:"metadata"`
+	Spec       AdapterTaskSpec `yaml:"spec"`
+}
+
+// AdapterTaskSpec contains the task specification
+type AdapterTaskSpec struct {
+	Params        []Parameter    `yaml:"params,omitempty" validate:"dive"`
+	Preconditions []Precondition `yaml:"preconditions,omitempty" validate:"dive"`
+	Resources     []Resource     `yaml:"resources,omitempty" validate:"unique=Name,dive"`
+	Post          *PostConfig    `yaml:"post,omitempty" validate:"omitempty"`
 }

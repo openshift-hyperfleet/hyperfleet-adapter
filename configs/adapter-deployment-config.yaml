@@ -24,16 +24,20 @@
 # use a separate business config file. See configs/adapter-config-template.yaml
 
 apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterDeploymentConfig
+kind: AdapterConfig
 metadata:
   name: hyperfleet-adapter
-  namespace: hyperfleet-system
   labels:
     hyperfleet.io/component: adapter
 
 spec:
   adapter:
     version: "0.1.0"
+
+  # Log the full merged configuration after load (default: false)
+  # Environment variable: HYPERFLEET_DEBUG_CONFIG
+  # Flag: --debug-config
+  debugConfig: false
 
   # Client configurations for external services
   clients:
@@ -94,12 +98,23 @@ spec:
     
     # HyperFleet HTTP API client
     hyperfleetApi:
+      baseUrl: http://hyperfleet-api:8000
+      version: v1
       timeout: 2s
       retryAttempts: 3
       retryBackoff: exponential
     
+    # Broker consumer configuration (adapter-level)
+    broker:
+      subscriptionId: "amarin-ns1-clusters-validation-gcp-adapter"
+      topic: "amarin-ns1-clusters"
+
     # Kubernetes client (for direct K8s resources)
     kubernetes:
       apiVersion: "v1"
       # Uses in-cluster service account by default
-      # Or set kubeconfig path via KUBECONFIG environment variable
+      # Set kubeConfigPath for out-of-cluster access
+      kubeConfigPath: PATH_TO_KUBECONFIG_FILE
+      # Optional rate limits (0 uses defaults)
+      qps: 100
+      burst: 200

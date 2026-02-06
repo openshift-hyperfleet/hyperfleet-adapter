@@ -16,100 +16,89 @@ import (
 var templateVarRegex = regexp.MustCompile(`\{\{\s*\.([a-zA-Z_][a-zA-Z0-9_\.]*)\s*(?:\|[^}]*)?\}\}`)
 
 // -----------------------------------------------------------------------------
-// Validator
+// Validators
 // -----------------------------------------------------------------------------
 
-// Validator performs all validation on AdapterConfig:
-// - Structural validation (required fields, formats)
-// - Semantic validation (CEL expressions, templates, operators, K8s manifests)
-type Validator struct {
-	config      *AdapterConfig
-	baseDir     string // Base directory for file reference validation
-	errors      *ValidationErrors
-	definedVars map[string]bool // All defined variables (params + resources + captures)
-	celEnv      *cel.Env
+// AdapterConfigValidator validates AdapterConfig (deployment configuration)
+type AdapterConfigValidator struct {
+	config  *AdapterConfig
+	baseDir string
+	errors  *ValidationErrors
 }
 
-// NewValidator creates a new Validator for the given config
-func NewValidator(config *AdapterConfig, baseDir string) *Validator {
-	return &Validator{
+// NewAdapterConfigValidator creates a validator for AdapterConfig
+func NewAdapterConfigValidator(config *AdapterConfig, baseDir string) *AdapterConfigValidator {
+	return &AdapterConfigValidator{
 		config:  config,
 		baseDir: baseDir,
 		errors:  &ValidationErrors{},
 	}
 }
 
-// ValidateStructure performs structural validation (required fields, formats).
-// Uses go-playground/validator for basic struct validation, then runs custom validations.
-// Returns error on first failure (fail-fast).
-func (v *Validator) ValidateStructure() error {
-	// Phase 1: Struct tag validation (required fields, formats, enums)
+// ValidateStructure validates the structural requirements of AdapterConfig
+func (v *AdapterConfigValidator) ValidateStructure() error {
+	if v.config == nil {
+		return fmt.Errorf("adapter config is nil")
+	}
+
+	// Phase 1: Struct tag validation
 	if errs := ValidateStruct(v.config); errs != nil && errs.HasErrors() {
 		return fmt.Errorf("%s", errs.First())
 	}
 
-	// Phase 2: Custom validations that can't be expressed via struct tags
-	if err := v.validateAPIVersionSupported(); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// ValidateFileReferences validates that all file references exist.
-// Only meaningful if baseDir is set.
-func (v *Validator) ValidateFileReferences() error {
-	if v.baseDir == "" {
-		return nil
-	}
-	return v.validateFileReferences()
-}
-
-// ValidateSemantic performs semantic validation (CEL, templates, operators, K8s).
-// Collects all errors rather than failing fast.
-func (v *Validator) ValidateSemantic() error {
-	if v.config == nil {
-		return fmt.Errorf("config is nil")
-	}
-
-	// Initialize validation context
-	v.collectDefinedVariables()
-	if err := v.initCELEnv(); err != nil {
-		v.errors.Add("cel", fmt.Sprintf("failed to create CEL environment: %v", err))
-	}
-
-	// Run all semantic validators
-	v.validateConditionValues()
-	v.validateCaptureFieldExpressions()
-	v.validateTemplateVariables()
-	v.validateCELExpressions()
-	v.validateK8sManifests()
-
-	if v.errors.HasErrors() {
-		return v.errors
-	}
-	return nil
-}
-
-// =============================================================================
-// CUSTOM STRUCTURAL VALIDATION
-// =============================================================================
-// These validations can't be expressed via struct tags and run after tag validation.
-
-// validateAPIVersionSupported checks that the apiVersion is in the supported list
-func (v *Validator) validateAPIVersionSupported() error {
+	// Phase 2: API version validation
 	if !IsSupportedAPIVersion(v.config.APIVersion) {
 		return fmt.Errorf("unsupported apiVersion %q (supported: %s)",
 			v.config.APIVersion, strings.Join(SupportedAPIVersions, ", "))
 	}
+
 	return nil
 }
 
-// =============================================================================
-// FILE REFERENCE VALIDATION
-// =============================================================================
+// TaskConfigValidator validates AdapterTaskConfig (task configuration)
+type TaskConfigValidator struct {
+	config      *AdapterTaskConfig
+	baseDir     string
+	errors      *ValidationErrors
+	definedVars map[string]bool
+	celEnv      *cel.Env
+}
 
-func (v *Validator) validateFileReferences() error {
+// NewTaskConfigValidator creates a validator for AdapterTaskConfig
+func NewTaskConfigValidator(config *AdapterTaskConfig, baseDir string) *TaskConfigValidator {
+	return &TaskConfigValidator{
+		config:  config,
+		baseDir: baseDir,
+		errors:  &ValidationErrors{},
+	}
+}
+
+// ValidateStructure validates the structural requirements of AdapterTaskConfig
+func (v *TaskConfigValidator) ValidateStructure() error {
+	if v.config == nil {
+		return fmt.Errorf("task config is nil")
+	}
+
+	// Phase 1: Struct tag validation
+	if errs := ValidateStruct(v.config); errs != nil && errs.HasErrors() {
+		return fmt.Errorf("%s", errs.First())
+	}
+
+	// Phase 2: API version validation
+	if !IsSupportedAPIVersion(v.config.APIVersion) {
+		return fmt.Errorf("unsupported apiVersion %q (supported: %s)",
+			v.config.APIVersion, strings.Join(SupportedAPIVersions, ", "))
+	}
+
+	return nil
+}
+
+// ValidateFileReferences validates that all file references in the task config exist
+func (v *TaskConfigValidator) ValidateFileReferences() error {
+	if v.baseDir == "" {
+		return nil
+	}
+
 	var errors []string
 
 	// Validate buildRef in spec.post.payloads
@@ -141,7 +130,7 @@ func (v *Validator) validateFileReferences() error {
 	return nil
 }
 
-func (v *Validator) validateFileExists(refPath, configPath string) error {
+func (v *TaskConfigValidator) validateFileExists(refPath, configPath string) error {
 	if refPath == "" {
 		return fmt.Errorf("%s: file reference is empty", configPath)
 	}
@@ -166,21 +155,120 @@ func (v *Validator) validateFileExists(refPath, configPath string) error {
 	return nil
 }
 
-// =============================================================================
-// SEMANTIC VALIDATION: Operators
-// =============================================================================
+// ValidateSemantic performs semantic validation on the task config
+func (v *TaskConfigValidator) ValidateSemantic() error {
+	if v.config == nil {
+		return fmt.Errorf("config is nil")
+	}
 
-func (v *Validator) collectDefinedVariables() {
+	// Initialize validation context
+	v.collectDefinedVariables()
+	if err := v.initCELEnv(); err != nil {
+		v.errors.Add("cel", fmt.Sprintf("failed to create CEL environment: %v", err))
+	}
+
+	// Run all semantic validators
+	v.validateConditionValues()
+	v.validateCaptureFieldExpressions()
+	v.validateTemplateVariables()
+	v.validateCELExpressions()
+	v.validateK8sManifests()
+
+	if v.errors.HasErrors() {
+		return v.errors
+	}
+	return nil
+}
+
+func (v *TaskConfigValidator) collectDefinedVariables() {
 	v.definedVars = v.config.GetDefinedVariables()
 }
 
-// =============================================================================
-// SEMANTIC VALIDATION: Condition Values
-// =============================================================================
+// GetDefinedVariables returns all variables defined in the task config
+func (c *AdapterTaskConfig) GetDefinedVariables() map[string]bool {
+	vars := make(map[string]bool)
 
-func (v *Validator) validateConditionValues() {
-	// Operator validation (required, valid enum) is handled by struct validator.
-	// This validates condition values based on operator requirements.
+	if c == nil {
+		return vars
+	}
+
+	// Built-in variables
+	for _, b := range BuiltinVariables() {
+		vars[b] = true
+	}
+
+	// Parameters from spec.params
+	for _, p := range c.Spec.Params {
+		if p.Name != "" {
+			vars[p.Name] = true
+		}
+	}
+
+	// Variables from precondition captures
+	for _, precond := range c.Spec.Preconditions {
+		for _, capture := range precond.Capture {
+			if capture.Name != "" {
+				vars[capture.Name] = true
+			}
+		}
+	}
+
+	// Post payloads
+	if c.Spec.Post != nil {
+		for _, p := range c.Spec.Post.Payloads {
+			if p.Name != "" {
+				vars[p.Name] = true
+			}
+		}
+	}
+
+	// Resource aliases
+	for _, r := range c.Spec.Resources {
+		if r.Name != "" {
+			vars[FieldResources+"."+r.Name] = true
+		}
+	}
+
+	return vars
+}
+
+func (v *TaskConfigValidator) initCELEnv() error {
+	options := make([]cel.EnvOption, 0, len(v.definedVars)+2)
+	options = append(options, cel.OptionalTypes())
+
+	addedRoots := make(map[string]bool)
+
+	for varName := range v.definedVars {
+		root := varName
+		if idx := strings.Index(varName, "."); idx > 0 {
+			root = varName[:idx]
+		}
+
+		if addedRoots[root] {
+			continue
+		}
+		addedRoots[root] = true
+
+		options = append(options, cel.Variable(root, cel.DynType))
+	}
+
+	if !addedRoots[FieldResources] {
+		options = append(options, cel.Variable(FieldResources, cel.MapType(cel.StringType, cel.DynType)))
+	}
+
+	if !addedRoots[FieldAdapter] {
+		options = append(options, cel.Variable(FieldAdapter, cel.MapType(cel.StringType, cel.DynType)))
+	}
+
+	env, err := cel.NewEnv(options...)
+	if err != nil {
+		return err
+	}
+	v.celEnv = env
+	return nil
+}
+
+func (v *TaskConfigValidator) validateConditionValues() {
 	for i, precond := range v.config.Spec.Preconditions {
 		for j, cond := range precond.Conditions {
 			path := fmt.Sprintf("%s.%s[%d].%s[%d]", FieldSpec, FieldPreconditions, i, FieldConditions, j)
@@ -189,11 +277,10 @@ func (v *Validator) validateConditionValues() {
 	}
 }
 
-func (v *Validator) validateConditionValue(operator string, value interface{}, path string) {
+func (v *TaskConfigValidator) validateConditionValue(operator string, value interface{}, path string) {
 	op := criteria.Operator(operator)
 
 	if op == criteria.OperatorExists {
-		// "exists" operator checks for field presence, value should not be set
 		if value != nil {
 			v.errors.Add(path, fmt.Sprintf("value/values should not be set for operator \"%s\"", operator))
 		}
@@ -212,22 +299,7 @@ func (v *Validator) validateConditionValue(operator string, value interface{}, p
 	}
 }
 
-func isSliceOrArray(value interface{}) bool {
-	if value == nil {
-		return false
-	}
-	kind := reflect.TypeOf(value).Kind()
-	return kind == reflect.Slice || kind == reflect.Array
-}
-
-// =============================================================================
-// SEMANTIC VALIDATION: Capture Field CEL Expressions
-// =============================================================================
-
-func (v *Validator) validateCaptureFieldExpressions() {
-	// Structural validation (name required, field/expression mutual exclusivity)
-	// is handled by struct validator tags in types.go.
-	// This validates CEL expression syntax only.
+func (v *TaskConfigValidator) validateCaptureFieldExpressions() {
 	for i, precond := range v.config.Spec.Preconditions {
 		for j, capture := range precond.Capture {
 			if capture.Expression != "" && v.celEnv != nil {
@@ -238,11 +310,7 @@ func (v *Validator) validateCaptureFieldExpressions() {
 	}
 }
 
-// =============================================================================
-// SEMANTIC VALIDATION: Template Variables
-// =============================================================================
-
-func (v *Validator) validateTemplateVariables() {
+func (v *TaskConfigValidator) validateTemplateVariables() {
 	// Validate precondition API call URLs and bodies
 	for i, precond := range v.config.Spec.Preconditions {
 		if precond.APICall != nil {
@@ -300,7 +368,7 @@ func (v *Validator) validateTemplateVariables() {
 	}
 }
 
-func (v *Validator) validateTemplateString(s string, path string) {
+func (v *TaskConfigValidator) validateTemplateString(s string, path string) {
 	if s == "" {
 		return
 	}
@@ -316,7 +384,7 @@ func (v *Validator) validateTemplateString(s string, path string) {
 	}
 }
 
-func (v *Validator) isVariableDefined(varName string) bool {
+func (v *TaskConfigValidator) isVariableDefined(varName string) bool {
 	if v.definedVars[varName] {
 		return true
 	}
@@ -340,7 +408,7 @@ func (v *Validator) isVariableDefined(varName string) bool {
 	return false
 }
 
-func (v *Validator) validateTemplateMap(m map[string]interface{}, path string) {
+func (v *TaskConfigValidator) validateTemplateMap(m map[string]interface{}, path string) {
 	for key, value := range m {
 		currentPath := fmt.Sprintf("%s.%s", path, key)
 		switch val := value.(type) {
@@ -361,47 +429,7 @@ func (v *Validator) validateTemplateMap(m map[string]interface{}, path string) {
 	}
 }
 
-// =============================================================================
-// SEMANTIC VALIDATION: CEL Expressions
-// =============================================================================
-
-func (v *Validator) initCELEnv() error {
-	options := make([]cel.EnvOption, 0, len(v.definedVars)+2)
-	options = append(options, cel.OptionalTypes())
-
-	addedRoots := make(map[string]bool)
-
-	for varName := range v.definedVars {
-		root := varName
-		if idx := strings.Index(varName, "."); idx > 0 {
-			root = varName[:idx]
-		}
-
-		if addedRoots[root] {
-			continue
-		}
-		addedRoots[root] = true
-
-		options = append(options, cel.Variable(root, cel.DynType))
-	}
-
-	if !addedRoots[FieldResources] {
-		options = append(options, cel.Variable(FieldResources, cel.MapType(cel.StringType, cel.DynType)))
-	}
-
-	if !addedRoots[FieldAdapter] {
-		options = append(options, cel.Variable(FieldAdapter, cel.MapType(cel.StringType, cel.DynType)))
-	}
-
-	env, err := cel.NewEnv(options...)
-	if err != nil {
-		return err
-	}
-	v.celEnv = env
-	return nil
-}
-
-func (v *Validator) validateCELExpressions() {
+func (v *TaskConfigValidator) validateCELExpressions() {
 	if v.celEnv == nil {
 		return
 	}
@@ -424,7 +452,7 @@ func (v *Validator) validateCELExpressions() {
 	}
 }
 
-func (v *Validator) validateCELExpression(expr string, path string) {
+func (v *TaskConfigValidator) validateCELExpression(expr string, path string) {
 	if expr == "" {
 		return
 	}
@@ -437,7 +465,7 @@ func (v *Validator) validateCELExpression(expr string, path string) {
 	}
 }
 
-func (v *Validator) validateBuildExpressions(m map[string]interface{}, path string) {
+func (v *TaskConfigValidator) validateBuildExpressions(m map[string]interface{}, path string) {
 	for key, value := range m {
 		currentPath := fmt.Sprintf("%s.%s", path, key)
 		switch val := value.(type) {
@@ -458,11 +486,7 @@ func (v *Validator) validateBuildExpressions(m map[string]interface{}, path stri
 	}
 }
 
-// =============================================================================
-// SEMANTIC VALIDATION: Kubernetes Manifests
-// =============================================================================
-
-func (v *Validator) validateK8sManifests() {
+func (v *TaskConfigValidator) validateK8sManifests() {
 	for i, resource := range v.config.Spec.Resources {
 		path := fmt.Sprintf("%s.%s[%d].%s", FieldSpec, FieldResources, i, FieldManifest)
 
@@ -472,14 +496,13 @@ func (v *Validator) validateK8sManifests() {
 					v.errors.Add(path+"."+FieldRef, "manifest ref cannot be empty")
 				}
 			} else {
-				// Embedded manifest - validate K8s structure
 				v.validateK8sManifest(manifest, path)
 			}
 		}
 	}
 }
 
-func (v *Validator) validateK8sManifest(manifest map[string]interface{}, path string) {
+func (v *TaskConfigValidator) validateK8sManifest(manifest map[string]interface{}, path string) {
 	requiredFields := []string{FieldAPIVersion, FieldKind, FieldMetadata}
 
 	for _, field := range requiredFields {
@@ -511,6 +534,14 @@ func (v *Validator) validateK8sManifest(manifest map[string]interface{}, path st
 // HELPER FUNCTIONS
 // =============================================================================
 
+func isSliceOrArray(value interface{}) bool {
+	if value == nil {
+		return false
+	}
+	kind := reflect.TypeOf(value).Kind()
+	return kind == reflect.Slice || kind == reflect.Array
+}
+
 // IsSupportedAPIVersion checks if the given apiVersion is supported
 func IsSupportedAPIVersion(apiVersion string) bool {
 	for _, v := range SupportedAPIVersions {
@@ -534,23 +565,4 @@ func ValidateAdapterVersion(config *AdapterConfig, expectedVersion string) error
 	}
 
 	return nil
-}
-
-// =============================================================================
-// TEST HELPERS
-// =============================================================================
-
-// newValidator creates a Validator without baseDir (for tests)
-func newValidator(config *AdapterConfig) *Validator {
-	return NewValidator(config, "")
-}
-
-// Validate is a convenience method that runs semantic validation
-func (v *Validator) Validate() error {
-	return v.ValidateSemantic()
-}
-
-// validateFileReferences validates file references exist (for tests)
-func validateFileReferences(config *AdapterConfig, baseDir string) error {
-	return NewValidator(config, baseDir).ValidateFileReferences()
 }

@@ -2,7 +2,6 @@ package config_loader
 
 import (
 	"fmt"
-	"time"
 )
 
 // -----------------------------------------------------------------------------
@@ -21,7 +20,7 @@ func BuiltinVariables() []string {
 }
 
 // -----------------------------------------------------------------------------
-// AdapterConfig Accessors
+// Config Accessors (Unified Configuration)
 // -----------------------------------------------------------------------------
 
 // GetDefinedVariables returns all variables defined in the config that can be used
@@ -31,7 +30,7 @@ func BuiltinVariables() []string {
 // - Captured variables from preconditions
 // - Post payloads
 // - Resource aliases (resources.<name>)
-func (c *AdapterConfig) GetDefinedVariables() map[string]bool {
+func (c *Config) GetDefinedVariables() map[string]bool {
 	vars := make(map[string]bool)
 
 	if c == nil {
@@ -79,7 +78,7 @@ func (c *AdapterConfig) GetDefinedVariables() map[string]bool {
 }
 
 // GetParamByName returns a parameter by name from spec.params, or nil if not found
-func (c *AdapterConfig) GetParamByName(name string) *Parameter {
+func (c *Config) GetParamByName(name string) *Parameter {
 	if c == nil {
 		return nil
 	}
@@ -92,7 +91,7 @@ func (c *AdapterConfig) GetParamByName(name string) *Parameter {
 }
 
 // GetRequiredParams returns all parameters marked as required from spec.params
-func (c *AdapterConfig) GetRequiredParams() []Parameter {
+func (c *Config) GetRequiredParams() []Parameter {
 	if c == nil {
 		return nil
 	}
@@ -106,7 +105,7 @@ func (c *AdapterConfig) GetRequiredParams() []Parameter {
 }
 
 // GetResourceByName returns a resource by name, or nil if not found
-func (c *AdapterConfig) GetResourceByName(name string) *Resource {
+func (c *Config) GetResourceByName(name string) *Resource {
 	if c == nil {
 		return nil
 	}
@@ -119,7 +118,7 @@ func (c *AdapterConfig) GetResourceByName(name string) *Resource {
 }
 
 // GetPreconditionByName returns a precondition by name, or nil if not found
-func (c *AdapterConfig) GetPreconditionByName(name string) *Precondition {
+func (c *Config) GetPreconditionByName(name string) *Precondition {
 	if c == nil {
 		return nil
 	}
@@ -132,7 +131,7 @@ func (c *AdapterConfig) GetPreconditionByName(name string) *Precondition {
 }
 
 // GetPostActionByName returns a post action by name, or nil if not found
-func (c *AdapterConfig) GetPostActionByName(name string) *PostAction {
+func (c *Config) GetPostActionByName(name string) *PostAction {
 	if c == nil || c.Spec.Post == nil {
 		return nil
 	}
@@ -145,7 +144,7 @@ func (c *AdapterConfig) GetPostActionByName(name string) *PostAction {
 }
 
 // ParamNames returns all parameter names in order
-func (c *AdapterConfig) ParamNames() []string {
+func (c *Config) ParamNames() []string {
 	if c == nil {
 		return nil
 	}
@@ -157,7 +156,7 @@ func (c *AdapterConfig) ParamNames() []string {
 }
 
 // ResourceNames returns all resource names in order
-func (c *AdapterConfig) ResourceNames() []string {
+func (c *Config) ResourceNames() []string {
 	if c == nil {
 		return nil
 	}
@@ -166,32 +165,6 @@ func (c *AdapterConfig) ResourceNames() []string {
 		names[i] = r.Name
 	}
 	return names
-}
-
-// -----------------------------------------------------------------------------
-// HyperfleetAPIConfig Accessors
-// -----------------------------------------------------------------------------
-
-// ParseTimeout parses the timeout string to time.Duration
-// Returns 0 and nil if timeout is empty (caller should use default)
-func (c *HyperfleetAPIConfig) ParseTimeout() (time.Duration, error) {
-	if c == nil || c.Timeout == "" {
-		return 0, nil
-	}
-	return time.ParseDuration(c.Timeout)
-}
-
-// GetBaseURL returns the base URL configured in HyperfleetAPIConfig.
-// Returns empty string if BaseURL is not set in the config.
-//
-// Note: This method only returns the explicitly configured value. Environment
-// variable fallback (HYPERFLEET_API_BASE_URL) is handled by hyperfleet_api.NewClient
-// as a last resort when no base URL is provided via options.
-func (c *HyperfleetAPIConfig) GetBaseURL() string {
-	if c != nil && c.BaseURL != "" {
-		return c.BaseURL
-	}
-	return ""
 }
 
 // -----------------------------------------------------------------------------

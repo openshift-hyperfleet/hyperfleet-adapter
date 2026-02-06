@@ -38,10 +38,9 @@ config, err := config_loader.Load("config.yaml", config_loader.WithAdapterVersio
 ```go
 // Metadata
 config.Metadata.Name
-config.Metadata.Namespace
 
 // API config
-timeout, _ := config.Spec.HyperfleetAPI.ParseTimeout()
+timeout := config.Spec.Clients.HyperfleetAPI.Timeout
 
 // Query helpers
 config.GetRequiredParams()
@@ -61,17 +60,18 @@ metadata:
 spec:
   adapter:
     version: "0.1.0"
-  hyperfleetApi:
-    timeout: 2s
-    retryAttempts: 3
-    retryBackoff: exponential
+  clients:
+    hyperfleetApi:
+      timeout: 2s
+      retryAttempts: 3
+      retryBackoff: exponential
   params: [...]
   preconditions: [...]
   resources: [...]
   post: {...}
 ```
 
-See `configs/adapterconfig-template.yaml` for the complete configuration reference.
+See `configs/adapter-task-config-template.yaml` for the complete configuration reference.
 
 ## Validation
 

@@ -62,13 +62,24 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
-Create the name of the adapter+task ConfigMap to use
+Create the name of the adapter ConfigMap to use
 */}}
 {{- define "hyperfleet-adapter.adapterConfigMapName" -}}
 {{- if .Values.adapterConfig.configMapName }}
 {{- .Values.adapterConfig.configMapName }}
 {{- else }}
 {{- printf "%s-config" (include "hyperfleet-adapter.fullname" .) }}
+{{- end }}
+{{- end }}
+
+{{/*
+Create the name of the adapter task ConfigMap to use
+*/}}
+{{- define "hyperfleet-adapter.adapterTaskConfigMapName" -}}
+{{- if .Values.adapterTaskConfig.configMapName }}
+{{- .Values.adapterTaskConfig.configMapName }}
+{{- else }}
+{{- printf "%s-task" (include "hyperfleet-adapter.fullname" .) }}
 {{- end }}
 {{- end }}
 
@@ -121,6 +132,26 @@ true
   {{- end -}}
 {{- else -}}
 {{- fail "Either .Values.adapterConfig.create must be true or a non-blank .Values.adapterConfig.configMapName must be provided." -}}
+{{- end -}}
+{{- end }}
+
+{{- define "hyperfleet-adapter.helmValidateAdapterTaskIsConfigured" -}}
+{{- if .Values.adapterTaskConfig.create -}}
+  {{- $hasYaml := not (empty .Values.adapterTaskConfig.yaml) -}}
+  {{- $hasFiles := not (empty .Values.adapterTaskConfig.files) -}}
+  {{- if or $hasYaml $hasFiles -}}
+true
+  {{- else -}}
+{{- fail "When .Values.adapterTaskConfig.create is true, either .Values.adapterTaskConfig.yaml or .Values.adapterTaskConfig.files must be provided." -}}
+  {{- end -}}
+{{- else if (hasKey .Values.adapterTaskConfig "configMapName") -}}
+  {{- if and .Values.adapterTaskConfig.configMapName (ne .Values.adapterTaskConfig.configMapName "") -}}
+true
+  {{- else -}}
+{{- fail "If .Values.adapterTaskConfig.configMapName is specified, it must have a non-blank value." -}}
+  {{- end -}}
+{{- else -}}
+{{- fail "Either .Values.adapterTaskConfig.create must be true or a non-blank .Values.adapterTaskConfig.configMapName must be provided." -}}
 {{- end -}}
 {{- end }}
 

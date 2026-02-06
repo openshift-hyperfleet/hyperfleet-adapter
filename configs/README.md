@@ -21,11 +21,18 @@ Edit `broker-configmap-pubsub-example.yaml`:
 
 ```yaml
 data:
-  # Which subscription the adapter should consume from
-  BROKER_SUBSCRIPTION_ID: "your-subscription-name"
-  
   # Broker configuration
   BROKER_GOOGLEPUBSUB_PROJECT_ID: "your-gcp-project"
+```
+
+Also set the adapter broker settings in the deployment config:
+
+```yaml
+spec:
+  clients:
+    broker:
+      subscriptionId: "your-subscription-name"
+      topic: "your-topic-name"
 ```
 
 ### 3. Apply the ConfigMap
@@ -57,7 +64,6 @@ The hyperfleet-broker library reads configuration from environment variables:
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `BROKER_SUBSCRIPTION_ID` | Subscription/queue to consume from | `my-subscription` |
 | `BROKER_TYPE` | Broker type | `googlepubsub` |
 | `BROKER_GOOGLEPUBSUB_PROJECT_ID` | GCP project ID | `my-project` |
 

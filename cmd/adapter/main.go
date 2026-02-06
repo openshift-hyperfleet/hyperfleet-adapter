@@ -20,20 +20,17 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-broker/broker"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"gopkg.in/yaml.v3"
 )
 
 // Command-line flags
 var (
-	configPath string
-	logLevel   string
-	logFormat  string
-	logOutput  string
-)
-
-// Environment variable names
-const (
-	EnvBrokerSubscriptionID = "BROKER_SUBSCRIPTION_ID"
-	EnvBrokerTopic          = "BROKER_TOPIC"
+	configPath     string // Path to deployment config (adapter-config.yaml)
+	taskConfigPath string // Path to task config (adapter-task-config.yaml)
+	logLevel       string
+	logFormat      string
+	logOutput      string
+	serveFlags     *pflag.FlagSet
 )
 
 // Timeout constants
@@ -53,6 +50,7 @@ const (
 )
 
 func main() {
+
 	// Root command
 	rootCmd := &cobra.Command{
 		Use:   "adapter",
@@ -83,9 +81,31 @@ and HyperFleet API calls.`,
 		},
 	}
 
-	// Add --config flag to serve command
+	// Add config flags to serve command
 	serveCmd.Flags().StringVarP(&configPath, "config", "c", "",
-		fmt.Sprintf("Path to adapter configuration file (can also use %s env var)", config_loader.EnvConfigPath))
+		fmt.Sprintf("Path to adapter deployment config file (can also use %s env var)", config_loader.EnvAdapterConfig))
+	serveCmd.Flags().StringVarP(&taskConfigPath, "task-config", "t", "",
+		fmt.Sprintf("Path to adapter task config file (can also use %s env var)", config_loader.EnvTaskConfigPath))
+	serveFlags = serveCmd.Flags()
+
+	// Add Maestro override flags
+	serveCmd.Flags().String("maestro-grpc-server-address", "", "Maestro gRPC server address")
+	serveCmd.Flags().String("maestro-http-server-address", "", "Maestro HTTP server address")
+	serveCmd.Flags().String("maestro-source-id", "", "Maestro source ID")
+	serveCmd.Flags().String("maestro-client-id", "", "Maestro client ID")
+	serveCmd.Flags().String("maestro-ca-file", "", "Maestro CA certificate file")
+	serveCmd.Flags().String("maestro-cert-file", "", "Maestro client certificate file")
+	serveCmd.Flags().String("maestro-key-file", "", "Maestro client key file")
+	serveCmd.Flags().String("maestro-timeout", "", "Maestro client timeout")
+	serveCmd.Flags().Bool("maestro-insecure", false, "Use insecure connection to Maestro")
+
+	// Add HyperFleet API override flags
+	serveCmd.Flags().String("hyperfleet-api-timeout", "", "HyperFleet API timeout")
+	serveCmd.Flags().Int("hyperfleet-api-retry", 0, "HyperFleet API retry attempts")
+
+	// Add config debug override flags
+	serveCmd.Flags().Bool("debug-config", false,
+		"Log the full merged configuration after load. Env: HYPERFLEET_DEBUG_CONFIG")
 
 	// Add logging flags to serve command
 	serveCmd.Flags().StringVar(&logLevel, "log-level", "",
@@ -155,33 +175,46 @@ func runServe() error {
 
 	log.Infof(ctx, "Starting Hyperfleet Adapter version=%s commit=%s built=%s tag=%s", version.Version, version.Commit, version.BuildDate, version.Tag)
 
-	// Load adapter configuration
-	// If configPath flag is empty, config_loader.Load will read from ADAPTER_CONFIG_PATH env var
+	// Load unified configuration (deployment + task configs)
 	log.Info(ctx, "Loading adapter configuration...")
-	adapterConfig, err := config_loader.Load(configPath, config_loader.WithAdapterVersion(version.Version))
+	config, err := config_loader.LoadConfig(
+		config_loader.WithAdapterConfigPath(configPath),
+		config_loader.WithTaskConfigPath(taskConfigPath),
+		config_loader.WithAdapterVersion(version.Version),
+		config_loader.WithFlags(serveFlags),
+	)
 	if err != nil {
 		errCtx := logger.WithErrorField(ctx, err)
 		log.Errorf(errCtx, "Failed to load adapter configuration")
 		return fmt.Errorf("failed to load adapter configuration: %w", err)
 	}
 
-	// Recreate logger with component name from adapter config
-	log, err = logger.NewLogger(buildLoggerConfig(adapterConfig.Metadata.Name))
+	// Recreate logger with component name from config
+	log, err = logger.NewLogger(buildLoggerConfig(config.Metadata.Name))
 	if err != nil {
 		return fmt.Errorf("failed to create logger with adapter config: %w", err)
 	}
 
-	log.Infof(ctx, "Adapter configuration loaded successfully: name=%s namespace=%s",
-		adapterConfig.Metadata.Name, adapterConfig.Metadata.Namespace)
+	log.Infof(ctx, "Adapter configuration loaded successfully: name=%s ",
+		config.Metadata.Name)
 	log.Infof(ctx, "HyperFleet API client configured: timeout=%s retryAttempts=%d",
-		adapterConfig.Spec.HyperfleetAPI.Timeout,
-		adapterConfig.Spec.HyperfleetAPI.RetryAttempts)
+		config.Spec.Clients.HyperfleetAPI.Timeout.String(),
+		config.Spec.Clients.HyperfleetAPI.RetryAttempts)
+	if config.Spec.DebugConfig {
+		configBytes, err := yaml.Marshal(config)
+		if err != nil {
+			errCtx := logger.WithErrorField(ctx, err)
+			log.Warnf(errCtx, "Failed to marshal adapter configuration for logging")
+		} else {
+			log.Infof(ctx, "Loaded adapter configuration:\n%s", string(configBytes))
+		}
+	}
 
 	// Get trace sample ratio from environment (default: 10%)
 	sampleRatio := otel.GetTraceSampleRatio(log, ctx)
 
 	// Initialize OpenTelemetry for trace_id/span_id generation and HTTP propagation
-	tp, err := otel.InitTracer(adapterConfig.Metadata.Name, version.Version, sampleRatio)
+	tp, err := otel.InitTracer(config.Metadata.Name, version.Version, sampleRatio)
 	if err != nil {
 		errCtx := logger.WithErrorField(ctx, err)
 		log.Errorf(errCtx, "Failed to initialize OpenTelemetry")
@@ -197,7 +230,7 @@ func runServe() error {
 	}()
 
 	// Start health server immediately (readiness starts as false)
-	healthServer := health.NewServer(log, HealthServerPort, adapterConfig.Metadata.Name)
+	healthServer := health.NewServer(log, HealthServerPort, config.Metadata.Name)
 	if err := healthServer.Start(ctx); err != nil {
 		errCtx := logger.WithErrorField(ctx, err)
 		log.Errorf(errCtx, "Failed to start health server")
@@ -216,7 +249,7 @@ func runServe() error {
 
 	// Start metrics server with build info
 	metricsServer := health.NewMetricsServer(log, MetricsServerPort, health.MetricsConfig{
-		Component: adapterConfig.Metadata.Name,
+		Component: config.Metadata.Name,
 		Version:   version.Version,
 		Commit:    version.Commit,
 	})
@@ -236,7 +269,7 @@ func runServe() error {
 
 	// Create HyperFleet API client from config
 	log.Info(ctx, "Creating HyperFleet API client...")
-	apiClient, err := createAPIClient(adapterConfig.Spec.HyperfleetAPI, log)
+	apiClient, err := createAPIClient(config.Spec.Clients.HyperfleetAPI, log)
 	if err != nil {
 		errCtx := logger.WithErrorField(ctx, err)
 		log.Errorf(errCtx, "Failed to create HyperFleet API client")
@@ -244,9 +277,8 @@ func runServe() error {
 	}
 
 	// Create Kubernetes client
-	// Uses KUBECONFIG env var if set, otherwise uses in-cluster config
 	log.Info(ctx, "Creating Kubernetes client...")
-	k8sClient, err := k8s_client.NewClient(ctx, k8s_client.ClientConfig{}, log)
+	k8sClient, err := createK8sClient(ctx, config.Spec.Clients.Kubernetes, log)
 	if err != nil {
 		errCtx := logger.WithErrorField(ctx, err)
 		log.Errorf(errCtx, "Failed to create Kubernetes client")
@@ -256,7 +288,7 @@ func runServe() error {
 	// Create the executor using the builder pattern
 	log.Info(ctx, "Creating event executor...")
 	exec, err := executor.NewBuilder().
-		WithAdapterConfig(adapterConfig).
+		WithConfig(config).
 		WithAPIClient(apiClient).
 		WithK8sClient(k8sClient).
 		WithLogger(log).
@@ -293,21 +325,21 @@ func runServe() error {
 		os.Exit(1)
 	}()
 
-	// Get subscription ID from environment
-	subscriptionID := os.Getenv(EnvBrokerSubscriptionID)
+	// Get broker subscription ID from config
+	subscriptionID := config.Spec.Clients.Broker.SubscriptionID
 	if subscriptionID == "" {
-		err := fmt.Errorf("%s environment variable is required", EnvBrokerSubscriptionID)
+		err := fmt.Errorf("spec.clients.broker.subscriptionId is required")
 		errCtx := logger.WithErrorField(ctx, err)
-		log.Errorf(errCtx, "Missing required environment variable")
+		log.Errorf(errCtx, "Missing required broker configuration")
 		return err
 	}
 
-	// Get topic from environment
-	topic := os.Getenv(EnvBrokerTopic)
+	// Get broker topic from config
+	topic := config.Spec.Clients.Broker.Topic
 	if topic == "" {
-		err := fmt.Errorf("%s environment variable is required", EnvBrokerTopic)
+		err := fmt.Errorf("spec.clients.broker.topic is required")
 		errCtx := logger.WithErrorField(ctx, err)
-		log.Errorf(errCtx, "Missing required environment variable")
+		log.Errorf(errCtx, "Missing required broker configuration")
 		return err
 	}
 
@@ -410,13 +442,14 @@ func runServe() error {
 func createAPIClient(apiConfig config_loader.HyperfleetAPIConfig, log logger.Logger) (hyperfleet_api.Client, error) {
 	var opts []hyperfleet_api.ClientOption
 
-	// Parse and set timeout using the accessor method
-	timeout, err := apiConfig.ParseTimeout()
-	if err != nil {
-		return nil, fmt.Errorf("invalid timeout %q: %w", apiConfig.Timeout, err)
+	// Set base URL if configured (env fallback handled in NewClient)
+	if apiConfig.BaseURL != "" {
+		opts = append(opts, hyperfleet_api.WithBaseURL(apiConfig.BaseURL))
 	}
-	if timeout > 0 {
-		opts = append(opts, hyperfleet_api.WithTimeout(timeout))
+
+	// Set timeout if configured (0 means use default)
+	if apiConfig.Timeout > 0 {
+		opts = append(opts, hyperfleet_api.WithTimeout(apiConfig.Timeout))
 	}
 
 	// Set retry attempts
@@ -424,16 +457,40 @@ func createAPIClient(apiConfig config_loader.HyperfleetAPIConfig, log logger.Log
 		opts = append(opts, hyperfleet_api.WithRetryAttempts(apiConfig.RetryAttempts))
 	}
 
-	// Parse and set retry backoff strategy
+	// Set retry backoff strategy
 	if apiConfig.RetryBackoff != "" {
-		backoff := hyperfleet_api.BackoffStrategy(apiConfig.RetryBackoff)
-		switch backoff {
+		switch apiConfig.RetryBackoff {
 		case hyperfleet_api.BackoffExponential, hyperfleet_api.BackoffLinear, hyperfleet_api.BackoffConstant:
-			opts = append(opts, hyperfleet_api.WithRetryBackoff(backoff))
+			opts = append(opts, hyperfleet_api.WithRetryBackoff(apiConfig.RetryBackoff))
 		default:
 			return nil, fmt.Errorf("invalid retry backoff strategy %q (supported: exponential, linear, constant)", apiConfig.RetryBackoff)
 		}
 	}
 
+	// Set retry base delay
+	if apiConfig.BaseDelay > 0 {
+		opts = append(opts, hyperfleet_api.WithBaseDelay(apiConfig.BaseDelay))
+	}
+
+	// Set retry max delay
+	if apiConfig.MaxDelay > 0 {
+		opts = append(opts, hyperfleet_api.WithMaxDelay(apiConfig.MaxDelay))
+	}
+
+	// Set default headers
+	for key, value := range apiConfig.DefaultHeaders {
+		opts = append(opts, hyperfleet_api.WithDefaultHeader(key, value))
+	}
+
 	return hyperfleet_api.NewClient(log, opts...)
+}
+
+// createK8sClient creates a Kubernetes client from the config
+func createK8sClient(ctx context.Context, k8sConfig config_loader.KubernetesConfig, log logger.Logger) (*k8s_client.Client, error) {
+	clientConfig := k8s_client.ClientConfig{
+		KubeConfigPath: k8sConfig.KubeConfigPath,
+		QPS:            k8sConfig.QPS,
+		Burst:          k8sConfig.Burst,
+	}
+	return k8s_client.NewClient(ctx, clientConfig, log)
 }

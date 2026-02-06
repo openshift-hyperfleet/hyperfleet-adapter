@@ -302,11 +302,6 @@ func TestFieldConstants(t *testing.T) {
 			expected: "event_id",
 		},
 		{
-			name:     "ClusterIDKey",
-			key:      ClusterIDKey,
-			expected: "cluster_id",
-		},
-		{
 			name:     "AdapterKey",
 			key:      AdapterKey,
 			expected: "adapter",
@@ -340,14 +335,6 @@ func TestContextHelpers(t *testing.T) {
 		fields := GetLogFields(ctx)
 		if fields["event_id"] != "evt-123" {
 			t.Errorf("Expected evt-123, got %v", fields["event_id"])
-		}
-	})
-
-	t.Run("WithClusterID", func(t *testing.T) {
-		ctx := WithClusterID(ctx, "cls-456")
-		fields := GetLogFields(ctx)
-		if fields["cluster_id"] != "cls-456" {
-			t.Errorf("Expected cls-456, got %v", fields["cluster_id"])
 		}
 	})
 
@@ -442,7 +429,6 @@ func TestLoggerContextExtraction(t *testing.T) {
 	ctx := context.Background()
 	ctx = WithTraceID(ctx, "trace-123")
 	ctx = WithEventID(ctx, "evt-456")
-	ctx = WithClusterID(ctx, "cls-789")
 
 	// This should not panic and should include context values in log
 	t.Run("logs_with_context_values", func(t *testing.T) {

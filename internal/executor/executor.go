@@ -31,13 +31,17 @@ func NewExecutor(config *ExecutorConfig) (*Executor, error) {
 		log:                config.Logger,
 	}, nil
 }
+
 func validateExecutorConfig(config *ExecutorConfig) error {
 	if config == nil {
 		return fmt.Errorf("config is required")
 	}
 
+	if config.Config == nil {
+		return fmt.Errorf("config is required")
+	}
+
 	requiredFields := []string{
-		"AdapterConfig",
 		"APIClient",
 		"Logger",
 		"K8sClient"}
@@ -83,7 +87,7 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 		ctx = logger.WithDynamicResourceID(ctx, eventData.Kind, eventData.ID)
 	}
 
-	execCtx := NewExecutionContext(ctx, rawData)
+	execCtx := NewExecutionContext(ctx, rawData, e.config.Config)
 
 	// Initialize execution result
 	result := &ExecutionResult{
@@ -101,6 +105,9 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 		result.Status = StatusFailed
 		result.Errors[PhaseParamExtraction] = err
 		execCtx.SetError("ParameterExtractionFailed", err.Error())
+		resErr := fmt.Errorf("resource execution failed: %w", err)
+		errCtx := logger.WithErrorField(ctx, resErr)
+		e.log.Errorf(errCtx, "Phase %s: FAILED", result.CurrentPhase)
 		return result
 	}
 	result.Params = execCtx.Params
@@ -108,8 +115,9 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 
 	// Phase 2: Preconditions
 	result.CurrentPhase = PhasePreconditions
-	e.log.Infof(ctx, "Phase %s: RUNNING - %d configured", result.CurrentPhase, len(e.config.AdapterConfig.Spec.Preconditions))
-	precondOutcome := e.precondExecutor.ExecuteAll(ctx, e.config.AdapterConfig.Spec.Preconditions, execCtx)
+	preconditions := e.config.Config.Spec.Preconditions
+	e.log.Infof(ctx, "Phase %s: RUNNING - %d configured", result.CurrentPhase, len(preconditions))
+	precondOutcome := e.precondExecutor.ExecuteAll(ctx, preconditions, execCtx)
 	result.PreconditionResults = precondOutcome.Results
 
 	if precondOutcome.Error != nil {
@@ -137,9 +145,10 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 
 	// Phase 3: Resources (skip if preconditions not met or previous error)
 	result.CurrentPhase = PhaseResources
-	e.log.Infof(ctx, "Phase %s: RUNNING - %d configured", result.CurrentPhase, len(e.config.AdapterConfig.Spec.Resources))
+	resources := e.config.Config.Spec.Resources
+	e.log.Infof(ctx, "Phase %s: RUNNING - %d configured", result.CurrentPhase, len(resources))
 	if !result.ResourcesSkipped {
-		resourceResults, err := e.resourceExecutor.ExecuteAll(ctx, e.config.AdapterConfig.Spec.Resources, execCtx)
+		resourceResults, err := e.resourceExecutor.ExecuteAll(ctx, resources, execCtx)
 		result.ResourceResults = resourceResults
 
 		if err != nil {
@@ -159,12 +168,13 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 
 	// Phase 4: Post Actions (always execute for error reporting)
 	result.CurrentPhase = PhasePostActions
+	postConfig := e.config.Config.Spec.Post
 	postActionCount := 0
-	if e.config.AdapterConfig.Spec.Post != nil {
-		postActionCount = len(e.config.AdapterConfig.Spec.Post.PostActions)
+	if postConfig != nil {
+		postActionCount = len(postConfig.PostActions)
 	}
 	e.log.Infof(ctx, "Phase %s: RUNNING - %d configured", result.CurrentPhase, postActionCount)
-	postResults, err := e.postActionExecutor.ExecuteAll(ctx, e.config.AdapterConfig.Spec.Post, execCtx)
+	postResults, err := e.postActionExecutor.ExecuteAll(ctx, postConfig, execCtx)
 	result.PostActionResults = postResults
 
 	if err != nil {
@@ -198,12 +208,12 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 // executeParamExtraction extracts parameters from the event and environment
 func (e *Executor) executeParamExtraction(execCtx *ExecutionContext) error {
 	// Extract configured parameters
-	if err := extractConfigParams(e.config.AdapterConfig, execCtx, e.config.K8sClient); err != nil {
+	if err := extractConfigParams(e.config.Config, execCtx, e.config.K8sClient); err != nil {
 		return err
 	}
 
 	// Add metadata params
-	addMetadataParams(e.config.AdapterConfig, execCtx)
+	addMetadataParams(e.config.Config, execCtx)
 
 	return nil
 }
@@ -216,7 +226,7 @@ func (e *Executor) executeParamExtraction(execCtx *ExecutionContext) error {
 //   - Adds trace_id and span_id to logger context (for log correlation)
 //   - The trace context is automatically propagated to outgoing HTTP requests
 func (e *Executor) startTracedExecution(ctx context.Context) (context.Context, trace.Span) {
-	componentName := e.config.AdapterConfig.Metadata.Name
+	componentName := e.config.Config.Metadata.Name
 	ctx, span := otel.Tracer(componentName).Start(ctx, "Execute")
 
 	// Add trace_id and span_id to logger context for log correlation
@@ -312,9 +322,9 @@ func NewBuilder() *ExecutorBuilder {
 	}
 }
 
-// WithAdapterConfig sets the adapter configuration
-func (b *ExecutorBuilder) WithAdapterConfig(config *config_loader.AdapterConfig) *ExecutorBuilder {
-	b.config.AdapterConfig = config
+// WithConfig sets the unified configuration
+func (b *ExecutorBuilder) WithConfig(config *config_loader.Config) *ExecutorBuilder {
+	b.config.Config = config
 	return b
 }
 

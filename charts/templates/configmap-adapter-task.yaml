@@ -1,0 +1,24 @@
+{{- if .Values.adapterTaskConfig.create }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hyperfleet-adapter.adapterTaskConfigMapName" . }}
+  labels:
+    {{- include "hyperfleet-adapter.labels" . | nindent 4 }}
+    app.kubernetes.io/component: adapter-task-config
+data:
+  {{- if .Values.adapterTaskConfig.yaml }}
+  # AdapterTaskConfig YAML
+  task-config.yaml: |
+    {{- if kindIs "string" .Values.adapterTaskConfig.yaml }}
+{{ .Values.adapterTaskConfig.yaml | nindent 4 }}
+    {{- else }}
+{{ toYaml .Values.adapterTaskConfig.yaml | nindent 4 }}
+    {{- end }}
+  {{- else }}
+    {{- range $key, $path := .Values.adapterTaskConfig.files }}
+  {{ $key }}: |
+    {{ $.Files.Get $path | nindent 4 }}
+    {{- end }}
+  {{- end }}
+{{- end }}

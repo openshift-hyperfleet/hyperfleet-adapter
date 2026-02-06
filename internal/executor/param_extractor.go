@@ -12,10 +12,16 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/k8s_client"
 )
 
+// ParamConfig interface allows extractConfigParams to work with both AdapterConfig and Config
+type ParamConfig interface {
+	GetParams() []config_loader.Parameter
+	GetMetadata() config_loader.Metadata
+}
+
 // extractConfigParams extracts all configured parameters and populates execCtx.Params
 // This is a pure function that directly modifies execCtx for simplicity
-func extractConfigParams(config *config_loader.AdapterConfig, execCtx *ExecutionContext, k8sClient k8s_client.K8sClient) error {
-	for _, param := range config.Spec.Params {
+func extractConfigParams(config ParamConfig, execCtx *ExecutionContext, k8sClient k8s_client.K8sClient) error {
+	for _, param := range config.GetParams() {
 		value, err := extractParam(execCtx.Ctx, param, execCtx.EventData, k8sClient)
 		if err != nil {
 			if param.Required {
@@ -153,12 +159,12 @@ func extractFromConfigMap(ctx context.Context, path string, k8sClient k8s_client
 }
 
 // addMetadataParams adds adapter and event metadata to execCtx.Params
-func addMetadataParams(config *config_loader.AdapterConfig, execCtx *ExecutionContext) {
+func addMetadataParams(config ParamConfig, execCtx *ExecutionContext) {
+	metadata := config.GetMetadata()
 	// Add metadata from adapter config
 	execCtx.Params["metadata"] = map[string]interface{}{
-		"name":      config.Metadata.Name,
-		"namespace": config.Metadata.Namespace,
-		"labels":    config.Metadata.Labels,
+		"name":   metadata.Name,
+		"labels": metadata.Labels,
 	}
 }
 

@@ -80,7 +80,8 @@ func ExecuteAPICall(ctx context.Context, apiCall *config_loader.APICall, execCtx
 	}
 
 	// Render URL template
-	url, err := renderTemplate(apiCall.URL, execCtx.Params)
+	urlTemplate := buildHyperfleetAPICallURL(apiCall.URL, execCtx)
+	url, err := renderTemplate(urlTemplate, execCtx.Params)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to render URL template: %w", err)
 	}
@@ -211,6 +212,35 @@ func ExecuteAPICall(ctx context.Context, apiCall *config_loader.APICall, execCtx
 
 	log.Infof(ctx, "API call completed: %d %s", resp.StatusCode, resp.Status)
 	return resp, url, nil
+}
+
+// buildHyperfleetAPICallURL builds a full HyperFleet API URL when a relative path is provided.
+// It uses hyperfleet API client settings from execution context config.
+// If the URL already includes base/version templates or is absolute, it is returned as-is.
+func buildHyperfleetAPICallURL(apiCallURL string, execCtx *ExecutionContext) string {
+	if apiCallURL == "" {
+		return apiCallURL
+	}
+	if execCtx == nil || execCtx.Config == nil {
+		return apiCallURL
+	}
+
+	lowerURL := strings.ToLower(apiCallURL)
+	if strings.HasPrefix(lowerURL, "http://") || strings.HasPrefix(lowerURL, "https://") {
+		return apiCallURL
+	}
+
+	baseURL := strings.TrimRight(execCtx.Config.Spec.Clients.HyperfleetAPI.BaseURL, "/")
+	if baseURL == "" {
+		return apiCallURL
+	}
+
+	relative := strings.TrimLeft(apiCallURL, "/")
+	if strings.HasPrefix(relative, "api/") {
+		return baseURL + "/" + relative
+	}
+
+	return fmt.Sprintf("%s/api/hyperfleet/%s/%s", baseURL, execCtx.Config.Spec.Clients.HyperfleetAPI.Version, relative)
 }
 
 // ValidateAPIResponse checks if an API response is valid and successful

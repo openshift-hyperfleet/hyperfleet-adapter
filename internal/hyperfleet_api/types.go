@@ -38,24 +38,27 @@ const (
 type ClientConfig struct {
 	// BaseURL is the base URL for all API requests (must be set by caller)
 	// Relative URLs in requests will be prefixed with this
-	BaseURL string
+	BaseURL string `yaml:"baseUrl,omitempty" mapstructure:"baseUrl"`
+	// Version is the HyperFleet API version (e.g., "v1")
+	Version string `yaml:"version,omitempty" mapstructure:"version"`
 	// Timeout is the HTTP client timeout for requests
-	Timeout time.Duration
+	Timeout time.Duration `yaml:"timeout,omitempty" mapstructure:"timeout"`
 	// RetryAttempts is the number of retry attempts for failed requests
-	RetryAttempts int
+	RetryAttempts int `yaml:"retryAttempts,omitempty" mapstructure:"retryAttempts"`
 	// RetryBackoff is the backoff strategy for retries
-	RetryBackoff BackoffStrategy
+	RetryBackoff BackoffStrategy `yaml:"retryBackoff,omitempty" mapstructure:"retryBackoff"`
 	// BaseDelay is the initial delay for retry backoff
-	BaseDelay time.Duration
+	BaseDelay time.Duration `yaml:"baseDelay,omitempty" mapstructure:"baseDelay"`
 	// MaxDelay is the maximum delay for retry backoff
-	MaxDelay time.Duration
+	MaxDelay time.Duration `yaml:"maxDelay,omitempty" mapstructure:"maxDelay"`
 	// DefaultHeaders are headers added to all requests
-	DefaultHeaders map[string]string
+	DefaultHeaders map[string]string `yaml:"defaultHeaders,omitempty" mapstructure:"defaultHeaders"`
 }
 
 // DefaultClientConfig returns a ClientConfig with default values
 func DefaultClientConfig() *ClientConfig {
 	return &ClientConfig{
+		Version:        "v1",
 		Timeout:        DefaultTimeout,
 		RetryAttempts:  DefaultRetryAttempts,
 		RetryBackoff:   DefaultRetryBackoff,

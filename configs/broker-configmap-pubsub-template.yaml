@@ -17,19 +17,10 @@ metadata:
     hyperfleet.io/broker-type: googlepubsub
 data:
   # ============================================================================
-  # Adapter-specific Configuration
-  # ============================================================================
-  # REQUIRED: The subscription that the adapter should consume from
-  # This is used by the broker consumer, not the broker library
-  BROKER_SUBSCRIPTION_ID: "hyperfleet-adapter-subscription"
-
-  # REQUIRED: The topic that the adapter should consume from
-  # This is used by the broker consumer, not the broker library
-  BROKER_TOPIC: "hyperfleet-adapter-topic"
-
-  # ============================================================================
   # Broker Configuration (broker.yaml)
   # ============================================================================
+  # Note: Adapter broker topic/subscription are configured in the adapter
+  # deployment config under spec.clients.broker.
   # This is the standard configuration format for hyperfleet-broker library
   # Mount this file at /etc/broker/broker.yaml (or set BROKER_CONFIG_FILE)
   # 
