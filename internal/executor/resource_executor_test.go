@@ -1,11 +1,11 @@
 package executor
 
 import (
-	"context"
 	"testing"
 
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/utils"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDeepCopyMap_BasicTypes(t *testing.T) {
@@ -17,7 +17,8 @@ func TestDeepCopyMap_BasicTypes(t *testing.T) {
 		"null":   nil,
 	}
 
-	copied := deepCopyMap(context.Background(), original, logger.NewTestLogger())
+	copied, err := utils.DeepCopyMap(original)
+	require.NoError(t, err)
 
 	// Verify values are copied correctly
 	assert.Equal(t, "hello", copied["string"])
@@ -26,15 +27,12 @@ func TestDeepCopyMap_BasicTypes(t *testing.T) {
 	assert.Equal(t, true, copied["bool"])
 	assert.Nil(t, copied["null"])
 
-	// Verify no warnings logged
-
 	// Verify mutation doesn't affect original
 	copied["string"] = "modified"
 	assert.Equal(t, "hello", original["string"], "Original should not be modified")
 }
 
 func TestDeepCopyMap_NestedMaps(t *testing.T) {
-
 	original := map[string]interface{}{
 		"level1": map[string]interface{}{
 			"level2": map[string]interface{}{
@@ -43,9 +41,8 @@ func TestDeepCopyMap_NestedMaps(t *testing.T) {
 		},
 	}
 
-	copied := deepCopyMap(context.Background(), original, logger.NewTestLogger())
-
-	// Verify deep copy works
+	copied, err := utils.DeepCopyMap(original)
+	require.NoError(t, err)
 
 	// Modify the copied nested map
 	level1 := copied["level1"].(map[string]interface{})
@@ -59,7 +56,6 @@ func TestDeepCopyMap_NestedMaps(t *testing.T) {
 }
 
 func TestDeepCopyMap_Slices(t *testing.T) {
-
 	original := map[string]interface{}{
 		"items": []interface{}{"a", "b", "c"},
 		"nested": []interface{}{
@@ -67,7 +63,8 @@ func TestDeepCopyMap_Slices(t *testing.T) {
 		},
 	}
 
-	copied := deepCopyMap(context.Background(), original, logger.NewTestLogger())
+	copied, err := utils.DeepCopyMap(original)
+	require.NoError(t, err)
 
 	// Modify copied slice
 	copiedItems := copied["items"].([]interface{})
@@ -80,16 +77,14 @@ func TestDeepCopyMap_Slices(t *testing.T) {
 
 func TestDeepCopyMap_Channel(t *testing.T) {
 	// copystructure handles channels properly (creates new channel)
-
 	ch := make(chan int, 5)
 	original := map[string]interface{}{
 		"channel": ch,
 		"normal":  "value",
 	}
 
-	copied := deepCopyMap(context.Background(), original, logger.NewTestLogger())
-
-	// copystructure handles channels - no warning expected
+	copied, err := utils.DeepCopyMap(original)
+	require.NoError(t, err)
 
 	// Normal values are copied
 	assert.Equal(t, "value", copied["normal"])
@@ -102,16 +97,14 @@ func TestDeepCopyMap_Channel(t *testing.T) {
 
 func TestDeepCopyMap_Function(t *testing.T) {
 	// copystructure handles functions (copies the function pointer)
-
 	fn := func() string { return "hello" }
 	original := map[string]interface{}{
 		"func":   fn,
 		"normal": "value",
 	}
 
-	copied := deepCopyMap(context.Background(), original, logger.NewTestLogger())
-
-	// copystructure handles functions - no warning expected
+	copied, err := utils.DeepCopyMap(original)
+	require.NoError(t, err)
 
 	// Normal values are copied
 	assert.Equal(t, "value", copied["normal"])
@@ -123,7 +116,6 @@ func TestDeepCopyMap_Function(t *testing.T) {
 
 func TestDeepCopyMap_NestedWithChannel(t *testing.T) {
 	// Test that nested maps are deep copied even when channels are present
-
 	ch := make(chan int)
 	nested := map[string]interface{}{"mutable": "original"}
 	original := map[string]interface{}{
@@ -131,9 +123,8 @@ func TestDeepCopyMap_NestedWithChannel(t *testing.T) {
 		"nested":  nested,
 	}
 
-	copied := deepCopyMap(context.Background(), original, logger.NewTestLogger())
-
-	// copystructure handles this properly - no warning expected
+	copied, err := utils.DeepCopyMap(original)
+	require.NoError(t, err)
 
 	// Modify the copied nested map
 	copiedNested := copied["nested"].(map[string]interface{})
@@ -145,9 +136,9 @@ func TestDeepCopyMap_NestedWithChannel(t *testing.T) {
 }
 
 func TestDeepCopyMap_EmptyMap(t *testing.T) {
-
 	original := map[string]interface{}{}
-	copied := deepCopyMap(context.Background(), original, logger.NewTestLogger())
+	copied, err := utils.DeepCopyMap(original)
+	require.NoError(t, err)
 
 	assert.NotNil(t, copied)
 	assert.Empty(t, copied)
@@ -162,8 +153,8 @@ func TestDeepCopyMap_DeepCopyVerification(t *testing.T) {
 		},
 	}
 
-	// Should not panic
-	copied := deepCopyMap(context.Background(), original, logger.NewTestLogger())
+	copied, err := utils.DeepCopyMap(original)
+	require.NoError(t, err)
 
 	assert.Equal(t, "value", copied["string"])
 
@@ -176,15 +167,13 @@ func TestDeepCopyMap_DeepCopyVerification(t *testing.T) {
 }
 
 func TestDeepCopyMap_NilMap(t *testing.T) {
-
-	copied := deepCopyMap(context.Background(), nil, logger.NewTestLogger())
-
+	copied, err := utils.DeepCopyMap(nil)
+	require.NoError(t, err)
 	assert.Nil(t, copied)
 }
 
 func TestDeepCopyMap_KubernetesManifest(t *testing.T) {
 	// Test with a realistic Kubernetes manifest structure
-
 	original := map[string]interface{}{
 		"apiVersion": "v1",
 		"kind":       "ConfigMap",
@@ -201,7 +190,8 @@ func TestDeepCopyMap_KubernetesManifest(t *testing.T) {
 		},
 	}
 
-	copied := deepCopyMap(context.Background(), original, logger.NewTestLogger())
+	copied, err := utils.DeepCopyMap(original)
+	require.NoError(t, err)
 
 	// Modify copied manifest
 	copiedMetadata := copied["metadata"].(map[string]interface{})
@@ -214,10 +204,10 @@ func TestDeepCopyMap_KubernetesManifest(t *testing.T) {
 	assert.Equal(t, "test", originalLabels["app"], "Original manifest should not be modified")
 }
 
-// TestDeepCopyMap_Context ensures the function is used correctly in context
+// TestDeepCopyMap_RealWorldContext ensures the function is used correctly in context
 func TestDeepCopyMap_RealWorldContext(t *testing.T) {
 	// This simulates how deepCopyMap is used in executeResource
-	manifest := map[string]interface{}{
+	manifestData := map[string]interface{}{
 		"apiVersion": "v1",
 		"kind":       "Namespace",
 		"metadata": map[string]interface{}{
@@ -226,13 +216,40 @@ func TestDeepCopyMap_RealWorldContext(t *testing.T) {
 	}
 
 	// Deep copy before template rendering
-	copied := deepCopyMap(context.Background(), manifest, logger.NewTestLogger())
+	copied, err := utils.DeepCopyMap(manifestData)
+	require.NoError(t, err)
 
 	// Simulate template rendering modifying the copy
 	copiedMetadata := copied["metadata"].(map[string]interface{})
 	copiedMetadata["name"] = "rendered-namespace"
 
 	// Original template should remain unchanged for next iteration
-	originalMetadata := manifest["metadata"].(map[string]interface{})
+	originalMetadata := manifestData["metadata"].(map[string]interface{})
 	assert.Equal(t, "{{ .namespace }}", originalMetadata["name"])
+}
+
+// TestDeepCopyMapWithFallback tests the fallback version
+func TestDeepCopyMapWithFallback(t *testing.T) {
+	original := map[string]interface{}{
+		"key": "value",
+		"nested": map[string]interface{}{
+			"inner": "deep",
+		},
+	}
+
+	copied := utils.DeepCopyMapWithFallback(original)
+	assert.NotNil(t, copied)
+	assert.Equal(t, "value", copied["key"])
+
+	// Verify it's a deep copy
+	copiedNested := copied["nested"].(map[string]interface{})
+	copiedNested["inner"] = "modified"
+
+	originalNested := original["nested"].(map[string]interface{})
+	assert.Equal(t, "deep", originalNested["inner"], "Original should not be modified")
+}
+
+func TestDeepCopyMapWithFallback_NilMap(t *testing.T) {
+	copied := utils.DeepCopyMapWithFallback(nil)
+	assert.Nil(t, copied)
 }

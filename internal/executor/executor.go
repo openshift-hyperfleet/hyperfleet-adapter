@@ -23,25 +23,39 @@ func NewExecutor(config *ExecutorConfig) (*Executor, error) {
 		return nil, err
 	}
 
+	log := config.Logger
+
+	// Create phases (each phase contains its own business logic)
+	paramExtractionPhase := NewParamExtractionPhase(config.Config, config.K8sClient, log)
+	preconditionsPhase := NewPreconditionsPhase(config.APIClient, config.Config, log)
+	resourcesPhase := NewResourcesPhase(config.K8sClient, config.Config, log)
+	postActionsPhase := NewPostActionsPhase(config.APIClient, config.Config, log)
+
+	// Create pipeline with all phases
+	pipeline := NewPipeline(log,
+		paramExtractionPhase,
+		preconditionsPhase,
+		resourcesPhase,
+		postActionsPhase,
+	)
+
 	return &Executor{
-		config:             config,
-		precondExecutor:    newPreconditionExecutor(config),
-		resourceExecutor:   newResourceExecutor(config),
-		postActionExecutor: newPostActionExecutor(config),
-		log:                config.Logger,
+		config:               config,
+		log:                  log,
+		pipeline:             pipeline,
+		paramExtractionPhase: paramExtractionPhase,
+		preconditionsPhase:   preconditionsPhase,
+		resourcesPhase:       resourcesPhase,
+		postActionsPhase:     postActionsPhase,
 	}, nil
 }
-
 func validateExecutorConfig(config *ExecutorConfig) error {
 	if config == nil {
 		return fmt.Errorf("config is required")
 	}
 
-	if config.Config == nil {
-		return fmt.Errorf("config is required")
-	}
-
 	requiredFields := []string{
+		"Config",
 		"APIClient",
 		"Logger",
 		"K8sClient"}
@@ -89,107 +103,15 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 
 	execCtx := NewExecutionContext(ctx, rawData, e.config.Config)
 
-	// Initialize execution result
-	result := &ExecutionResult{
-		Status:       StatusSuccess,
-		Params:       make(map[string]interface{}),
-		Errors:       make(map[ExecutionPhase]error),
-		CurrentPhase: PhaseParamExtraction,
-	}
-
 	e.log.Info(ctx, "Processing event")
 
-	// Phase 1: Parameter Extraction
-	e.log.Infof(ctx, "Phase %s: RUNNING", result.CurrentPhase)
-	if err := e.executeParamExtraction(execCtx); err != nil {
-		result.Status = StatusFailed
-		result.Errors[PhaseParamExtraction] = err
-		execCtx.SetError("ParameterExtractionFailed", err.Error())
-		resErr := fmt.Errorf("resource execution failed: %w", err)
-		errCtx := logger.WithErrorField(ctx, resErr)
-		e.log.Errorf(errCtx, "Phase %s: FAILED", result.CurrentPhase)
-		return result
-	}
-	result.Params = execCtx.Params
-	e.log.Debugf(ctx, "Parameter extraction completed: extracted %d params", len(execCtx.Params))
+	// Execute all phases through the pipeline
+	phaseResults := e.pipeline.Execute(ctx, execCtx)
 
-	// Phase 2: Preconditions
-	result.CurrentPhase = PhasePreconditions
-	preconditions := e.config.Config.Spec.Preconditions
-	e.log.Infof(ctx, "Phase %s: RUNNING - %d configured", result.CurrentPhase, len(preconditions))
-	precondOutcome := e.precondExecutor.ExecuteAll(ctx, preconditions, execCtx)
-	result.PreconditionResults = precondOutcome.Results
+	// Build execution result from phase results
+	result := e.buildExecutionResult(phaseResults, execCtx)
 
-	if precondOutcome.Error != nil {
-		// Process execution error: precondition evaluation failed
-		result.Status = StatusFailed
-		precondErr := fmt.Errorf("precondition evaluation failed: error=%w", precondOutcome.Error)
-		result.Errors[result.CurrentPhase] = precondErr
-		execCtx.SetError("PreconditionFailed", precondOutcome.Error.Error())
-		errCtx := logger.WithErrorField(ctx, precondOutcome.Error)
-		e.log.Errorf(errCtx, "Phase %s: FAILED", result.CurrentPhase)
-		result.ResourcesSkipped = true
-		result.SkipReason = "PreconditionFailed"
-		execCtx.SetSkipped("PreconditionFailed", precondOutcome.Error.Error())
-		// Continue to post actions for error reporting
-	} else if !precondOutcome.AllMatched {
-		// Business outcome: precondition not satisfied
-		result.ResourcesSkipped = true
-		result.SkipReason = precondOutcome.NotMetReason
-		execCtx.SetSkipped("PreconditionNotMet", precondOutcome.NotMetReason)
-		e.log.Infof(ctx, "Phase %s: SUCCESS - NOT_MET - %s", result.CurrentPhase, precondOutcome.NotMetReason)
-	} else {
-		// All preconditions matched
-		e.log.Infof(ctx, "Phase %s: SUCCESS - MET - %d passed", result.CurrentPhase, len(precondOutcome.Results))
-	}
-
-	// Phase 3: Resources (skip if preconditions not met or previous error)
-	result.CurrentPhase = PhaseResources
-	resources := e.config.Config.Spec.Resources
-	e.log.Infof(ctx, "Phase %s: RUNNING - %d configured", result.CurrentPhase, len(resources))
-	if !result.ResourcesSkipped {
-		resourceResults, err := e.resourceExecutor.ExecuteAll(ctx, resources, execCtx)
-		result.ResourceResults = resourceResults
-
-		if err != nil {
-			result.Status = StatusFailed
-			resErr := fmt.Errorf("resource execution failed: %w", err)
-			result.Errors[result.CurrentPhase] = resErr
-			execCtx.SetError("ResourceFailed", err.Error())
-			errCtx := logger.WithErrorField(ctx, err)
-			e.log.Errorf(errCtx, "Phase %s: FAILED", result.CurrentPhase)
-			// Continue to post actions for error reporting
-		} else {
-			e.log.Infof(ctx, "Phase %s: SUCCESS - %d processed", result.CurrentPhase, len(resourceResults))
-		}
-	} else {
-		e.log.Infof(ctx, "Phase %s: SKIPPED - %s", result.CurrentPhase, result.SkipReason)
-	}
-
-	// Phase 4: Post Actions (always execute for error reporting)
-	result.CurrentPhase = PhasePostActions
-	postConfig := e.config.Config.Spec.Post
-	postActionCount := 0
-	if postConfig != nil {
-		postActionCount = len(postConfig.PostActions)
-	}
-	e.log.Infof(ctx, "Phase %s: RUNNING - %d configured", result.CurrentPhase, postActionCount)
-	postResults, err := e.postActionExecutor.ExecuteAll(ctx, postConfig, execCtx)
-	result.PostActionResults = postResults
-
-	if err != nil {
-		result.Status = StatusFailed
-		postErr := fmt.Errorf("post action execution failed: %w", err)
-		result.Errors[result.CurrentPhase] = postErr
-		errCtx := logger.WithErrorField(ctx, err)
-		e.log.Errorf(errCtx, "Phase %s: FAILED", result.CurrentPhase)
-	} else {
-		e.log.Infof(ctx, "Phase %s: SUCCESS - %d executed", result.CurrentPhase, len(postResults))
-	}
-
-	// Finalize
-	result.ExecutionContext = execCtx
-
+	// Log final status
 	if result.Status == StatusSuccess {
 		e.log.Infof(ctx, "Event execution finished: event_execution_status=success resources_skipped=%t reason=%s", result.ResourcesSkipped, result.SkipReason)
 	} else {
@@ -202,20 +124,53 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 		errCtx := logger.WithErrorField(ctx, combinedErr)
 		e.log.Errorf(errCtx, "Event execution finished: event_execution_status=failed")
 	}
+
 	return result
 }
 
-// executeParamExtraction extracts parameters from the event and environment
-func (e *Executor) executeParamExtraction(execCtx *ExecutionContext) error {
-	// Extract configured parameters
-	if err := extractConfigParams(e.config.Config, execCtx, e.config.K8sClient); err != nil {
-		return err
+// buildExecutionResult converts phase results into the final ExecutionResult
+func (e *Executor) buildExecutionResult(phaseResults []PhaseResult, execCtx *ExecutionContext) *ExecutionResult {
+	result := &ExecutionResult{
+		Status:           StatusSuccess,
+		Params:           execCtx.Params,
+		Errors:           make(map[ExecutionPhase]error),
+		ExecutionContext: execCtx,
 	}
 
-	// Add metadata params
-	addMetadataParams(e.config.Config, execCtx)
+	// Track the last phase that ran
+	for _, pr := range phaseResults {
+		result.CurrentPhase = pr.Phase
 
-	return nil
+		if pr.Error != nil {
+			result.Status = StatusFailed
+			result.Errors[pr.Phase] = pr.Error
+		}
+
+		if pr.Skipped && pr.Phase == PhaseResources {
+			result.ResourcesSkipped = true
+			result.SkipReason = pr.SkipReason
+		}
+	}
+
+	// Collect results from individual phases
+	if e.preconditionsPhase != nil {
+		result.PreconditionResults = e.preconditionsPhase.Results()
+		// Update skip reason from preconditions outcome if available
+		if outcome := e.preconditionsPhase.Outcome(); outcome != nil && !outcome.AllMatched {
+			result.ResourcesSkipped = true
+			result.SkipReason = outcome.NotMetReason
+		}
+	}
+
+	if e.resourcesPhase != nil {
+		result.ResourceResults = e.resourcesPhase.Results()
+	}
+
+	if e.postActionsPhase != nil {
+		result.PostActionResults = e.postActionsPhase.Results()
+	}
+
+	return result
 }
 
 // startTracedExecution creates an OTel span and adds trace context to logs.

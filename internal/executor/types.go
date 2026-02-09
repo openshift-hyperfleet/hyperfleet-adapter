@@ -7,9 +7,9 @@ import (
 
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/generation"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleet_api"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/k8s_client"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -68,11 +68,15 @@ type ExecutorConfig struct {
 
 // Executor processes CloudEvents according to the adapter configuration
 type Executor struct {
-	config             *ExecutorConfig
-	precondExecutor    *PreconditionExecutor
-	resourceExecutor   *ResourceExecutor
-	postActionExecutor *PostActionExecutor
-	log                logger.Logger
+	config *ExecutorConfig
+	log    logger.Logger
+	// pipeline holds the phase-based execution pipeline
+	pipeline *Pipeline
+	// phases holds references to individual phases for result retrieval
+	paramExtractionPhase *ParamExtractionPhase
+	preconditionsPhase   *PreconditionsPhase
+	resourcesPhase       *ResourcesPhase
+	postActionsPhase     *PostActionsPhase
 }
 
 // ExecutionResult contains the result of processing an event
@@ -134,7 +138,7 @@ type ResourceResult struct {
 	// Status is the result status
 	Status ExecutionStatus
 	// Operation is the operation performed (create, update, recreate, skip)
-	Operation generation.Operation
+	Operation manifest.Operation
 	// Resource is the created/updated resource (if successful)
 	Resource *unstructured.Unstructured
 	// OperationReason explains why this operation was performed

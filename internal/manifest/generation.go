@@ -1,13 +1,19 @@
-// Package generation provides utilities for generation-based resource tracking.
+// Package manifest provides utilities for Kubernetes manifest validation, generation tracking, and discovery.
 //
-// This package handles generation annotation validation, comparison, and extraction
-// for both k8s_client (Kubernetes resources) and maestro_client (ManifestWork).
-package generation
+// This package handles:
+//   - Manifest validation (apiVersion, kind, name, generation annotation)
+//   - Generation annotation extraction and comparison
+//   - ManifestWork validation for OCM
+//   - Discovery interface for finding resources/manifests
+//
+// Used by both k8s_client (Kubernetes resources) and maestro_client (ManifestWork).
+package manifest
 
 import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/constants"
 	apperrors "github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/errors"
@@ -232,6 +238,16 @@ func ValidateGenerationFromUnstructured(obj *unstructured.Unstructured) error {
 	return nil
 }
 
+// ValidateManifest validates a Kubernetes manifest has all required fields and annotations.
+// Returns error if:
+//   - Object is nil
+//   - apiVersion is missing
+//   - kind is missing
+//   - metadata.name is missing
+//   - generation annotation is missing or invalid
+//
+// This is used by both k8s_client (for direct K8s resources) and maestro_client (for ManifestWork payloads).
+
 // GetLatestGenerationFromList returns the resource with the highest generation annotation from a list.
 // It sorts by generation annotation (descending) and uses metadata.name as a secondary sort key
 // for deterministic behavior when generations are equal.
@@ -260,4 +276,160 @@ func GetLatestGenerationFromList(list *unstructured.UnstructuredList) *unstructu
 	})
 
 	return &items[0]
+}
+
+// =============================================================================
+// Discovery Interface and Configuration
+// =============================================================================
+
+// Discovery defines the interface for resource/manifest discovery configuration.
+// This interface is used by both k8s_client (for K8s resources) and maestro_client (for ManifestWork manifests).
+type Discovery interface {
+	// GetNamespace returns the namespace to search in.
+	// Empty string means cluster-scoped or all namespaces.
+	GetNamespace() string
+
+	// GetName returns the resource name for single-resource discovery.
+	// Empty string means use selector-based discovery.
+	GetName() string
+
+	// GetLabelSelector returns the label selector string (e.g., "app=myapp,env=prod").
+	// Empty string means no label filtering.
+	GetLabelSelector() string
+
+	// IsSingleResource returns true if discovering by name (single resource).
+	IsSingleResource() bool
+}
+
+// DiscoveryConfig is the default implementation of the Discovery interface.
+// Used by both k8s_client and maestro_client for consistent discovery configuration.
+type DiscoveryConfig struct {
+	// Namespace to search in (empty for cluster-scoped or all namespaces)
+	Namespace string
+
+	// ByName specifies the resource name for single-resource discovery.
+	// If set, discovery returns a single resource by name.
+	ByName string
+
+	// LabelSelector is the label selector string (e.g., "app=myapp,env=prod")
+	LabelSelector string
+}
+
+// GetNamespace implements Discovery.GetNamespace
+func (d *DiscoveryConfig) GetNamespace() string {
+	return d.Namespace
+}
+
+// GetName implements Discovery.GetName
+func (d *DiscoveryConfig) GetName() string {
+	return d.ByName
+}
+
+// GetLabelSelector implements Discovery.GetLabelSelector
+func (d *DiscoveryConfig) GetLabelSelector() string {
+	return d.LabelSelector
+}
+
+// IsSingleResource implements Discovery.IsSingleResource
+func (d *DiscoveryConfig) IsSingleResource() bool {
+	return d.ByName != ""
+}
+
+// BuildLabelSelector converts a map of labels to a selector string.
+// Keys are sorted alphabetically for deterministic output.
+// Example: {"env": "prod", "app": "myapp"} -> "app=myapp,env=prod"
+func BuildLabelSelector(labels map[string]string) string {
+	if len(labels) == 0 {
+		return ""
+	}
+
+	// Sort keys for deterministic output
+	keys := make([]string, 0, len(labels))
+	for k := range labels {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	pairs := make([]string, 0, len(labels))
+	for _, k := range keys {
+		pairs = append(pairs, k+"="+labels[k])
+	}
+	return strings.Join(pairs, ",")
+}
+
+// MatchesLabels checks if an object's labels match the given label selector.
+// Returns true if all selector labels are present in the object's labels.
+func MatchesLabels(obj *unstructured.Unstructured, labelSelector string) bool {
+	if labelSelector == "" {
+		return true
+	}
+
+	objLabels := obj.GetLabels()
+	if objLabels == nil {
+		return false
+	}
+
+	// Parse selector string (e.g., "app=myapp,env=prod")
+	pairs := strings.Split(labelSelector, ",")
+	for _, pair := range pairs {
+		kv := strings.SplitN(pair, "=", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		key, value := kv[0], kv[1]
+		if objLabels[key] != value {
+			return false
+		}
+	}
+
+	return true
+}
+
+// DiscoverInManifestWork finds manifests within a ManifestWork that match the discovery criteria.
+// This is used by maestro_client to find specific manifests within a ManifestWork's workload.
+//
+// Parameters:
+//   - work: The ManifestWork containing manifests to search
+//   - discovery: Discovery configuration (namespace, name, or label selector)
+//
+// Returns:
+//   - List of matching manifests as unstructured objects
+//   - The manifest with the highest generation if multiple match
+func DiscoverInManifestWork(work *workv1.ManifestWork, discovery Discovery) (*unstructured.UnstructuredList, error) {
+	list := &unstructured.UnstructuredList{}
+
+	if work == nil || discovery == nil {
+		return list, nil
+	}
+
+	for i, m := range work.Spec.Workload.Manifests {
+		obj := &unstructured.Unstructured{}
+		if err := obj.UnmarshalJSON(m.Raw); err != nil {
+			return nil, apperrors.Validation("ManifestWork %q manifest[%d]: failed to unmarshal: %v",
+				work.Name, i, err)
+		}
+
+		// Check if manifest matches discovery criteria
+		if matchesDiscovery(obj, discovery) {
+			list.Items = append(list.Items, *obj)
+		}
+	}
+
+	return list, nil
+}
+
+// matchesDiscovery checks if a manifest matches the discovery criteria
+func matchesDiscovery(obj *unstructured.Unstructured, discovery Discovery) bool {
+	// Check namespace if specified
+	if ns := discovery.GetNamespace(); ns != "" && obj.GetNamespace() != ns {
+		return false
+	}
+
+	// Check name if single resource discovery
+	if discovery.IsSingleResource() {
+		return obj.GetName() == discovery.GetName()
+	}
+
+	// Check label selector
+	return MatchesLabels(obj, discovery.GetLabelSelector())
 }
