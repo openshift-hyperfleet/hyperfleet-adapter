@@ -1,0 +1,50 @@
+adapterConfig:
+  create: true
+  files:
+    adapter-config.yaml: examples/maestro/adapter-config.yaml
+  log:
+    level: debug
+
+adapterTaskConfig:
+  create: true
+  files:
+    task-config.yaml: examples/maestro/adapter-task-config.yaml
+    namespace.yaml: examples/maestro/adapter-task-resource-namespace.yaml
+
+broker:
+  create: true
+  googlepubsub:
+    projectId: CHANGE_ME
+    subscriptionId: CHANGE_ME
+    topic: CHANGE_ME
+    deadLetterTopic: CHANGE_ME
+
+image:
+  registry: CHANGE_ME
+  repository: hyperfleet-adapter
+  pullPolicy: Always
+  tag: latest
+
+env:
+  - name: NAMESPACE
+    valueFrom:
+      fieldRef:
+        fieldPath: metadata.namespace
+  - name: SERVICE_ACCOUNT
+    valueFrom:
+      fieldRef:
+        fieldPath: spec.serviceAccountName
+  - name: SIMULATE_RESULT
+    value: success     # other possible values: success, failure, hang, crash, invalid-json, missing-status
+
+rbac:
+   resources:
+     - namespaces
+     - serviceaccounts
+     - configmaps
+     - deployments
+     - roles
+     - rolebindings
+     - jobs
+     - jobs/status
+     - pods

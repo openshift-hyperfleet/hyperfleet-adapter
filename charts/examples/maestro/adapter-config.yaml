@@ -27,10 +27,6 @@ spec:
       subscriptionId: "CHANGE_ME"
       topic: "CHANGE_ME"
 
-    kubernetes:
-      apiVersion: "v1"
-      #kubeConfigPath: PATH_TO_KUBECONFIG  # for local development
-      
     maestro:
       grpcServerAddress: "maestro-grpc.maestro.svc.cluster.local:8090"
       

@@ -1,0 +1,167 @@
+# Example HyperFleet Adapter task configuration
+apiVersion: hyperfleet.redhat.com/v1alpha1
+kind: AdapterTaskConfig
+metadata:
+  name: example1-namespace
+  labels:
+    hyperfleet.io/adapter-type: example1-namespace
+    hyperfleet.io/component: adapter
+spec:
+  # Parameters with all required variables
+  params:
+
+    - name: "clusterId"
+      source: "event.id"
+      type: "string"
+      required: true
+
+    - name: "generationSpec"
+      source: "event.generation"
+      type: "int"
+      required: true
+
+    - name: "simulateResult"
+      source: "env.SIMULATE_RESULT"
+      type: "string"
+      required: true
+
+  # Preconditions with valid operators and CEL expressions
+  preconditions:
+    - name: "clusterStatus"
+      apiCall:
+        method: "GET"
+        url: "/clusters/{{ .clusterId }}"
+        timeout: 10s
+        retryAttempts: 3
+        retryBackoff: "exponential"
+      capture:
+        - name: "clusterName"
+          field: "name"
+        - name: "generationSpec"
+          field: "generation"
+        - name: "readyConditionStatus"
+          expression: |
+            status.conditions.filter(c, c.type == "Ready").size() > 0
+              ? status.conditions.filter(c, c.type == "Ready")[0].status
+              : "False"
+      # Structured conditions with valid operators
+      conditions:
+        - field: "readyConditionStatus"
+          operator: "equals"
+          value: "False"
+
+    - name: "validationCheck"
+      # Valid CEL expression
+      expression: |
+        readyConditionStatus == "False"
+
+  # Resources with valid K8s manifests
+  resources:
+    # Maestro transport bundles multiple manifests into a single ManifestWork
+    - name: "maestromanifest"
+      transport:
+        client: "maestro"
+        maestro:
+          targetCluster: cluster1
+      manifests:
+        - name: "maestro-ns"
+          manifest:
+            apiVersion: v1
+            kind: Namespace
+            metadata:
+              name: "maestro-{{ .clusterId }}"
+              labels:
+                hyperfleet.io/cluster-id: "{{ .clusterId }}"
+                hyperfleet.io/cluster-name: "{{ .clusterName }}"
+              annotations:
+                hyperfleet.io/generation: "{{ .generationSpec }}"
+        - name: "maestro-cm"
+          manifest:
+            apiVersion: v1
+            kind: ConfigMap
+            metadata:
+              name: "cluster-config"
+              namespace: "maestro-{{ .clusterId }}"
+              labels:
+                hyperfleet.io/cluster-id: "{{ .clusterId }}"
+              annotations:
+                hyperfleet.io/generation: "{{ .generationSpec }}"
+            data:
+              cluster_id: "{{ .clusterId }}"
+              cluster_name: "{{ .clusterName }}"
+      discovery:
+        namespace: "*"  # Cluster-scoped resource (Namespace)
+        bySelectors:
+          labelSelector:
+            hyperfleet.io/cluster-id: "{{ .clusterId }}"
+            hyperfleet.io/cluster-name: "{{ .clusterName }}"
+
+
+  # Post-processing with valid CEL expressions
+  # This example contains multiple resources, we will only report on the conditions of the jobNamespace not to overcomplicate the example
+  post:
+    payloads:
+      - name: "clusterStatusPayload"
+        build:
+          adapter: "{{ .metadata.name }}"
+          conditions:
+            # Applied: Job successfully created
+            - type: "Applied"
+              status:
+                expression: |
+                  has(resources.jobNamespace.spec) ? "True" : "False"
+              reason:
+                expression: |
+                  has(resources.jobNamespace.spec)
+                    ? "JobApplied"
+                    : "JobPending"
+              message:
+                expression: |
+                  has(resources.jobNamespace)
+                    ? "jobNamespace manifest applied successfully"
+                    : "jobNamespace is pending to be applied"
+            # Available: Check job status conditions
+            - type: "Available"
+              status:
+                expression: |
+                  has(resources.jobNamespace.status.conditions) ?
+                   ( resources.?jobNamespace.?status.?conditions.orValue([]).exists(c, c.type == "Available")
+                    ? resources.jobNamespace.status.conditions.filter(c, c.type == "Available")[0].status : "False")
+                   : "Unknown"
+              reason:
+                expression: |
+                  resources.?jobNamespace.?status.?conditions.orValue([]).exists(c, c.type == "Available")
+                    ? resources.jobNamespace.status.conditions.filter(c, c.type == "Available")[0].reason
+                    : resources.?jobNamespace.?status.?conditions.orValue([]).exists(c, c.type == "Failed") ? "ValidationFailed"
+                         : resources.?jobNamespace.?status.hasValue() ? "ValidationInProgress" : "ValidationPending"
+              message:
+                expression: |
+                  resources.?jobNamespace.?status.?conditions.orValue([]).exists(c, c.type == "Available")
+                    ? resources.jobNamespace.status.conditions.filter(c, c.type == "Available")[0].message
+                    : resources.?jobNamespace.?status.?conditions.orValue([]).exists(c, c.type == "Failed") ? "Validation failed"
+                         : resources.?jobNamespace.?status.hasValue() ? "Validation in progress" : "Validation is pending"
+            # Health: Adapter execution status (runtime)
+            - type: "Health"
+              status:
+                expression: |
+                  adapter.?executionStatus.orValue("") == "success" ? "True" : "False"
+              reason:
+                expression: |
+                  adapter.?errorReason.orValue("") != "" ? adapter.?errorReason.orValue("") : "Healthy"
+              message:
+                expression: |
+                  adapter.?errorMessage.orValue("") != "" ? adapter.?errorMessage.orValue("") : "All adapter operations in progress or completed successfully"
+          # Event generation ID metadata field needs to use expression to avoid interpolation issues
+          observed_generation:
+            expression: "generationSpec"
+          observed_time: "{{ now | date \"2006-01-02T15:04:05Z07:00\" }}"
+
+    postActions:
+      - name: "reportClusterStatus"
+        apiCall:
+          method: "POST"
+          url: "/clusters/{{ .clusterId }}/statuses"
+          headers:
+            - name: "Content-Type"
+              value: "application/json"
+          body: "{{ .clusterStatusPayload }}"
