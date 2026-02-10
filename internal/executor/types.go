@@ -7,9 +7,9 @@ import (
 
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/generation"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleet_api"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/k8s_client"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transport_client"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -60,8 +60,9 @@ type ExecutorConfig struct {
 	Config *config_loader.Config
 	// APIClient is the HyperFleet API client
 	APIClient hyperfleet_api.Client
-	// K8sClient is the Kubernetes client
-	K8sClient k8s_client.K8sClient
+	// TransportClient is the transport client for applying resources
+	// (supports k8s_client, maestro_client, etc.)
+	TransportClient transport_client.TransportClient
 	// Logger is the logger instance
 	Logger logger.Logger
 }
@@ -134,7 +135,7 @@ type ResourceResult struct {
 	// Status is the result status
 	Status ExecutionStatus
 	// Operation is the operation performed (create, update, recreate, skip)
-	Operation generation.Operation
+	Operation manifest.Operation
 	// Resource is the created/updated resource (if successful)
 	Resource *unstructured.Unstructured
 	// OperationReason explains why this operation was performed

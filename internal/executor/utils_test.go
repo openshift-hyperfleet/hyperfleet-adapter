@@ -1092,3 +1092,310 @@ func TestGetResourceAsMap(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildHyperfleetAPICallURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		url      string
+		execCtx  *ExecutionContext
+		expected string
+	}{
+		{
+			name:     "empty URL returns empty",
+			url:      "",
+			execCtx:  &ExecutionContext{Config: &config_loader.Config{}},
+			expected: "",
+		},
+		{
+			name:     "nil execCtx returns URL as-is",
+			url:      "/clusters/123",
+			execCtx:  nil,
+			expected: "/clusters/123",
+		},
+		{
+			name:     "nil config returns URL as-is",
+			url:      "/clusters/123",
+			execCtx:  &ExecutionContext{Config: nil},
+			expected: "/clusters/123",
+		},
+		{
+			name: "absolute URL matching baseURL extracts relative path",
+			url:  "http://localhost:8000/api/hyperfleet/v1/clusters/abc123",
+			execCtx: &ExecutionContext{
+				Config: &config_loader.Config{
+					Spec: config_loader.ConfigSpec{
+						Clients: config_loader.ClientsConfig{
+							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+								BaseURL: "http://localhost:8000",
+								Version: "v1",
+							},
+						},
+					},
+				},
+			},
+			expected: "/api/hyperfleet/v1/clusters/abc123",
+		},
+		{
+			name: "absolute URL with baseURL containing path extracts relative path",
+			url:  "http://localhost:8000/api/hyperfleet/v1/clusters/abc123",
+			execCtx: &ExecutionContext{
+				Config: &config_loader.Config{
+					Spec: config_loader.ConfigSpec{
+						Clients: config_loader.ClientsConfig{
+							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+								BaseURL: "http://localhost:8000/api/hyperfleet/v1",
+								Version: "v1",
+							},
+						},
+					},
+				},
+			},
+			expected: "/clusters/abc123",
+		},
+		{
+			name: "absolute URL with trailing slash in baseURL",
+			url:  "http://localhost:8000/api/hyperfleet/v1/clusters/abc123",
+			execCtx: &ExecutionContext{
+				Config: &config_loader.Config{
+					Spec: config_loader.ConfigSpec{
+						Clients: config_loader.ClientsConfig{
+							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+								BaseURL: "http://localhost:8000/api/hyperfleet/v1/",
+								Version: "v1",
+							},
+						},
+					},
+				},
+			},
+			expected: "/clusters/abc123",
+		},
+		{
+			name: "absolute URL with different host returns as-is",
+			url:  "http://other-host:9000/api/clusters/abc123",
+			execCtx: &ExecutionContext{
+				Config: &config_loader.Config{
+					Spec: config_loader.ConfigSpec{
+						Clients: config_loader.ClientsConfig{
+							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+								BaseURL: "http://localhost:8000",
+								Version: "v1",
+							},
+						},
+					},
+				},
+			},
+			expected: "http://other-host:9000/api/clusters/abc123",
+		},
+		{
+			name: "absolute URL with different scheme returns as-is",
+			url:  "https://localhost:8000/api/clusters/abc123",
+			execCtx: &ExecutionContext{
+				Config: &config_loader.Config{
+					Spec: config_loader.ConfigSpec{
+						Clients: config_loader.ClientsConfig{
+							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+								BaseURL: "http://localhost:8000",
+								Version: "v1",
+							},
+						},
+					},
+				},
+			},
+			expected: "https://localhost:8000/api/clusters/abc123",
+		},
+		{
+			name: "relative path with api/ prefix returns with leading slash",
+			url:  "api/hyperfleet/v1/clusters/abc123",
+			execCtx: &ExecutionContext{
+				Config: &config_loader.Config{
+					Spec: config_loader.ConfigSpec{
+						Clients: config_loader.ClientsConfig{
+							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+								BaseURL: "http://localhost:8000",
+								Version: "v1",
+							},
+						},
+					},
+				},
+			},
+			expected: "/api/hyperfleet/v1/clusters/abc123",
+		},
+		{
+			name: "relative path with /api/ prefix returns as-is",
+			url:  "/api/hyperfleet/v1/clusters/abc123",
+			execCtx: &ExecutionContext{
+				Config: &config_loader.Config{
+					Spec: config_loader.ConfigSpec{
+						Clients: config_loader.ClientsConfig{
+							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+								BaseURL: "http://localhost:8000",
+								Version: "v1",
+							},
+						},
+					},
+				},
+			},
+			expected: "/api/hyperfleet/v1/clusters/abc123",
+		},
+		{
+			name: "simple relative path gets full API path added",
+			url:  "clusters/abc123",
+			execCtx: &ExecutionContext{
+				Config: &config_loader.Config{
+					Spec: config_loader.ConfigSpec{
+						Clients: config_loader.ClientsConfig{
+							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+								BaseURL: "http://localhost:8000",
+								Version: "v1",
+							},
+						},
+					},
+				},
+			},
+			expected: "/api/hyperfleet/v1/clusters/abc123",
+		},
+		{
+			name: "simple relative path with leading slash gets full API path added",
+			url:  "/clusters/abc123",
+			execCtx: &ExecutionContext{
+				Config: &config_loader.Config{
+					Spec: config_loader.ConfigSpec{
+						Clients: config_loader.ClientsConfig{
+							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+								BaseURL: "http://localhost:8000",
+								Version: "v1",
+							},
+						},
+					},
+				},
+			},
+			expected: "/api/hyperfleet/v1/clusters/abc123",
+		},
+		{
+			name: "relative path with custom version",
+			url:  "clusters/abc123",
+			execCtx: &ExecutionContext{
+				Config: &config_loader.Config{
+					Spec: config_loader.ConfigSpec{
+						Clients: config_loader.ClientsConfig{
+							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+								BaseURL: "http://localhost:8000",
+								Version: "v2",
+							},
+						},
+					},
+				},
+			},
+			expected: "/api/hyperfleet/v2/clusters/abc123",
+		},
+		{
+			name: "relative path with empty version defaults to v1",
+			url:  "clusters/abc123",
+			execCtx: &ExecutionContext{
+				Config: &config_loader.Config{
+					Spec: config_loader.ConfigSpec{
+						Clients: config_loader.ClientsConfig{
+							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+								BaseURL: "http://localhost:8000",
+								Version: "",
+							},
+						},
+					},
+				},
+			},
+			expected: "/api/hyperfleet/v1/clusters/abc123",
+		},
+		{
+			name: "relative path with empty baseURL returns as-is",
+			url:  "clusters/abc123",
+			execCtx: &ExecutionContext{
+				Config: &config_loader.Config{
+					Spec: config_loader.ConfigSpec{
+						Clients: config_loader.ClientsConfig{
+							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+								BaseURL: "",
+								Version: "v1",
+							},
+						},
+					},
+				},
+			},
+			expected: "clusters/abc123",
+		},
+		{
+			name: "path with trailing slashes gets cleaned",
+			url:  "clusters/abc123/",
+			execCtx: &ExecutionContext{
+				Config: &config_loader.Config{
+					Spec: config_loader.ConfigSpec{
+						Clients: config_loader.ClientsConfig{
+							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+								BaseURL: "http://localhost:8000",
+								Version: "v1",
+							},
+						},
+					},
+				},
+			},
+			expected: "/api/hyperfleet/v1/clusters/abc123",
+		},
+		{
+			name: "path with dot segments gets cleaned",
+			url:  "/clusters/../clusters/abc123",
+			execCtx: &ExecutionContext{
+				Config: &config_loader.Config{
+					Spec: config_loader.ConfigSpec{
+						Clients: config_loader.ClientsConfig{
+							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+								BaseURL: "http://localhost:8000",
+								Version: "v1",
+							},
+						},
+					},
+				},
+			},
+			expected: "/api/hyperfleet/v1/clusters/abc123",
+		},
+		{
+			name: "absolute URL with empty baseURL returns as-is",
+			url:  "http://localhost:8000/api/hyperfleet/v1/clusters/abc123",
+			execCtx: &ExecutionContext{
+				Config: &config_loader.Config{
+					Spec: config_loader.ConfigSpec{
+						Clients: config_loader.ClientsConfig{
+							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+								BaseURL: "",
+								Version: "v1",
+							},
+						},
+					},
+				},
+			},
+			expected: "http://localhost:8000/api/hyperfleet/v1/clusters/abc123",
+		},
+		{
+			name: "complex nested path",
+			url:  "clusters/abc123/statuses",
+			execCtx: &ExecutionContext{
+				Config: &config_loader.Config{
+					Spec: config_loader.ConfigSpec{
+						Clients: config_loader.ClientsConfig{
+							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+								BaseURL: "http://localhost:8000",
+								Version: "v1",
+							},
+						},
+					},
+				},
+			},
+			expected: "/api/hyperfleet/v1/clusters/abc123/statuses",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := buildHyperfleetAPICallURL(tt.url, tt.execCtx)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}

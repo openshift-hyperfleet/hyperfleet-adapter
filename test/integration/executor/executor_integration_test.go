@@ -175,7 +175,7 @@ func TestExecutor_FullFlow_Success(t *testing.T) {
 		WithConfig(config).
 		WithAPIClient(apiClient).
 		WithLogger(k8sEnv.Log).
-		WithK8sClient(k8sEnv.Client).
+		WithTransportClient(k8sEnv.Client).
 		Build()
 	if err != nil {
 		t.Fatalf("Failed to create executor: %v", err)
@@ -309,7 +309,7 @@ func TestExecutor_PreconditionNotMet(t *testing.T) {
 		WithConfig(config).
 		WithAPIClient(apiClient).
 		WithLogger(k8sEnv.Log).
-		WithK8sClient(k8sEnv.Client).
+		WithTransportClient(k8sEnv.Client).
 		Build()
 	if err != nil {
 		t.Fatalf("Failed to create executor: %v", err)
@@ -414,7 +414,7 @@ func TestExecutor_PreconditionAPIFailure(t *testing.T) {
 		WithConfig(config).
 		WithAPIClient(apiClient).
 		WithLogger(k8sEnv.Log).
-		WithK8sClient(k8sEnv.Client).
+		WithTransportClient(k8sEnv.Client).
 		Build()
 	if err != nil {
 		t.Fatalf("Failed to create executor: %v", err)
@@ -532,7 +532,7 @@ func TestExecutor_CELExpressionEvaluation(t *testing.T) {
 		WithConfig(config).
 		WithAPIClient(apiClient).
 		WithLogger(getK8sEnvForTest(t).Log).
-		WithK8sClient(getK8sEnvForTest(t).Client).
+		WithTransportClient(getK8sEnvForTest(t).Client).
 		Build()
 	if err != nil {
 		t.Fatalf("Failed to create executor: %v", err)
@@ -578,7 +578,7 @@ func TestExecutor_MultipleMessages(t *testing.T) {
 		WithConfig(config).
 		WithAPIClient(apiClient).
 		WithLogger(getK8sEnvForTest(t).Log).
-		WithK8sClient(getK8sEnvForTest(t).Client).
+		WithTransportClient(getK8sEnvForTest(t).Client).
 		Build()
 	if err != nil {
 		t.Fatalf("Failed to create executor: %v", err)
@@ -631,7 +631,7 @@ func TestExecutor_Handler_Integration(t *testing.T) {
 		WithConfig(config).
 		WithAPIClient(apiClient).
 		WithLogger(getK8sEnvForTest(t).Log).
-		WithK8sClient(getK8sEnvForTest(t).Client).
+		WithTransportClient(getK8sEnvForTest(t).Client).
 		Build()
 	if err != nil {
 		t.Fatalf("Failed to create executor: %v", err)
@@ -681,7 +681,7 @@ func TestExecutor_Handler_PreconditionNotMet_ReturnsNil(t *testing.T) {
 		WithConfig(config).
 		WithAPIClient(apiClient).
 		WithLogger(getK8sEnvForTest(t).Log).
-		WithK8sClient(getK8sEnvForTest(t).Client).
+		WithTransportClient(getK8sEnvForTest(t).Client).
 		Build()
 	if err != nil {
 		t.Fatalf("Failed to create executor: %v", err)
@@ -714,7 +714,7 @@ func TestExecutor_ContextCancellation(t *testing.T) {
 		WithConfig(config).
 		WithAPIClient(apiClient).
 		WithLogger(getK8sEnvForTest(t).Log).
-		WithK8sClient(getK8sEnvForTest(t).Client).
+		WithTransportClient(getK8sEnvForTest(t).Client).
 		Build()
 	if err != nil {
 		t.Fatalf("Failed to create executor: %v", err)
@@ -750,7 +750,7 @@ func TestExecutor_MissingRequiredParam(t *testing.T) {
 		WithConfig(config).
 		WithAPIClient(apiClient).
 		WithLogger(getK8sEnvForTest(t).Log).
-		WithK8sClient(getK8sEnvForTest(t).Client).
+		WithTransportClient(getK8sEnvForTest(t).Client).
 		Build()
 	if err != nil {
 		t.Fatalf("Failed to create executor: %v", err)
@@ -816,7 +816,7 @@ func TestExecutor_InvalidEventJSON(t *testing.T) {
 		WithConfig(config).
 		WithAPIClient(apiClient).
 		WithLogger(getK8sEnvForTest(t).Log).
-		WithK8sClient(getK8sEnvForTest(t).Client).
+		WithTransportClient(getK8sEnvForTest(t).Client).
 		Build()
 	if err != nil {
 		t.Fatalf("Failed to create executor: %v", err)
@@ -868,7 +868,7 @@ func TestExecutor_MissingEventFields(t *testing.T) {
 		WithConfig(config).
 		WithAPIClient(apiClient).
 		WithLogger(getK8sEnvForTest(t).Log).
-		WithK8sClient(getK8sEnvForTest(t).Client).
+		WithTransportClient(getK8sEnvForTest(t).Client).
 		Build()
 	if err != nil {
 		t.Fatalf("Failed to create executor: %v", err)
@@ -1016,7 +1016,7 @@ func TestExecutor_LogAction(t *testing.T) {
 		WithConfig(config).
 		WithAPIClient(apiClient).
 		WithLogger(log).
-		WithK8sClient(getK8sEnvForTest(t).Client).
+		WithTransportClient(getK8sEnvForTest(t).Client).
 		Build()
 	if err != nil {
 		t.Fatalf("Failed to create executor: %v", err)
@@ -1085,7 +1085,7 @@ func TestExecutor_PostActionAPIFailure(t *testing.T) {
 		WithConfig(config).
 		WithAPIClient(apiClient).
 		WithLogger(getK8sEnvForTest(t).Log).
-		WithK8sClient(getK8sEnvForTest(t).Client).
+		WithTransportClient(getK8sEnvForTest(t).Client).
 		Build()
 	if err != nil {
 		t.Fatalf("Failed to create executor: %v", err)
@@ -1270,7 +1270,7 @@ func TestExecutor_ExecutionError_CELAccess(t *testing.T) {
 		WithConfig(config).
 		WithAPIClient(apiClient).
 		WithLogger(getK8sEnvForTest(t).Log).
-		WithK8sClient(getK8sEnvForTest(t).Client).
+		WithTransportClient(getK8sEnvForTest(t).Client).
 		Build()
 	if err != nil {
 		t.Fatalf("Failed to create executor: %v", err)
@@ -1414,7 +1414,7 @@ func TestExecutor_PayloadBuildFailure(t *testing.T) {
 		WithConfig(config).
 		WithAPIClient(apiClient).
 		WithLogger(log).
-		WithK8sClient(getK8sEnvForTest(t).Client).
+		WithTransportClient(getK8sEnvForTest(t).Client).
 		Build()
 	if err != nil {
 		t.Fatalf("Failed to create executor: %v", err)

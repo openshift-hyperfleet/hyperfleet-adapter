@@ -14,8 +14,8 @@ import (
 	"github.com/cloudevents/sdk-go/v2/event"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/executor"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/generation"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleet_api"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -341,7 +341,7 @@ func TestExecutor_K8s_CreateResources(t *testing.T) {
 	exec, err := executor.NewBuilder().
 		WithConfig(config).
 		WithAPIClient(apiClient).
-		WithK8sClient(k8sEnv.Client).
+		WithTransportClient(k8sEnv.Client).
 		WithLogger(k8sEnv.Log).
 		Build()
 	require.NoError(t, err)
@@ -370,7 +370,7 @@ func TestExecutor_K8s_CreateResources(t *testing.T) {
 	cmResult := result.ResourceResults[0]
 	assert.Equal(t, "clusterConfigMap", cmResult.Name)
 	assert.Equal(t, executor.StatusSuccess, cmResult.Status, "ConfigMap creation should succeed")
-	assert.Equal(t, generation.OperationCreate, cmResult.Operation, "Should be create operation")
+	assert.Equal(t, manifest.OperationCreate, cmResult.Operation, "Should be create operation")
 	assert.Equal(t, "ConfigMap", cmResult.Kind)
 	t.Logf("ConfigMap created: %s/%s (operation: %s)", cmResult.Namespace, cmResult.ResourceName, cmResult.Operation)
 
@@ -378,7 +378,7 @@ func TestExecutor_K8s_CreateResources(t *testing.T) {
 	secretResult := result.ResourceResults[1]
 	assert.Equal(t, "clusterSecret", secretResult.Name)
 	assert.Equal(t, executor.StatusSuccess, secretResult.Status, "Secret creation should succeed")
-	assert.Equal(t, generation.OperationCreate, secretResult.Operation)
+	assert.Equal(t, manifest.OperationCreate, secretResult.Operation)
 	assert.Equal(t, "Secret", secretResult.Kind)
 	t.Logf("Secret created: %s/%s (operation: %s)", secretResult.Namespace, secretResult.ResourceName, secretResult.Operation)
 
@@ -489,7 +489,7 @@ func TestExecutor_K8s_UpdateExistingResource(t *testing.T) {
 	exec, err := executor.NewBuilder().
 		WithConfig(config).
 		WithAPIClient(apiClient).
-		WithK8sClient(k8sEnv.Client).
+		WithTransportClient(k8sEnv.Client).
 		WithLogger(k8sEnv.Log).
 		Build()
 	require.NoError(t, err)
@@ -503,7 +503,7 @@ func TestExecutor_K8s_UpdateExistingResource(t *testing.T) {
 	// Verify it was an update operation
 	require.Len(t, result.ResourceResults, 1)
 	cmResult := result.ResourceResults[0]
-	assert.Equal(t, generation.OperationUpdate, cmResult.Operation, "Should be update operation")
+	assert.Equal(t, manifest.OperationUpdate, cmResult.Operation, "Should be update operation")
 	t.Logf("Resource operation: %s", cmResult.Operation)
 
 	// Verify ConfigMap was updated with new data
@@ -596,7 +596,7 @@ func TestExecutor_K8s_DiscoveryByLabels(t *testing.T) {
 	exec, err := executor.NewBuilder().
 		WithConfig(config).
 		WithAPIClient(apiClient).
-		WithK8sClient(k8sEnv.Client).
+		WithTransportClient(k8sEnv.Client).
 		WithLogger(k8sEnv.Log).
 		Build()
 	require.NoError(t, err)
@@ -607,14 +607,14 @@ func TestExecutor_K8s_DiscoveryByLabels(t *testing.T) {
 	evt := createK8sTestEvent(clusterId)
 	result1 := exec.Execute(ctx, evt)
 	require.Equal(t, executor.StatusSuccess, result1.Status)
-	assert.Equal(t, generation.OperationCreate, result1.ResourceResults[0].Operation)
+	assert.Equal(t, manifest.OperationCreate, result1.ResourceResults[0].Operation)
 	t.Logf("First execution: %s", result1.ResourceResults[0].Operation)
 
 	// Second execution - should find by labels and update
 	evt2 := createK8sTestEvent(clusterId)
 	result2 := exec.Execute(ctx, evt2)
 	require.Equal(t, executor.StatusSuccess, result2.Status)
-	assert.Equal(t, generation.OperationUpdate, result2.ResourceResults[0].Operation)
+	assert.Equal(t, manifest.OperationUpdate, result2.ResourceResults[0].Operation)
 	t.Logf("Second execution: %s (discovered by labels)", result2.ResourceResults[0].Operation)
 }
 
@@ -667,7 +667,7 @@ func TestExecutor_K8s_RecreateOnChange(t *testing.T) {
 	exec, err := executor.NewBuilder().
 		WithConfig(config).
 		WithAPIClient(apiClient).
-		WithK8sClient(k8sEnv.Client).
+		WithTransportClient(k8sEnv.Client).
 		WithLogger(k8sEnv.Log).
 		Build()
 	require.NoError(t, err)
@@ -678,7 +678,7 @@ func TestExecutor_K8s_RecreateOnChange(t *testing.T) {
 	evt := createK8sTestEvent(clusterId)
 	result1 := exec.Execute(ctx, evt)
 	require.Equal(t, executor.StatusSuccess, result1.Status)
-	assert.Equal(t, generation.OperationCreate, result1.ResourceResults[0].Operation)
+	assert.Equal(t, manifest.OperationCreate, result1.ResourceResults[0].Operation)
 
 	// Get the original UID
 	cmGVK := schema.GroupVersionKind{Group: "", Version: "v1", Kind: "ConfigMap"}
@@ -692,7 +692,7 @@ func TestExecutor_K8s_RecreateOnChange(t *testing.T) {
 	evt2 := createK8sTestEvent(clusterId)
 	result2 := exec.Execute(ctx, evt2)
 	require.Equal(t, executor.StatusSuccess, result2.Status)
-	assert.Equal(t, generation.OperationRecreate, result2.ResourceResults[0].Operation)
+	assert.Equal(t, manifest.OperationRecreate, result2.ResourceResults[0].Operation)
 	t.Logf("Second execution: %s", result2.ResourceResults[0].Operation)
 
 	// Verify it's a new resource (different UID)
@@ -725,7 +725,7 @@ func TestExecutor_K8s_MultipleResourceTypes(t *testing.T) {
 	exec, err := executor.NewBuilder().
 		WithConfig(config).
 		WithAPIClient(apiClient).
-		WithK8sClient(k8sEnv.Client).
+		WithTransportClient(k8sEnv.Client).
 		WithLogger(k8sEnv.Log).
 		Build()
 	require.NoError(t, err)
@@ -741,7 +741,7 @@ func TestExecutor_K8s_MultipleResourceTypes(t *testing.T) {
 	// Verify both resources created
 	for _, rr := range result.ResourceResults {
 		assert.Equal(t, executor.StatusSuccess, rr.Status, "Resource %s should succeed", rr.Name)
-		assert.Equal(t, generation.OperationCreate, rr.Operation)
+		assert.Equal(t, manifest.OperationCreate, rr.Operation)
 		t.Logf("Created %s: %s/%s", rr.Kind, rr.Namespace, rr.ResourceName)
 	}
 
@@ -773,7 +773,7 @@ func TestExecutor_K8s_ResourceCreationFailure(t *testing.T) {
 	exec, err := executor.NewBuilder().
 		WithConfig(config).
 		WithAPIClient(apiClient).
-		WithK8sClient(k8sEnv.Client).
+		WithTransportClient(k8sEnv.Client).
 		WithLogger(k8sEnv.Log).
 		Build()
 	require.NoError(t, err)
@@ -928,7 +928,7 @@ func TestExecutor_K8s_MultipleMatchingResources(t *testing.T) {
 	exec, err := executor.NewBuilder().
 		WithConfig(config).
 		WithAPIClient(apiClient).
-		WithK8sClient(k8sEnv.Client).
+		WithTransportClient(k8sEnv.Client).
 		WithLogger(k8sEnv.Log).
 		Build()
 	require.NoError(t, err)
@@ -942,7 +942,7 @@ func TestExecutor_K8s_MultipleMatchingResources(t *testing.T) {
 
 	// Should create a new resource (no discovery configured)
 	rr := result.ResourceResults[0]
-	assert.Equal(t, generation.OperationCreate, rr.Operation,
+	assert.Equal(t, manifest.OperationCreate, rr.Operation,
 		"Should create new resource (no discovery configured)")
 	t.Logf("Operation: %s on resource: %s/%s", rr.Operation, rr.Namespace, rr.ResourceName)
 
@@ -1000,7 +1000,7 @@ func TestExecutor_K8s_PostActionsAfterPreconditionNotMet(t *testing.T) {
 	exec, err := executor.NewBuilder().
 		WithConfig(config).
 		WithAPIClient(apiClient).
-		WithK8sClient(k8sEnv.Client).
+		WithTransportClient(k8sEnv.Client).
 		WithLogger(k8sEnv.Log).
 		Build()
 	require.NoError(t, err)
