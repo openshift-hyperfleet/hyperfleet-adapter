@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"text/template"
@@ -217,6 +218,10 @@ func ExecuteAPICall(ctx context.Context, apiCall *config_loader.APICall, execCtx
 // buildHyperfleetAPICallURL builds a full HyperFleet API URL when a relative path is provided.
 // It uses hyperfleet API client settings from execution context config.
 // If the URL already includes base/version templates or is absolute, it is returned as-is.
+//
+// NOTE: The URL may contain Go template expressions (e.g. "{{ .clusterId }}") that are
+// rendered AFTER this function returns. We use string concatenation (not url.URL.String())
+// to avoid URL-encoding the template delimiters, which would prevent rendering.
 func buildHyperfleetAPICallURL(apiCallURL string, execCtx *ExecutionContext) string {
 	if apiCallURL == "" {
 		return apiCallURL
@@ -225,22 +230,34 @@ func buildHyperfleetAPICallURL(apiCallURL string, execCtx *ExecutionContext) str
 		return apiCallURL
 	}
 
-	lowerURL := strings.ToLower(apiCallURL)
-	if strings.HasPrefix(lowerURL, "http://") || strings.HasPrefix(lowerURL, "https://") {
+	// If the URL is already absolute, return as-is
+	parsed, err := url.Parse(apiCallURL)
+	if err == nil && parsed.IsAbs() {
 		return apiCallURL
 	}
 
-	baseURL := strings.TrimRight(execCtx.Config.Spec.Clients.HyperfleetAPI.BaseURL, "/")
+	baseURL := execCtx.Config.Spec.Clients.HyperfleetAPI.BaseURL
 	if baseURL == "" {
 		return apiCallURL
 	}
 
-	relative := strings.TrimLeft(apiCallURL, "/")
-	if strings.HasPrefix(relative, "api/") {
-		return baseURL + "/" + relative
+	// Parse base URL to extract scheme+host, then build the path via string
+	// concatenation to preserve Go template expressions like {{ .clusterId }}.
+	base, err := url.Parse(baseURL)
+	if err != nil {
+		return apiCallURL
 	}
 
-	return fmt.Sprintf("%s/api/hyperfleet/%s/%s", baseURL, execCtx.Config.Spec.Clients.HyperfleetAPI.Version, relative)
+	// Reconstruct origin (scheme + host) without path encoding
+	origin := base.Scheme + "://" + base.Host
+	basePath := strings.TrimRight(base.Path, "/")
+
+	relative := strings.TrimLeft(apiCallURL, "/")
+	if strings.HasPrefix(relative, "api/") {
+		return origin + basePath + "/" + relative
+	}
+
+	return fmt.Sprintf("%s%s/api/hyperfleet/%s/%s", origin, basePath, execCtx.Config.Spec.Clients.HyperfleetAPI.Version, relative)
 }
 
 // ValidateAPIResponse checks if an API response is valid and successful

@@ -58,10 +58,10 @@ func TestNewExecutor(t *testing.T) {
 		{
 			name: "valid config",
 			config: &ExecutorConfig{
-				Config:    &config_loader.Config{},
-				APIClient: newMockAPIClient(),
-				K8sClient: k8s_client.NewMockK8sClient(),
-				Logger:    logger.NewTestLogger(),
+				Config:          &config_loader.Config{},
+				APIClient:       newMockAPIClient(),
+				TransportClient: k8s_client.NewMockK8sClient(),
+				Logger:          logger.NewTestLogger(),
 			},
 			expectError: false,
 		},
@@ -89,7 +89,7 @@ func TestExecutorBuilder(t *testing.T) {
 	exec, err := NewBuilder().
 		WithConfig(config).
 		WithAPIClient(newMockAPIClient()).
-		WithK8sClient(k8s_client.NewMockK8sClient()).
+		WithTransportClient(k8s_client.NewMockK8sClient()).
 		WithLogger(logger.NewTestLogger()).
 		Build()
 
@@ -257,7 +257,7 @@ func TestExecute_ParamExtraction(t *testing.T) {
 	exec, err := NewBuilder().
 		WithConfig(config).
 		WithAPIClient(newMockAPIClient()).
-		WithK8sClient(k8s_client.NewMockK8sClient()).
+		WithTransportClient(k8s_client.NewMockK8sClient()).
 		WithLogger(logger.NewTestLogger()).
 		Build()
 
@@ -362,7 +362,7 @@ func TestParamExtractor(t *testing.T) {
 			}
 
 			// Extract params using pure function
-			err := extractConfigParams(config, execCtx, nil)
+			err := extractConfigParams(config, execCtx)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -508,7 +508,7 @@ func TestSequentialExecution_Preconditions(t *testing.T) {
 			exec, err := NewBuilder().
 				WithConfig(config).
 				WithAPIClient(newMockAPIClient()).
-				WithK8sClient(k8s_client.NewMockK8sClient()).
+				WithTransportClient(k8s_client.NewMockK8sClient()).
 				WithLogger(logger.NewTestLogger()).
 				Build()
 
@@ -610,7 +610,7 @@ func TestSequentialExecution_Resources(t *testing.T) {
 			exec, err := NewBuilder().
 				WithConfig(config).
 				WithAPIClient(newMockAPIClient()).
-				WithK8sClient(k8s_client.NewMockK8sClient()).
+				WithTransportClient(k8s_client.NewMockK8sClient()).
 				WithLogger(logger.NewTestLogger()).
 				Build()
 
@@ -681,7 +681,7 @@ func TestSequentialExecution_PostActions(t *testing.T) {
 			exec, err := NewBuilder().
 				WithConfig(config).
 				WithAPIClient(mockClient).
-				WithK8sClient(k8s_client.NewMockK8sClient()).
+				WithTransportClient(k8s_client.NewMockK8sClient()).
 				WithLogger(logger.NewTestLogger()).
 				Build()
 
@@ -751,7 +751,7 @@ func TestSequentialExecution_SkipReasonCapture(t *testing.T) {
 			exec, err := NewBuilder().
 				WithConfig(config).
 				WithAPIClient(newMockAPIClient()).
-				WithK8sClient(k8s_client.NewMockK8sClient()).
+				WithTransportClient(k8s_client.NewMockK8sClient()).
 				WithLogger(logger.NewTestLogger()).
 				Build()
 

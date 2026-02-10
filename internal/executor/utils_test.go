@@ -1025,6 +1025,214 @@ func TestBuildResourcesMap(t *testing.T) {
 	}
 }
 
+// TestBuildHyperfleetAPICallURL tests URL building for HyperFleet API calls
+func TestBuildHyperfleetAPICallURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		url      string
+		execCtx  *ExecutionContext
+		expected string
+	}{
+		{
+			name:     "empty URL returns empty",
+			url:      "",
+			execCtx:  &ExecutionContext{},
+			expected: "",
+		},
+		{
+			name:     "nil execCtx returns URL as-is",
+			url:      "clusters/123",
+			execCtx:  nil,
+			expected: "clusters/123",
+		},
+		{
+			name: "nil config returns URL as-is",
+			url:  "clusters/123",
+			execCtx: &ExecutionContext{
+				Config: nil,
+			},
+			expected: "clusters/123",
+		},
+		{
+			name: "absolute HTTP URL returned as-is",
+			url:  "http://other-service.example.com/api/v1/clusters",
+			execCtx: &ExecutionContext{
+				Config: &config_loader.Config{
+					Spec: config_loader.ConfigSpec{
+						Clients: config_loader.ClientsConfig{
+							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+								BaseURL: "http://hyperfleet-api:8080",
+								Version: "v1",
+							},
+						},
+					},
+				},
+			},
+			expected: "http://other-service.example.com/api/v1/clusters",
+		},
+		{
+			name: "absolute HTTPS URL returned as-is",
+			url:  "https://secure.example.com/api/resources",
+			execCtx: &ExecutionContext{
+				Config: &config_loader.Config{
+					Spec: config_loader.ConfigSpec{
+						Clients: config_loader.ClientsConfig{
+							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+								BaseURL: "http://hyperfleet-api:8080",
+								Version: "v1",
+							},
+						},
+					},
+				},
+			},
+			expected: "https://secure.example.com/api/resources",
+		},
+		{
+			name: "empty baseURL returns URL as-is",
+			url:  "clusters/123",
+			execCtx: &ExecutionContext{
+				Config: &config_loader.Config{
+					Spec: config_loader.ConfigSpec{
+						Clients: config_loader.ClientsConfig{
+							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+								BaseURL: "",
+								Version: "v1",
+							},
+						},
+					},
+				},
+			},
+			expected: "clusters/123",
+		},
+		{
+			name: "relative path gets full URL with version",
+			url:  "clusters/123",
+			execCtx: &ExecutionContext{
+				Config: &config_loader.Config{
+					Spec: config_loader.ConfigSpec{
+						Clients: config_loader.ClientsConfig{
+							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+								BaseURL: "http://hyperfleet-api:8080",
+								Version: "v1",
+							},
+						},
+					},
+				},
+			},
+			expected: "http://hyperfleet-api:8080/api/hyperfleet/v1/clusters/123",
+		},
+		{
+			name: "relative path with leading slash",
+			url:  "/clusters/123",
+			execCtx: &ExecutionContext{
+				Config: &config_loader.Config{
+					Spec: config_loader.ConfigSpec{
+						Clients: config_loader.ClientsConfig{
+							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+								BaseURL: "http://hyperfleet-api:8080",
+								Version: "v1",
+							},
+						},
+					},
+				},
+			},
+			expected: "http://hyperfleet-api:8080/api/hyperfleet/v1/clusters/123",
+		},
+		{
+			name: "path starting with api/ skips version prefix",
+			url:  "api/hyperfleet/v2/clusters/123",
+			execCtx: &ExecutionContext{
+				Config: &config_loader.Config{
+					Spec: config_loader.ConfigSpec{
+						Clients: config_loader.ClientsConfig{
+							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+								BaseURL: "http://hyperfleet-api:8080",
+								Version: "v1",
+							},
+						},
+					},
+				},
+			},
+			expected: "http://hyperfleet-api:8080/api/hyperfleet/v2/clusters/123",
+		},
+		{
+			name: "path starting with /api/ skips version prefix",
+			url:  "/api/hyperfleet/v2/clusters/123",
+			execCtx: &ExecutionContext{
+				Config: &config_loader.Config{
+					Spec: config_loader.ConfigSpec{
+						Clients: config_loader.ClientsConfig{
+							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+								BaseURL: "http://hyperfleet-api:8080",
+								Version: "v1",
+							},
+						},
+					},
+				},
+			},
+			expected: "http://hyperfleet-api:8080/api/hyperfleet/v2/clusters/123",
+		},
+		{
+			name: "baseURL with trailing slash",
+			url:  "clusters/123",
+			execCtx: &ExecutionContext{
+				Config: &config_loader.Config{
+					Spec: config_loader.ConfigSpec{
+						Clients: config_loader.ClientsConfig{
+							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+								BaseURL: "http://hyperfleet-api:8080/",
+								Version: "v1",
+							},
+						},
+					},
+				},
+			},
+			expected: "http://hyperfleet-api:8080/api/hyperfleet/v1/clusters/123",
+		},
+		{
+			name: "baseURL with existing path",
+			url:  "clusters/123",
+			execCtx: &ExecutionContext{
+				Config: &config_loader.Config{
+					Spec: config_loader.ConfigSpec{
+						Clients: config_loader.ClientsConfig{
+							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+								BaseURL: "http://gateway:8080/hyperfleet-api",
+								Version: "v1",
+							},
+						},
+					},
+				},
+			},
+			expected: "http://gateway:8080/hyperfleet-api/api/hyperfleet/v1/clusters/123",
+		},
+		{
+			name: "template expressions are preserved unencoded",
+			url:  "clusters/{{ .clusterId }}/nodepools/{{ .nodepoolId }}",
+			execCtx: &ExecutionContext{
+				Config: &config_loader.Config{
+					Spec: config_loader.ConfigSpec{
+						Clients: config_loader.ClientsConfig{
+							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+								BaseURL: "http://hyperfleet-api:8000",
+								Version: "v1",
+							},
+						},
+					},
+				},
+			},
+			expected: "http://hyperfleet-api:8000/api/hyperfleet/v1/clusters/{{ .clusterId }}/nodepools/{{ .nodepoolId }}",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := buildHyperfleetAPICallURL(tt.url, tt.execCtx)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 // TestGetResourceAsMap tests resource to map conversion
 func TestGetResourceAsMap(t *testing.T) {
 	tests := []struct {

@@ -3,6 +3,7 @@ package maestro_client
 import (
 	"context"
 
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transport_client"
 	workv1 "open-cluster-management.io/api/work/v1"
 )
 
@@ -30,3 +31,6 @@ type ManifestWorkClient interface {
 
 // Ensure Client implements ManifestWorkClient
 var _ ManifestWorkClient = (*Client)(nil)
+
+// Ensure Client implements TransportClient
+var _ transport_client.TransportClient = (*Client)(nil)

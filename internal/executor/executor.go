@@ -10,8 +10,7 @@ import (
 	"github.com/cloudevents/sdk-go/v2/event"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleet_api"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/k8s_client"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/maestro_client"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transport_client"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	pkgotel "github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/otel"
 	"go.opentelemetry.io/otel"
@@ -45,7 +44,7 @@ func validateExecutorConfig(config *ExecutorConfig) error {
 	requiredFields := []string{
 		"APIClient",
 		"Logger",
-		"K8sClient"}
+		"TransportClient"}
 
 	for _, field := range requiredFields {
 		if reflect.ValueOf(config).Elem().FieldByName(field).IsNil() {
@@ -209,7 +208,7 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 // executeParamExtraction extracts parameters from the event and environment
 func (e *Executor) executeParamExtraction(execCtx *ExecutionContext) error {
 	// Extract configured parameters
-	if err := extractConfigParams(e.config.Config, execCtx, e.config.K8sClient); err != nil {
+	if err := extractConfigParams(e.config.Config, execCtx); err != nil {
 		return err
 	}
 
@@ -335,15 +334,9 @@ func (b *ExecutorBuilder) WithAPIClient(client hyperfleet_api.Client) *ExecutorB
 	return b
 }
 
-// WithK8sClient sets the Kubernetes client
-func (b *ExecutorBuilder) WithK8sClient(client k8s_client.K8sClient) *ExecutorBuilder {
-	b.config.K8sClient = client
-	return b
-}
-
-// WithMaestroClient sets the Maestro ManifestWork client
-func (b *ExecutorBuilder) WithMaestroClient(client maestro_client.ManifestWorkClient) *ExecutorBuilder {
-	b.config.MaestroClient = client
+// WithTransportClient sets the transport client for resource operations
+func (b *ExecutorBuilder) WithTransportClient(client transport_client.TransportClient) *ExecutorBuilder {
+	b.config.TransportClient = client
 	return b
 }
 

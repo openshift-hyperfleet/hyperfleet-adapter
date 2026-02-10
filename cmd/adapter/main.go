@@ -12,7 +12,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/client_factory"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/executor"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/maestro_client"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transport_client"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/health"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/otel"
@@ -275,41 +275,38 @@ func runServe() error {
 		return fmt.Errorf("failed to create HyperFleet API client: %w", err)
 	}
 
-	// Create Kubernetes client
-	log.Info(ctx, "Creating Kubernetes client...")
-	k8sClient, err := client_factory.CreateK8sClient(ctx, config.Spec.Clients.Kubernetes, log)
-	if err != nil {
-		errCtx := logger.WithErrorField(ctx, err)
-		log.Errorf(errCtx, "Failed to create Kubernetes client")
-		return fmt.Errorf("failed to create Kubernetes client: %w", err)
-	}
-
-	// Create Maestro client if configured
-	var maestroClient maestro_client.ManifestWorkClient
+	// Create transport client — either Maestro or Kubernetes, based on config
+	var transportClient transport_client.TransportClient
 	if config.Spec.Clients.Maestro != nil {
-		log.Info(ctx, "Creating Maestro client...")
-		maestroClient, err = client_factory.CreateMaestroClient(ctx, config.Spec.Clients.Maestro, log)
+		log.Info(ctx, "Creating Maestro client as transport...")
+		maestroClient, err := client_factory.CreateMaestroClient(ctx, config.Spec.Clients.Maestro, log)
 		if err != nil {
 			errCtx := logger.WithErrorField(ctx, err)
 			log.Errorf(errCtx, "Failed to create Maestro client")
 			return fmt.Errorf("failed to create Maestro client: %w", err)
 		}
-		log.Info(ctx, "Maestro client created successfully")
+		transportClient = maestroClient
+		log.Info(ctx, "Maestro client created as transport client")
+	} else {
+		log.Info(ctx, "Creating Kubernetes client as transport...")
+		k8sClient, err := client_factory.CreateK8sClient(ctx, config.Spec.Clients.Kubernetes, log)
+		if err != nil {
+			errCtx := logger.WithErrorField(ctx, err)
+			log.Errorf(errCtx, "Failed to create Kubernetes client")
+			return fmt.Errorf("failed to create Kubernetes client: %w", err)
+		}
+		transportClient = k8sClient
+		log.Info(ctx, "Kubernetes client created as transport client")
 	}
 
 	// Create the executor using the builder pattern
 	log.Info(ctx, "Creating event executor...")
-	execBuilder := executor.NewBuilder().
+	exec, err := executor.NewBuilder().
 		WithConfig(config).
 		WithAPIClient(apiClient).
-		WithK8sClient(k8sClient).
-		WithLogger(log)
-
-	if maestroClient != nil {
-		execBuilder = execBuilder.WithMaestroClient(maestroClient)
-	}
-
-	exec, err := execBuilder.Build()
+		WithTransportClient(transportClient).
+		WithLogger(log).
+		Build()
 	if err != nil {
 		errCtx := logger.WithErrorField(ctx, err)
 		log.Errorf(errCtx, "Failed to create executor")

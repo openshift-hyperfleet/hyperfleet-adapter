@@ -307,8 +307,8 @@ type NamedManifest struct {
 type Resource struct {
 	Name             string           `yaml:"name" validate:"required,resourcename"`
 	Transport        *TransportConfig `yaml:"transport,omitempty"`
-	Manifest         interface{}      `yaml:"manifest,omitempty"`         // For Kubernetes transport
-	Manifests        []NamedManifest  `yaml:"manifests,omitempty"`        // For Maestro transport (multiple manifests bundled in one ManifestWork)
+	Manifest         interface{}      `yaml:"manifest,omitempty"`  // For Kubernetes transport
+	Manifests        []NamedManifest  `yaml:"manifests,omitempty"` // For Maestro transport (multiple manifests bundled in one ManifestWork)
 	RecreateOnChange bool             `yaml:"recreateOnChange,omitempty"`
 	Discovery        *DiscoveryConfig `yaml:"discovery,omitempty" validate:"required"`
 }

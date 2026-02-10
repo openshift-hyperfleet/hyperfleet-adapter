@@ -465,167 +465,13 @@ func TestBuildManifestsMaestro(t *testing.T) {
 	})
 }
 
-func TestBuildManifestWork(t *testing.T) {
-	t.Run("bundles multiple manifests into single ManifestWork", func(t *testing.T) {
-		re := &ResourceExecutor{
-			log: logger.NewTestLogger(),
-		}
-
-		resource := config_loader.Resource{
-			Name: "testResource",
-			Transport: &config_loader.TransportConfig{
-				Client: config_loader.TransportClientMaestro,
-				Maestro: &config_loader.MaestroTransportConfig{
-					TargetCluster: "test-cluster",
-				},
-			},
-		}
-
-		// Create test manifests
-		nsManifest := createTestNamespaceManifest("test-ns", 1)
-		cmManifest := createTestConfigMapManifest("test-cm", "test-ns", 1)
-
-		// Convert to unstructured
-		manifests, err := re.buildManifestsMaestro(context.Background(), config_loader.Resource{
-			Name: "test",
-			Manifests: []config_loader.NamedManifest{
-				{Name: "ns", Manifest: nsManifest},
-				{Name: "cm", Manifest: cmManifest},
-			},
-		}, &ExecutionContext{Params: map[string]interface{}{}})
-		require.NoError(t, err)
-		require.Len(t, manifests, 2)
-
-		execCtx := &ExecutionContext{
-			Params: map[string]interface{}{},
-		}
-
-		work, err := re.buildManifestWork(context.Background(), resource, manifests, execCtx)
-		require.NoError(t, err)
-		require.NotNil(t, work)
-
-		// Verify ManifestWork contains both manifests
-		assert.Len(t, work.Spec.Workload.Manifests, 2)
-	})
-
-	t.Run("uses configured manifestWork name", func(t *testing.T) {
-		re := &ResourceExecutor{
-			log: logger.NewTestLogger(),
-		}
-
-		resource := config_loader.Resource{
-			Name: "testResource",
-			Transport: &config_loader.TransportConfig{
-				Client: config_loader.TransportClientMaestro,
-				Maestro: &config_loader.MaestroTransportConfig{
-					TargetCluster: "test-cluster",
-					ManifestWork: &config_loader.ManifestWorkConfig{
-						Name: "custom-work-{{ .clusterId }}",
-					},
-				},
-			},
-		}
-
-		manifests, err := re.buildManifestsMaestro(context.Background(), config_loader.Resource{
-			Name: "test",
-			Manifests: []config_loader.NamedManifest{
-				{Name: "ns", Manifest: createTestNamespaceManifest("test-ns", 1)},
-			},
-		}, &ExecutionContext{Params: map[string]interface{}{}})
-		require.NoError(t, err)
-
-		execCtx := &ExecutionContext{
-			Params: map[string]interface{}{
-				"clusterId": "cluster-abc",
-			},
-		}
-
-		work, err := re.buildManifestWork(context.Background(), resource, manifests, execCtx)
-		require.NoError(t, err)
-
-		// Verify custom name was rendered
-		assert.Equal(t, "custom-work-cluster-abc", work.GetName())
-	})
-
-	t.Run("generates name from resource and first manifest", func(t *testing.T) {
-		re := &ResourceExecutor{
-			log: logger.NewTestLogger(),
-		}
-
-		resource := config_loader.Resource{
-			Name: "clusterResources",
-			Transport: &config_loader.TransportConfig{
-				Client: config_loader.TransportClientMaestro,
-				Maestro: &config_loader.MaestroTransportConfig{
-					TargetCluster: "test-cluster",
-					// No ManifestWork.Name configured
-				},
-			},
-		}
-
-		manifests, err := re.buildManifestsMaestro(context.Background(), config_loader.Resource{
-			Name: "test",
-			Manifests: []config_loader.NamedManifest{
-				{Name: "ns", Manifest: createTestNamespaceManifest("my-namespace", 1)},
-			},
-		}, &ExecutionContext{Params: map[string]interface{}{}})
-		require.NoError(t, err)
-
-		execCtx := &ExecutionContext{
-			Params: map[string]interface{}{},
-		}
-
-		work, err := re.buildManifestWork(context.Background(), resource, manifests, execCtx)
-		require.NoError(t, err)
-
-		// Name should be generated from resource name and first manifest name
-		assert.Equal(t, "clusterResources-my-namespace", work.GetName())
-	})
-
-	t.Run("copies generation annotation from first manifest", func(t *testing.T) {
-		re := &ResourceExecutor{
-			log: logger.NewTestLogger(),
-		}
-
-		resource := config_loader.Resource{
-			Name: "testResource",
-			Transport: &config_loader.TransportConfig{
-				Client: config_loader.TransportClientMaestro,
-				Maestro: &config_loader.MaestroTransportConfig{
-					TargetCluster: "test-cluster",
-				},
-			},
-		}
-
-		manifests, err := re.buildManifestsMaestro(context.Background(), config_loader.Resource{
-			Name: "test",
-			Manifests: []config_loader.NamedManifest{
-				{Name: "ns", Manifest: createTestNamespaceManifest("test-ns", 42)},
-			},
-		}, &ExecutionContext{Params: map[string]interface{}{}})
-		require.NoError(t, err)
-
-		execCtx := &ExecutionContext{
-			Params: map[string]interface{}{},
-		}
-
-		work, err := re.buildManifestWork(context.Background(), resource, manifests, execCtx)
-		require.NoError(t, err)
-
-		// Verify generation annotation was copied to ManifestWork
-		annotations := work.GetAnnotations()
-		require.NotNil(t, annotations)
-		assert.Equal(t, "42", annotations[constants.AnnotationGeneration])
-	})
-}
-
-func TestApplyResourceMaestro(t *testing.T) {
-	t.Run("applies ManifestWork via maestro client", func(t *testing.T) {
+func TestExecuteResourceMaestro(t *testing.T) {
+	t.Run("applies ManifestWork via transport client", func(t *testing.T) {
 		mockClient := maestro_client.NewMockMaestroClient()
 
 		re := &ResourceExecutor{
-			maestroClient: mockClient,
-			log:           logger.NewTestLogger(),
+			client: mockClient,
+			log:    logger.NewTestLogger(),
 		}
 
 		resource := config_loader.Resource{
@@ -642,9 +488,6 @@ func TestApplyResourceMaestro(t *testing.T) {
 			},
 		}
 
-		manifests, err := re.buildManifestsMaestro(context.Background(), resource, &ExecutionContext{Params: map[string]interface{}{}})
-		require.NoError(t, err)
-
 		execCtx := &ExecutionContext{
 			Params: map[string]interface{}{
 				"targetCluster": "my-cluster-123",
@@ -653,7 +496,7 @@ func TestApplyResourceMaestro(t *testing.T) {
 			Adapter:   AdapterMetadata{},
 		}
 
-		result, err := re.applyResourceMaestro(context.Background(), resource, manifests, execCtx)
+		result, err := re.executeResource(context.Background(), resource, execCtx)
 		require.NoError(t, err)
 
 		assert.Equal(t, StatusSuccess, result.Status)
@@ -674,8 +517,8 @@ func TestApplyResourceMaestro(t *testing.T) {
 		mockClient := maestro_client.NewMockMaestroClient()
 
 		re := &ResourceExecutor{
-			maestroClient: mockClient,
-			log:           logger.NewTestLogger(),
+			client: mockClient,
+			log:    logger.NewTestLogger(),
 		}
 
 		resource := config_loader.Resource{
@@ -692,16 +535,13 @@ func TestApplyResourceMaestro(t *testing.T) {
 			},
 		}
 
-		manifests, err := re.buildManifestsMaestro(context.Background(), resource, &ExecutionContext{Params: map[string]interface{}{}})
-		require.NoError(t, err)
-
 		execCtx := &ExecutionContext{
 			Params:    map[string]interface{}{},
 			Resources: make(map[string]*unstructured.Unstructured),
 			Adapter:   AdapterMetadata{},
 		}
 
-		_, err = re.applyResourceMaestro(context.Background(), resource, manifests, execCtx)
+		_, err := re.executeResource(context.Background(), resource, execCtx)
 		require.NoError(t, err)
 
 		// Verify manifests stored by compound name (resource.manifestName)
@@ -713,10 +553,10 @@ func TestApplyResourceMaestro(t *testing.T) {
 		assert.Equal(t, execCtx.Resources["clusterSetup.namespace"], execCtx.Resources["clusterSetup"])
 	})
 
-	t.Run("returns error when maestro client not configured", func(t *testing.T) {
+	t.Run("returns error when transport client not configured", func(t *testing.T) {
 		re := &ResourceExecutor{
-			maestroClient: nil, // Not configured
-			log:           logger.NewTestLogger(),
+			client: nil, // Not configured
+			log:    logger.NewTestLogger(),
 		}
 
 		resource := config_loader.Resource{
@@ -732,18 +572,15 @@ func TestApplyResourceMaestro(t *testing.T) {
 			},
 		}
 
-		manifests, err := re.buildManifestsMaestro(context.Background(), resource, &ExecutionContext{Params: map[string]interface{}{}})
-		require.NoError(t, err)
-
 		execCtx := &ExecutionContext{
 			Params:    map[string]interface{}{},
 			Resources: make(map[string]*unstructured.Unstructured),
 			Adapter:   AdapterMetadata{},
 		}
 
-		result, err := re.applyResourceMaestro(context.Background(), resource, manifests, execCtx)
+		result, err := re.executeResource(context.Background(), resource, execCtx)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "maestro client not configured")
+		assert.Contains(t, err.Error(), "transport client not configured")
 		assert.Equal(t, StatusFailed, result.Status)
 	})
 
@@ -751,8 +588,8 @@ func TestApplyResourceMaestro(t *testing.T) {
 		mockClient := maestro_client.NewMockMaestroClient()
 
 		re := &ResourceExecutor{
-			maestroClient: mockClient,
-			log:           logger.NewTestLogger(),
+			client: mockClient,
+			log:    logger.NewTestLogger(),
 		}
 
 		resource := config_loader.Resource{
@@ -766,16 +603,13 @@ func TestApplyResourceMaestro(t *testing.T) {
 			},
 		}
 
-		manifests, err := re.buildManifestsMaestro(context.Background(), resource, &ExecutionContext{Params: map[string]interface{}{}})
-		require.NoError(t, err)
-
 		execCtx := &ExecutionContext{
 			Params:    map[string]interface{}{},
 			Resources: make(map[string]*unstructured.Unstructured),
 			Adapter:   AdapterMetadata{},
 		}
 
-		result, err := re.applyResourceMaestro(context.Background(), resource, manifests, execCtx)
+		result, err := re.executeResource(context.Background(), resource, execCtx)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "maestro transport configuration missing")
 		assert.Equal(t, StatusFailed, result.Status)
@@ -786,8 +620,8 @@ func TestApplyResourceMaestro(t *testing.T) {
 		mockClient.ApplyManifestWorkError = errors.New("connection refused")
 
 		re := &ResourceExecutor{
-			maestroClient: mockClient,
-			log:           logger.NewTestLogger(),
+			client: mockClient,
+			log:    logger.NewTestLogger(),
 		}
 
 		resource := config_loader.Resource{
@@ -803,16 +637,13 @@ func TestApplyResourceMaestro(t *testing.T) {
 			},
 		}
 
-		manifests, err := re.buildManifestsMaestro(context.Background(), resource, &ExecutionContext{Params: map[string]interface{}{}})
-		require.NoError(t, err)
-
 		execCtx := &ExecutionContext{
 			Params:    map[string]interface{}{},
 			Resources: make(map[string]*unstructured.Unstructured),
 			Adapter:   AdapterMetadata{},
 		}
 
-		result, err := re.applyResourceMaestro(context.Background(), resource, manifests, execCtx)
+		result, err := re.executeResource(context.Background(), resource, execCtx)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to apply ManifestWork")
 		assert.Equal(t, StatusFailed, result.Status)

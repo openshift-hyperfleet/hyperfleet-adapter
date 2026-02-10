@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/generation"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
 	apperrors "github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -37,14 +37,14 @@ func (c *Client) CreateManifestWork(
 	}
 
 	// Validate that generation annotations are present (required on ManifestWork and all manifests)
-	if err := generation.ValidateManifestWorkGeneration(work); err != nil {
+	if err := manifest.ValidateManifestWorkGeneration(work); err != nil {
 		return nil, apperrors.MaestroError("invalid ManifestWork: %v", err)
 	}
 
 	// Enrich context with common fields
 	ctx = logger.WithMaestroConsumer(ctx, consumerName)
 	ctx = logger.WithLogField(ctx, "manifestwork", work.Name)
-	ctx = logger.WithObservedGeneration(ctx, generation.GetGeneration(work.ObjectMeta))
+	ctx = logger.WithObservedGeneration(ctx, manifest.GetGeneration(work.ObjectMeta))
 
 	c.log.WithFields(map[string]interface{}{
 		"manifests": len(work.Spec.Workload.Manifests),
@@ -197,12 +197,12 @@ func (c *Client) ApplyManifestWork(
 	}
 
 	// Validate that generation annotations are present (required on ManifestWork and all manifests)
-	if err := generation.ValidateManifestWorkGeneration(manifestWork); err != nil {
+	if err := manifest.ValidateManifestWorkGeneration(manifestWork); err != nil {
 		return nil, apperrors.MaestroError("invalid ManifestWork: %v", err)
 	}
 
 	// Get generation from the work (set by template)
-	newGeneration := generation.GetGeneration(manifestWork.ObjectMeta)
+	newGeneration := manifest.GetGeneration(manifestWork.ObjectMeta)
 
 	// Enrich context with common fields
 	ctx = logger.WithMaestroConsumer(ctx, consumerName)
@@ -221,11 +221,11 @@ func (c *Client) ApplyManifestWork(
 	// Get existing generation (0 if not found)
 	var existingGeneration int64
 	if exists {
-		existingGeneration = generation.GetGeneration(existing.ObjectMeta)
+		existingGeneration = manifest.GetGeneration(existing.ObjectMeta)
 	}
 
 	// Compare generations to determine operation
-	decision := generation.CompareGenerations(newGeneration, existingGeneration, exists)
+	decision := manifest.CompareGenerations(newGeneration, existingGeneration, exists)
 
 	c.log.WithFields(map[string]interface{}{
 		"operation": decision.Operation,
@@ -234,11 +234,11 @@ func (c *Client) ApplyManifestWork(
 
 	// Execute operation based on comparison result
 	switch decision.Operation {
-	case generation.OperationCreate:
+	case manifest.OperationCreate:
 		return c.CreateManifestWork(ctx, consumerName, manifestWork)
-	case generation.OperationSkip:
+	case manifest.OperationSkip:
 		return existing, nil
-	case generation.OperationUpdate:
+	case manifest.OperationUpdate:
 		// Use Patch instead of Update since Maestro gRPC doesn't support Update
 		patchData, err := createManifestWorkPatch(manifestWork)
 		if err != nil {

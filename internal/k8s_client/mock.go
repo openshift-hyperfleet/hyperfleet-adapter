@@ -3,6 +3,8 @@ package k8s_client
 import (
 	"context"
 
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transport_client"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -24,10 +26,10 @@ type MockK8sClient struct {
 	DeleteResourceError  error
 	DiscoverResult       *unstructured.UnstructuredList
 	DiscoverError        error
-	ExtractSecretResult  string
-	ExtractSecretError   error
-	ExtractConfigResult  string
-	ExtractConfigError   error
+	ApplyResult          *transport_client.ApplyResult
+	ApplyError           error
+	ApplyResourcesResult *transport_client.ApplyResourcesResult
+	ApplyResourcesError  error
 }
 
 // NewMockK8sClient creates a new mock K8s client for testing
@@ -38,22 +40,17 @@ func NewMockK8sClient() *MockK8sClient {
 }
 
 // GetResource implements K8sClient.GetResource
-// Returns a NotFound error when the resource doesn't exist, matching real K8s client behavior.
 func (m *MockK8sClient) GetResource(ctx context.Context, gvk schema.GroupVersionKind, namespace, name string) (*unstructured.Unstructured, error) {
-	// Check explicit error override first
 	if m.GetResourceError != nil {
 		return nil, m.GetResourceError
 	}
-	// Check explicit result override
 	if m.GetResourceResult != nil {
 		return m.GetResourceResult, nil
 	}
-	// Check stored resources
 	key := namespace + "/" + name
 	if res, ok := m.Resources[key]; ok {
 		return res, nil
 	}
-	// Resource not found - return proper K8s NotFound error (matches real client behavior)
 	gr := schema.GroupResource{Group: gvk.Group, Resource: gvk.Kind + "s"}
 	return nil, apierrors.NewNotFound(gr, name)
 }
@@ -66,7 +63,6 @@ func (m *MockK8sClient) CreateResource(ctx context.Context, obj *unstructured.Un
 	if m.CreateResourceResult != nil {
 		return m.CreateResourceResult, nil
 	}
-	// Store the resource
 	key := obj.GetNamespace() + "/" + obj.GetName()
 	m.Resources[key] = obj.DeepCopy()
 	return obj, nil
@@ -80,7 +76,6 @@ func (m *MockK8sClient) UpdateResource(ctx context.Context, obj *unstructured.Un
 	if m.UpdateResourceResult != nil {
 		return m.UpdateResourceResult, nil
 	}
-	// Store the resource
 	key := obj.GetNamespace() + "/" + obj.GetName()
 	m.Resources[key] = obj.DeepCopy()
 	return obj, nil
@@ -91,7 +86,6 @@ func (m *MockK8sClient) DeleteResource(ctx context.Context, gvk schema.GroupVers
 	if m.DeleteResourceError != nil {
 		return m.DeleteResourceError
 	}
-	// Remove from stored resources
 	key := namespace + "/" + name
 	delete(m.Resources, key)
 	return nil
@@ -108,20 +102,78 @@ func (m *MockK8sClient) DiscoverResources(ctx context.Context, gvk schema.GroupV
 	return &unstructured.UnstructuredList{}, nil
 }
 
-// ExtractFromSecret implements K8sClient.ExtractFromSecret
-func (m *MockK8sClient) ExtractFromSecret(ctx context.Context, path string) (string, error) {
-	if m.ExtractSecretError != nil {
-		return "", m.ExtractSecretError
+// ApplyResource implements K8sClient.ApplyResource
+func (m *MockK8sClient) ApplyResource(ctx context.Context, resource transport_client.ResourceToApply, opts transport_client.ApplyOptions) (*transport_client.ApplyResult, error) {
+	if m.ApplyError != nil {
+		return nil, m.ApplyError
 	}
-	return m.ExtractSecretResult, nil
+	if m.ApplyResult != nil {
+		return m.ApplyResult, nil
+	}
+
+	// Default behavior: determine operation from generation comparison
+	existing := resource.ExistingResource
+	newManifest := resource.Manifest
+
+	manifestGen := manifest.GetGenerationFromUnstructured(newManifest)
+	var existingGen int64
+	if existing != nil {
+		existingGen = manifest.GetGenerationFromUnstructured(existing)
+	}
+
+	decision := manifest.CompareGenerations(manifestGen, existingGen, existing != nil)
+	operation := string(decision.Operation)
+	if decision.Operation == manifest.OperationUpdate && opts.RecreateOnChange {
+		operation = string(manifest.OperationRecreate)
+	}
+
+	switch manifest.Operation(operation) {
+	case manifest.OperationCreate:
+		obj, err := m.CreateResource(ctx, newManifest)
+		return &transport_client.ApplyResult{Operation: operation, Reason: decision.Reason, Resource: obj, Error: err}, err
+	case manifest.OperationUpdate:
+		if existing != nil {
+			newManifest.SetResourceVersion(existing.GetResourceVersion())
+			newManifest.SetUID(existing.GetUID())
+		}
+		obj, err := m.UpdateResource(ctx, newManifest)
+		return &transport_client.ApplyResult{Operation: operation, Reason: decision.Reason, Resource: obj, Error: err}, err
+	case manifest.OperationRecreate:
+		if existing != nil {
+			gvk := existing.GroupVersionKind()
+			_ = m.DeleteResource(ctx, gvk, existing.GetNamespace(), existing.GetName()) //nolint:errcheck // mock: best-effort delete before recreate
+		}
+		obj, err := m.CreateResource(ctx, newManifest)
+		return &transport_client.ApplyResult{Operation: operation, Reason: decision.Reason, Resource: obj, Error: err}, err
+	case manifest.OperationSkip:
+		return &transport_client.ApplyResult{Operation: operation, Reason: decision.Reason, Resource: existing}, nil
+	}
+
+	return &transport_client.ApplyResult{Operation: operation, Reason: decision.Reason, Resource: newManifest}, nil
 }
 
-// ExtractFromConfigMap implements K8sClient.ExtractFromConfigMap
-func (m *MockK8sClient) ExtractFromConfigMap(ctx context.Context, path string) (string, error) {
-	if m.ExtractConfigError != nil {
-		return "", m.ExtractConfigError
+// ApplyResources implements TransportClient.ApplyResources
+func (m *MockK8sClient) ApplyResources(ctx context.Context, resources []transport_client.ResourceToApply, opts transport_client.ApplyOptions) (*transport_client.ApplyResourcesResult, error) {
+	if m.ApplyResourcesError != nil {
+		return nil, m.ApplyResourcesError
 	}
-	return m.ExtractConfigResult, nil
+	if m.ApplyResourcesResult != nil {
+		return m.ApplyResourcesResult, nil
+	}
+
+	results := &transport_client.ApplyResourcesResult{
+		Results: make([]transport_client.ApplyResult, 0, len(resources)),
+	}
+	for _, res := range resources {
+		result, err := m.ApplyResource(ctx, res, opts)
+		if result != nil {
+			results.Results = append(results.Results, *result)
+		}
+		if err != nil {
+			return results, err
+		}
+	}
+	return results, nil
 }
 
 // Ensure MockK8sClient implements K8sClient

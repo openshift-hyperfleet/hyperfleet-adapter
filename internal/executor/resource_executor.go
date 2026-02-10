@@ -3,38 +3,31 @@ package executor
 import (
 	"context"
 	"fmt"
-	"strings"
-	"time"
 
 	"github.com/mitchellh/copystructure"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/generation"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/k8s_client"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/maestro_client"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transport_client"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/constants"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	workv1 "open-cluster-management.io/api/work/v1"
 	"sigs.k8s.io/yaml"
 )
 
 // ResourceExecutor creates and updates Kubernetes resources
 type ResourceExecutor struct {
-	k8sClient     k8s_client.K8sClient
-	maestroClient maestro_client.ManifestWorkClient
-	log           logger.Logger
+	client transport_client.TransportClient
+	log    logger.Logger
 }
 
 // newResourceExecutor creates a new resource executor
 // NOTE: Caller (NewExecutor) is responsible for config validation
 func newResourceExecutor(config *ExecutorConfig) *ResourceExecutor {
 	return &ResourceExecutor{
-		k8sClient:     config.K8sClient,
-		maestroClient: config.MaestroClient,
-		log:           config.Logger,
+		client: config.TransportClient,
+		log:    config.Logger,
 	}
 }
 
@@ -58,150 +51,177 @@ func (re *ResourceExecutor) ExecuteAll(ctx context.Context, resources []config_l
 	return results, nil
 }
 
-// executeResource creates or updates a single Kubernetes resource
+// executeResource creates or updates a single resource.
+// The executor no longer needs to know which transport it's talking to.
+// For K8s transport: builds a single manifest, discovers existing, calls ApplyResources.
+// For Maestro transport: builds multiple manifests, populates TransportConfig in ApplyOptions,
+// calls the same ApplyResources — the Maestro client internally builds the ManifestWork.
 func (re *ResourceExecutor) executeResource(ctx context.Context, resource config_loader.Resource, execCtx *ExecutionContext) (ResourceResult, error) {
 	result := ResourceResult{
 		Name:   resource.Name,
 		Status: StatusSuccess,
 	}
 
-	// Route based on transport type
+	if re.client == nil {
+		result.Status = StatusFailed
+		result.Error = fmt.Errorf("transport client not configured")
+		return result, NewExecutorError(PhaseResources, resource.Name, "transport client not configured", result.Error)
+	}
+
 	clientType := resource.Transport.GetClientType()
+
+	var manifests []*unstructured.Unstructured
 
 	switch clientType {
 	case config_loader.TransportClientKubernetes:
 		// Build single manifest for Kubernetes transport
 		re.log.Debugf(ctx, "Building manifest from config for Kubernetes transport")
-		manifest, err := re.buildManifestK8s(ctx, resource, execCtx)
+		m, err := re.buildManifestK8s(ctx, resource, execCtx)
 		if err != nil {
 			result.Status = StatusFailed
 			result.Error = err
 			return result, NewExecutorError(PhaseResources, resource.Name, "failed to build manifest", err)
 		}
-
-		// Extract resource info
-		gvk := manifest.GroupVersionKind()
-		result.Kind = gvk.Kind
-		result.Namespace = manifest.GetNamespace()
-		result.ResourceName = manifest.GetName()
-
-		// Add K8s resource context fields for logging
-		ctx = logger.WithK8sKind(ctx, result.Kind)
-		ctx = logger.WithK8sName(ctx, result.ResourceName)
-		ctx = logger.WithK8sNamespace(ctx, result.Namespace)
-
-		re.log.Debugf(ctx, "Resource[%s] manifest built: namespace=%s", resource.Name, manifest.GetNamespace())
-		return re.applyResourceK8s(ctx, resource, manifest, execCtx)
+		manifests = []*unstructured.Unstructured{m}
 
 	case config_loader.TransportClientMaestro:
 		// Build multiple manifests for Maestro transport
 		re.log.Debugf(ctx, "Building manifests from config for Maestro transport")
-		manifests, err := re.buildManifestsMaestro(ctx, resource, execCtx)
+		built, err := re.buildManifestsMaestro(ctx, resource, execCtx)
 		if err != nil {
 			result.Status = StatusFailed
 			result.Error = err
 			return result, NewExecutorError(PhaseResources, resource.Name, "failed to build manifests", err)
 		}
-
+		manifests = built
 		re.log.Debugf(ctx, "Resource[%s] built %d manifests for ManifestWork", resource.Name, len(manifests))
-		return re.applyResourceMaestro(ctx, resource, manifests, execCtx)
 
 	default:
 		result.Status = StatusFailed
 		result.Error = fmt.Errorf("unsupported transport client: %s", clientType)
 		return result, NewExecutorError(PhaseResources, resource.Name, "unsupported transport client", result.Error)
 	}
-}
 
-// applyResourceK8s handles resource discovery, generation comparison, and execution of operations via Kubernetes API.
-// It discovers existing resources (via Discovery config or by name), compares generations,
-// and performs the appropriate operation (create, update, recreate, or skip).
-func (re *ResourceExecutor) applyResourceK8s(ctx context.Context, resource config_loader.Resource, manifest *unstructured.Unstructured, execCtx *ExecutionContext) (ResourceResult, error) {
-	result := ResourceResult{
-		Name:         resource.Name,
-		Kind:         manifest.GetKind(),
-		Namespace:    manifest.GetNamespace(),
-		ResourceName: manifest.GetName(),
-		Status:       StatusSuccess,
+	// Set result info from first manifest
+	if len(manifests) > 0 {
+		firstManifest := manifests[0]
+		gvk := firstManifest.GroupVersionKind()
+		result.Kind = gvk.Kind
+		result.Namespace = firstManifest.GetNamespace()
+		result.ResourceName = firstManifest.GetName()
+
+		// Add K8s resource context fields for logging
+		ctx = logger.WithK8sKind(ctx, result.Kind)
+		ctx = logger.WithK8sName(ctx, result.ResourceName)
+		ctx = logger.WithK8sNamespace(ctx, result.Namespace)
 	}
 
-	if re.k8sClient == nil {
-		result.Status = StatusFailed
-		result.Error = fmt.Errorf("kubernetes client not configured")
-		return result, NewExecutorError(PhaseResources, resource.Name, "kubernetes client not configured", result.Error)
+	// Add observed_generation to context
+	if len(manifests) > 0 {
+		manifestGen := manifest.GetGenerationFromUnstructured(manifests[0])
+		ctx = logger.WithObservedGeneration(ctx, manifestGen)
 	}
 
-	gvk := manifest.GroupVersionKind()
+	// Build resources to apply with discovery
+	resourcesToApply := make([]transport_client.ResourceToApply, 0, len(manifests))
 
-	// Discover existing resource
-	var existingResource *unstructured.Unstructured
-	var err error
-	if resource.Discovery != nil {
-		// Use Discovery config to find existing resource (e.g., by label selector)
-		re.log.Debugf(ctx, "Discovering existing resource using discovery config...")
-		existingResource, err = re.discoverExistingResource(ctx, gvk, resource.Discovery, execCtx)
+	if clientType == config_loader.TransportClientKubernetes {
+		// For K8s: discover existing resource for generation comparison
+		m := manifests[0]
+		gvk := m.GroupVersionKind()
+
+		var existingResource *unstructured.Unstructured
+		var err error
+		if resource.Discovery != nil {
+			re.log.Debugf(ctx, "Discovering existing resource using discovery config...")
+			existingResource, err = re.discoverExistingResource(ctx, gvk, resource.Discovery, execCtx)
+		} else {
+			re.log.Debugf(ctx, "Looking up existing resource by name...")
+			existingResource, err = re.client.GetResource(ctx, gvk, m.GetNamespace(), m.GetName())
+		}
+
+		if err != nil && !apierrors.IsNotFound(err) {
+			result.Status = StatusFailed
+			result.Error = err
+			return result, NewExecutorError(PhaseResources, resource.Name, "failed to find existing resource", err)
+		}
+
+		if existingResource != nil {
+			re.log.Debugf(ctx, "Existing resource found: %s/%s", existingResource.GetNamespace(), existingResource.GetName())
+		} else {
+			re.log.Debugf(ctx, "No existing resource found, will create")
+		}
+
+		resourcesToApply = append(resourcesToApply, transport_client.ResourceToApply{
+			Manifest:         m,
+			ExistingResource: existingResource,
+		})
 	} else {
-		// No Discovery config - lookup by name from manifest
-		re.log.Debugf(ctx, "Looking up existing resource by name...")
-		existingResource, err = re.k8sClient.GetResource(ctx, gvk, manifest.GetNamespace(), manifest.GetName())
+		// For Maestro: no individual resource discovery, just bundle all manifests
+		for _, m := range manifests {
+			resourcesToApply = append(resourcesToApply, transport_client.ResourceToApply{
+				Manifest:         m,
+				ExistingResource: nil,
+			})
+		}
 	}
 
-	// Fail fast on any error except NotFound (which means resource doesn't exist yet)
-	if err != nil && !apierrors.IsNotFound(err) {
-		result.Status = StatusFailed
-		result.Error = err
-		return result, NewExecutorError(PhaseResources, resource.Name, "failed to find existing resource", err)
+	// Build ApplyOptions
+	opts := transport_client.ApplyOptions{
+		RecreateOnChange: resource.RecreateOnChange,
 	}
 
-	if existingResource != nil {
-		re.log.Debugf(ctx, "Existing resource found: %s/%s", existingResource.GetNamespace(), existingResource.GetName())
-	} else {
-		re.log.Debugf(ctx, "No existing resource found, will create")
+	// For Maestro transport, populate TransportConfig
+	if clientType == config_loader.TransportClientMaestro {
+		if resource.Transport == nil || resource.Transport.Maestro == nil {
+			result.Status = StatusFailed
+			result.Error = fmt.Errorf("maestro transport configuration missing")
+			return result, NewExecutorError(PhaseResources, resource.Name, "maestro transport configuration missing", result.Error)
+		}
+
+		maestroConfig := resource.Transport.Maestro
+
+		// Render targetCluster template
+		targetCluster, err := renderTemplate(maestroConfig.TargetCluster, execCtx.Params)
+		if err != nil {
+			result.Status = StatusFailed
+			result.Error = fmt.Errorf("failed to render targetCluster template: %w", err)
+			return result, NewExecutorError(PhaseResources, resource.Name, "failed to render targetCluster template", err)
+		}
+
+		re.log.Debugf(ctx, "Resource[%s] using Maestro transport to cluster=%s with %d manifests",
+			resource.Name, targetCluster, len(manifests))
+
+		tc := map[string]interface{}{
+			"targetCluster": targetCluster,
+			"resourceName":  resource.Name,
+			"params":        execCtx.Params,
+		}
+
+		// Render manifestWork name if configured
+		if maestroConfig.ManifestWork != nil && maestroConfig.ManifestWork.Name != "" {
+			workName, err := renderTemplate(maestroConfig.ManifestWork.Name, execCtx.Params)
+			if err != nil {
+				result.Status = StatusFailed
+				result.Error = fmt.Errorf("failed to render manifestWork.name template: %w", err)
+				return result, NewExecutorError(PhaseResources, resource.Name, "failed to render manifestWork.name template", err)
+			}
+			tc["manifestWorkName"] = workName
+		}
+
+		// Pass refContent if present
+		if maestroConfig.ManifestWork != nil && maestroConfig.ManifestWork.RefContent != nil {
+			tc["manifestWorkRefContent"] = maestroConfig.ManifestWork.RefContent
+		}
+
+		opts.TransportConfig = tc
 	}
 
-	// Extract manifest generation once for use in comparison and logging
-	manifestGen := generation.GetGenerationFromUnstructured(manifest)
-
-	// Add observed_generation to context early so it appears in all subsequent logs
-	ctx = logger.WithObservedGeneration(ctx, manifestGen)
-
-	// Get existing generation (0 if not found)
-	var existingGen int64
-	if existingResource != nil {
-		existingGen = generation.GetGenerationFromUnstructured(existingResource)
-	}
-
-	// Compare generations to determine operation
-	decision := generation.CompareGenerations(manifestGen, existingGen, existingResource != nil)
-
-	// Handle recreateOnChange override
-	result.Operation = decision.Operation
-	result.OperationReason = decision.Reason
-	if decision.Operation == generation.OperationUpdate && resource.RecreateOnChange {
-		result.Operation = generation.OperationRecreate
-		result.OperationReason = fmt.Sprintf("%s, recreateOnChange=true", decision.Reason)
-	}
-
-	// Log the operation decision
-	re.log.Infof(ctx, "Resource[%s] is processing: operation=%s reason=%s",
-		resource.Name, strings.ToUpper(string(result.Operation)), result.OperationReason)
-
-	// Execute the operation
-	switch result.Operation {
-	case generation.OperationCreate:
-		result.Resource, err = re.createResource(ctx, manifest)
-	case generation.OperationUpdate:
-		result.Resource, err = re.updateResource(ctx, existingResource, manifest)
-	case generation.OperationRecreate:
-		result.Resource, err = re.recreateResource(ctx, existingResource, manifest)
-	case generation.OperationSkip:
-		result.Resource = existingResource
-	}
-
+	// Call ApplyResources uniformly
+	applyResults, err := re.client.ApplyResources(ctx, resourcesToApply, opts)
 	if err != nil {
 		result.Status = StatusFailed
 		result.Error = err
-		// Set ExecutionError for K8s operation failure
 		execCtx.Adapter.ExecutionError = &ExecutionError{
 			Phase:   string(PhaseResources),
 			Step:    resource.Name,
@@ -209,325 +229,76 @@ func (re *ResourceExecutor) applyResourceK8s(ctx context.Context, resource confi
 		}
 		errCtx := logger.WithK8sResult(ctx, "FAILED")
 		errCtx = logger.WithErrorField(errCtx, err)
+		re.log.Errorf(errCtx, "Resource[%s] apply failed", resource.Name)
+		// Log manifests for debugging
+		for i, m := range manifests {
+			if manifestYAML, marshalErr := yaml.Marshal(m.Object); marshalErr == nil {
+				re.log.Debugf(errCtx, "Resource[%s] failed manifest[%d]:\n%s", resource.Name, i, string(manifestYAML))
+			}
+		}
+		return result, NewExecutorError(PhaseResources, resource.Name, "failed to apply resource", err)
+	}
+
+	// Check for per-resource errors
+	if applyResults != nil && len(applyResults.Results) > 0 && applyResults.Results[0].Error != nil {
+		applyErr := applyResults.Results[0].Error
+		result.Status = StatusFailed
+		result.Error = applyErr
+		result.Operation = manifest.Operation(applyResults.Results[0].Operation)
+		result.OperationReason = applyResults.Results[0].Reason
+		execCtx.Adapter.ExecutionError = &ExecutionError{
+			Phase:   string(PhaseResources),
+			Step:    resource.Name,
+			Message: applyErr.Error(),
+		}
+		errCtx := logger.WithK8sResult(ctx, "FAILED")
+		errCtx = logger.WithErrorField(errCtx, applyErr)
 		re.log.Errorf(errCtx, "Resource[%s] processed: operation=%s reason=%s",
 			resource.Name, result.Operation, result.OperationReason)
-		// Log the full manifest for debugging
-		if manifestYAML, marshalErr := yaml.Marshal(manifest.Object); marshalErr == nil {
+		if manifestYAML, marshalErr := yaml.Marshal(manifests[0].Object); marshalErr == nil {
 			re.log.Debugf(errCtx, "Resource[%s] failed manifest:\n%s", resource.Name, string(manifestYAML))
 		}
 		return result, NewExecutorError(PhaseResources, resource.Name,
-			fmt.Sprintf("failed to %s resource", result.Operation), err)
+			fmt.Sprintf("failed to %s resource", result.Operation), applyErr)
 	}
+
+	// Extract result from ApplyResources
+	if applyResults != nil && len(applyResults.Results) > 0 {
+		applyResult := applyResults.Results[0]
+		result.Operation = manifest.Operation(applyResult.Operation)
+		result.OperationReason = applyResult.Reason
+		result.Resource = applyResult.Resource
+	}
+
 	successCtx := logger.WithK8sResult(ctx, "SUCCESS")
 	re.log.Infof(successCtx, "Resource[%s] processed: operation=%s reason=%s",
 		resource.Name, result.Operation, result.OperationReason)
 
-	// Store resource in execution context
-	if result.Resource != nil {
-		execCtx.Resources[resource.Name] = result.Resource
-		re.log.Debugf(ctx, "Resource stored in context as '%s'", resource.Name)
-	}
-
-	return result, nil
-}
-
-// applyResourceMaestro handles resource delivery via Maestro ManifestWork.
-// It builds a ManifestWork containing all manifests and applies it to the target cluster.
-func (re *ResourceExecutor) applyResourceMaestro(ctx context.Context, resource config_loader.Resource, manifests []*unstructured.Unstructured, execCtx *ExecutionContext) (ResourceResult, error) {
-	result := ResourceResult{
-		Name:   resource.Name,
-		Status: StatusSuccess,
-	}
-
-	// Set result info from first manifest if available
-	if len(manifests) > 0 {
-		firstManifest := manifests[0]
-		result.Kind = firstManifest.GetKind()
-		result.Namespace = firstManifest.GetNamespace()
-		result.ResourceName = firstManifest.GetName()
-	}
-
-	// Validate maestro client is configured
-	if re.maestroClient == nil {
-		result.Status = StatusFailed
-		result.Error = fmt.Errorf("maestro client not configured")
-		return result, NewExecutorError(PhaseResources, resource.Name, "maestro client not configured", result.Error)
-	}
-
-	// Validate maestro transport config is present
-	if resource.Transport == nil || resource.Transport.Maestro == nil {
-		result.Status = StatusFailed
-		result.Error = fmt.Errorf("maestro transport configuration missing")
-		return result, NewExecutorError(PhaseResources, resource.Name, "maestro transport configuration missing", result.Error)
-	}
-
-	maestroConfig := resource.Transport.Maestro
-
-	// Render targetCluster template
-	targetCluster, err := renderTemplate(maestroConfig.TargetCluster, execCtx.Params)
-	if err != nil {
-		result.Status = StatusFailed
-		result.Error = fmt.Errorf("failed to render targetCluster template: %w", err)
-		return result, NewExecutorError(PhaseResources, resource.Name, "failed to render targetCluster template", err)
-	}
-
-	re.log.Debugf(ctx, "Resource[%s] using Maestro transport to cluster=%s with %d manifests", resource.Name, targetCluster, len(manifests))
-
-	// Build ManifestWork from manifests
-	work, err := re.buildManifestWork(ctx, resource, manifests, execCtx)
-	if err != nil {
-		result.Status = StatusFailed
-		result.Error = err
-		return result, NewExecutorError(PhaseResources, resource.Name, "failed to build ManifestWork", err)
-	}
-
-	re.log.Infof(ctx, "Resource[%s] applying ManifestWork via Maestro: name=%s targetCluster=%s manifestCount=%d",
-		resource.Name, work.Name, targetCluster, len(manifests))
-
-	// Apply ManifestWork using maestro client
-	appliedWork, err := re.maestroClient.ApplyManifestWork(ctx, targetCluster, work)
-	if err != nil {
-		result.Status = StatusFailed
-		result.Error = err
-		// Set ExecutionError for Maestro operation failure
-		execCtx.Adapter.ExecutionError = &ExecutionError{
-			Phase:   string(PhaseResources),
-			Step:    resource.Name,
-			Message: err.Error(),
-		}
-		errCtx := logger.WithK8sResult(ctx, "FAILED")
-		errCtx = logger.WithErrorField(errCtx, err)
-		re.log.Errorf(errCtx, "Resource[%s] ManifestWork apply failed: name=%s targetCluster=%s",
-			resource.Name, work.Name, targetCluster)
-		// Log the manifests for debugging
-		for i, manifest := range manifests {
-			if manifestYAML, marshalErr := yaml.Marshal(manifest.Object); marshalErr == nil {
-				re.log.Debugf(errCtx, "Resource[%s] failed manifest[%d]:\n%s", resource.Name, i, string(manifestYAML))
+	// Store resources in execution context
+	if clientType == config_loader.TransportClientMaestro {
+		// Store each manifest by compound name (resource.manifestName)
+		for i, m := range manifests {
+			if i < len(resource.Manifests) {
+				manifestName := resource.Manifests[i].Name
+				key := resource.Name + "." + manifestName
+				execCtx.Resources[key] = m
+				re.log.Debugf(ctx, "Resource stored in context as '%s'", key)
 			}
 		}
-		// Also log the ManifestWork for debugging
-		if workYAML, marshalErr := yaml.Marshal(work); marshalErr == nil {
-			re.log.Debugf(errCtx, "Resource[%s] failed ManifestWork:\n%s", resource.Name, string(workYAML))
+		// Store first manifest under resource name for convenience
+		if len(manifests) > 0 {
+			execCtx.Resources[resource.Name] = manifests[0]
+			re.log.Debugf(ctx, "First manifest also stored in context as '%s'", resource.Name)
 		}
-		return result, NewExecutorError(PhaseResources, resource.Name, "failed to apply ManifestWork", err)
-	}
-
-	// Set operation info
-	result.Operation = generation.OperationCreate // ManifestWork apply is always an upsert
-	result.OperationReason = fmt.Sprintf("ManifestWork applied to cluster %s with %d manifests", targetCluster, len(manifests))
-
-	successCtx := logger.WithK8sResult(ctx, "SUCCESS")
-	re.log.Infof(successCtx, "Resource[%s] ManifestWork applied: name=%s targetCluster=%s resourceVersion=%s manifestCount=%d",
-		resource.Name, appliedWork.Name, targetCluster, appliedWork.ResourceVersion, len(manifests))
-
-	// Store each manifest by compound name (resource.manifestName)
-	for i, manifest := range manifests {
-		if i < len(resource.Manifests) {
-			manifestName := resource.Manifests[i].Name
-			key := resource.Name + "." + manifestName
-			execCtx.Resources[key] = manifest
-			re.log.Debugf(ctx, "Resource stored in context as '%s'", key)
-		}
-	}
-	// Store first manifest under resource name for convenience
-	if len(manifests) > 0 {
-		execCtx.Resources[resource.Name] = manifests[0]
-		re.log.Debugf(ctx, "First manifest also stored in context as '%s'", resource.Name)
-	}
-
-	return result, nil
-}
-
-// buildManifestWork creates a ManifestWork containing the given manifests
-func (re *ResourceExecutor) buildManifestWork(ctx context.Context, resource config_loader.Resource, manifests []*unstructured.Unstructured, execCtx *ExecutionContext) (*workv1.ManifestWork, error) {
-	maestroConfig := resource.Transport.Maestro
-
-	re.log.Debugf(ctx, "Building ManifestWork for resource[%s] with %d manifests: manifestWork=%v", resource.Name, len(manifests), maestroConfig.ManifestWork)
-
-	// Determine ManifestWork name
-	workName := ""
-	if maestroConfig.ManifestWork != nil && maestroConfig.ManifestWork.Name != "" {
-		// Use configured name (with template rendering)
-		var err error
-		workName, err = renderTemplate(maestroConfig.ManifestWork.Name, execCtx.Params)
-		if err != nil {
-			return nil, fmt.Errorf("failed to render manifestWork.name template: %w", err)
-		}
-		re.log.Debugf(ctx, "Using configured ManifestWork name: %s", workName)
-	} else if len(manifests) > 0 {
-		// Generate name from resource name and first manifest name
-		workName = fmt.Sprintf("%s-%s", resource.Name, manifests[0].GetName())
-		re.log.Debugf(ctx, "Generated ManifestWork name: %s", workName)
 	} else {
-		workName = resource.Name
-		re.log.Debugf(ctx, "Using resource name as ManifestWork name: %s", workName)
-	}
-
-	// Build manifests array for ManifestWork
-	manifestEntries := make([]workv1.Manifest, len(manifests))
-	for i, manifest := range manifests {
-		manifestBytes, err := manifest.MarshalJSON()
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal manifest[%d]: %w", i, err)
-		}
-		manifestEntries[i] = workv1.Manifest{
-			RawExtension: runtime.RawExtension{Raw: manifestBytes},
+		// K8s transport: store single resource
+		if result.Resource != nil {
+			execCtx.Resources[resource.Name] = result.Resource
+			re.log.Debugf(ctx, "Resource stored in context as '%s'", resource.Name)
 		}
 	}
 
-	work := &workv1.ManifestWork{
-		Spec: workv1.ManifestWorkSpec{
-			Workload: workv1.ManifestsTemplate{
-				Manifests: manifestEntries,
-			},
-		},
-	}
-	work.SetName(workName)
-
-	// Copy the generation annotation from the first manifest to the ManifestWork
-	// This is required by the maestro client for generation-based idempotency
-	if len(manifests) > 0 {
-		manifestAnnotations := manifests[0].GetAnnotations()
-		if manifestAnnotations != nil {
-			if gen, ok := manifestAnnotations[constants.AnnotationGeneration]; ok {
-				work.SetAnnotations(map[string]string{
-					constants.AnnotationGeneration: gen,
-				})
-				re.log.Debugf(ctx, "Set ManifestWork generation annotation: %s", gen)
-			}
-		}
-	}
-
-	// Apply any additional settings from manifestWork.refContent if present
-	if maestroConfig.ManifestWork != nil && maestroConfig.ManifestWork.RefContent != nil {
-		re.log.Debugf(ctx, "Applying ManifestWork settings from RefContent: %v", maestroConfig.ManifestWork.RefContent)
-		if err := re.applyManifestWorkSettings(ctx, work, maestroConfig.ManifestWork.RefContent, execCtx.Params); err != nil {
-			return nil, fmt.Errorf("failed to apply manifestWork settings: %w", err)
-		}
-	} else if maestroConfig.ManifestWork != nil {
-		re.log.Debugf(ctx, "ManifestWork config present but RefContent is nil (Ref=%s)", maestroConfig.ManifestWork.Ref)
-	}
-
-	return work, nil
-}
-
-// applyManifestWorkSettings applies settings from the manifestWork ref file to the ManifestWork.
-// The ref file can contain metadata (labels, annotations) and spec fields.
-// Template variables in string values are rendered using the provided params.
-func (re *ResourceExecutor) applyManifestWorkSettings(ctx context.Context, work *workv1.ManifestWork, settings map[string]interface{}, params map[string]interface{}) error {
-	re.log.Debugf(ctx, "Applying ManifestWork settings: keys=%v", getMapKeys(settings))
-
-	// Apply metadata if present
-	if metadata, ok := settings["metadata"].(map[string]interface{}); ok {
-		re.log.Debugf(ctx, "Found metadata in settings: %v", metadata)
-
-		// Apply labels from metadata
-		if labels, ok := metadata["labels"].(map[string]interface{}); ok {
-			labelMap := make(map[string]string)
-			for k, v := range labels {
-				if str, ok := v.(string); ok {
-					rendered, err := renderTemplate(str, params)
-					if err != nil {
-						return fmt.Errorf("failed to render label value for key %s: %w", k, err)
-					}
-					labelMap[k] = rendered
-				}
-			}
-			work.SetLabels(labelMap)
-			re.log.Debugf(ctx, "Applied labels: %v", labelMap)
-		}
-
-		// Apply annotations from metadata
-		if annotations, ok := metadata["annotations"].(map[string]interface{}); ok {
-			annotationMap := make(map[string]string)
-			for k, v := range annotations {
-				if str, ok := v.(string); ok {
-					rendered, err := renderTemplate(str, params)
-					if err != nil {
-						return fmt.Errorf("failed to render annotation value for key %s: %w", k, err)
-					}
-					annotationMap[k] = rendered
-				}
-			}
-			work.SetAnnotations(annotationMap)
-			re.log.Debugf(ctx, "Applied annotations: %v", annotationMap)
-		}
-	}
-
-	// Also check for labels/annotations at root level (backwards compatibility)
-	if labels, ok := settings["labels"].(map[string]interface{}); ok {
-		labelMap := make(map[string]string)
-		for k, v := range labels {
-			if str, ok := v.(string); ok {
-				rendered, err := renderTemplate(str, params)
-				if err != nil {
-					return fmt.Errorf("failed to render label value for key %s: %w", k, err)
-				}
-				labelMap[k] = rendered
-			}
-		}
-		// Merge with existing labels
-		existing := work.GetLabels()
-		if existing == nil {
-			existing = make(map[string]string)
-		}
-		for k, v := range labelMap {
-			existing[k] = v
-		}
-		work.SetLabels(existing)
-	}
-
-	if annotations, ok := settings["annotations"].(map[string]interface{}); ok {
-		annotationMap := make(map[string]string)
-		for k, v := range annotations {
-			if str, ok := v.(string); ok {
-				rendered, err := renderTemplate(str, params)
-				if err != nil {
-					return fmt.Errorf("failed to render annotation value for key %s: %w", k, err)
-				}
-				annotationMap[k] = rendered
-			}
-		}
-		// Merge with existing annotations
-		existing := work.GetAnnotations()
-		if existing == nil {
-			existing = make(map[string]string)
-		}
-		for k, v := range annotationMap {
-			existing[k] = v
-		}
-		work.SetAnnotations(existing)
-	}
-
-	// Apply spec fields if present
-	if spec, ok := settings["spec"].(map[string]interface{}); ok {
-		re.log.Debugf(ctx, "Found spec in settings: keys=%v", getMapKeys(spec))
-
-		// Apply deleteOption if present
-		if deleteOption, ok := spec["deleteOption"].(map[string]interface{}); ok {
-			if propagationPolicy, ok := deleteOption["propagationPolicy"].(string); ok {
-				work.Spec.DeleteOption = &workv1.DeleteOption{
-					PropagationPolicy: workv1.DeletePropagationPolicyType(propagationPolicy),
-				}
-				re.log.Debugf(ctx, "Applied deleteOption.propagationPolicy: %s", propagationPolicy)
-			}
-		}
-
-		// Note: manifestConfigs and other complex spec fields would need
-		// proper type conversion. For now, we handle the most common cases.
-		// Additional spec fields can be added as needed.
-	}
-
-	return nil
-}
-
-// getMapKeys returns the keys of a map for debugging
-func getMapKeys(m map[string]interface{}) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	return keys
+	return result, nil
 }
 
 // buildManifestK8s builds an unstructured manifest from the resource configuration for Kubernetes transport
@@ -625,7 +396,7 @@ func validateManifest(obj *unstructured.Unstructured) error {
 	}
 
 	// Validate required generation annotation
-	if generation.GetGenerationFromUnstructured(obj) == 0 {
+	if manifest.GetGenerationFromUnstructured(obj) == 0 {
 		return fmt.Errorf("manifest missing required annotation %q", constants.AnnotationGeneration)
 	}
 
@@ -634,8 +405,8 @@ func validateManifest(obj *unstructured.Unstructured) error {
 
 // discoverExistingResource discovers an existing resource using the discovery config
 func (re *ResourceExecutor) discoverExistingResource(ctx context.Context, gvk schema.GroupVersionKind, discovery *config_loader.DiscoveryConfig, execCtx *ExecutionContext) (*unstructured.Unstructured, error) {
-	if re.k8sClient == nil {
-		return nil, fmt.Errorf("kubernetes client not configured")
+	if re.client == nil {
+		return nil, fmt.Errorf("transport client not configured")
 	}
 
 	// Render discovery namespace template
@@ -651,7 +422,7 @@ func (re *ResourceExecutor) discoverExistingResource(ctx context.Context, gvk sc
 		if err != nil {
 			return nil, fmt.Errorf("failed to render byName template: %w", err)
 		}
-		return re.k8sClient.GetResource(ctx, gvk, namespace, name)
+		return re.client.GetResource(ctx, gvk, namespace, name)
 	}
 
 	// Discover by label selector
@@ -670,14 +441,14 @@ func (re *ResourceExecutor) discoverExistingResource(ctx context.Context, gvk sc
 			renderedLabels[renderedK] = renderedV
 		}
 
-		labelSelector := k8s_client.BuildLabelSelector(renderedLabels)
+		labelSelector := manifest.BuildLabelSelector(renderedLabels)
 
-		discoveryConfig := &k8s_client.DiscoveryConfig{
+		discoveryConfig := &manifest.DiscoveryConfig{
 			Namespace:     namespace,
 			LabelSelector: labelSelector,
 		}
 
-		list, err := re.k8sClient.DiscoverResources(ctx, gvk, discoveryConfig)
+		list, err := re.client.DiscoverResources(ctx, gvk, discoveryConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -686,93 +457,10 @@ func (re *ResourceExecutor) discoverExistingResource(ctx context.Context, gvk sc
 			return nil, apierrors.NewNotFound(schema.GroupResource{Group: gvk.Group, Resource: gvk.Kind}, "")
 		}
 
-		return generation.GetLatestGenerationFromList(list), nil
+		return manifest.GetLatestGenerationFromList(list), nil
 	}
 
 	return nil, fmt.Errorf("discovery config must specify byName or bySelectors")
-}
-
-// createResource creates a new Kubernetes resource
-func (re *ResourceExecutor) createResource(ctx context.Context, manifest *unstructured.Unstructured) (*unstructured.Unstructured, error) {
-	if re.k8sClient == nil {
-		return nil, fmt.Errorf("kubernetes client not configured")
-	}
-
-	return re.k8sClient.CreateResource(ctx, manifest)
-}
-
-// updateResource updates an existing Kubernetes resource
-func (re *ResourceExecutor) updateResource(ctx context.Context, existing, manifest *unstructured.Unstructured) (*unstructured.Unstructured, error) {
-	if re.k8sClient == nil {
-		return nil, fmt.Errorf("kubernetes client not configured")
-	}
-
-	// Preserve resourceVersion from existing for update
-	manifest.SetResourceVersion(existing.GetResourceVersion())
-	manifest.SetUID(existing.GetUID())
-
-	return re.k8sClient.UpdateResource(ctx, manifest)
-}
-
-// recreateResource deletes and recreates a Kubernetes resource
-// It waits for the resource to be fully deleted before creating the new one
-// to avoid race conditions with Kubernetes asynchronous deletion
-func (re *ResourceExecutor) recreateResource(ctx context.Context, existing, manifest *unstructured.Unstructured) (*unstructured.Unstructured, error) {
-	if re.k8sClient == nil {
-		return nil, fmt.Errorf("kubernetes client not configured")
-	}
-
-	gvk := existing.GroupVersionKind()
-	namespace := existing.GetNamespace()
-	name := existing.GetName()
-
-	// Delete the existing resource
-	re.log.Debugf(ctx, "Deleting resource for recreation")
-	if err := re.k8sClient.DeleteResource(ctx, gvk, namespace, name); err != nil {
-		return nil, fmt.Errorf("failed to delete resource for recreation: %w", err)
-	}
-
-	// Wait for the resource to be fully deleted
-	re.log.Debugf(ctx, "Waiting for resource deletion to complete")
-	if err := re.waitForDeletion(ctx, gvk, namespace, name); err != nil {
-		return nil, fmt.Errorf("failed waiting for resource deletion: %w", err)
-	}
-
-	// Create the new resource
-	re.log.Debugf(ctx, "Creating new resource after deletion confirmed")
-	return re.k8sClient.CreateResource(ctx, manifest)
-}
-
-// waitForDeletion polls until the resource is confirmed deleted or context times out
-// Returns nil when the resource is confirmed gone (NotFound), or an error otherwise
-func (re *ResourceExecutor) waitForDeletion(ctx context.Context, gvk schema.GroupVersionKind, namespace, name string) error {
-	const pollInterval = 100 * time.Millisecond
-
-	ticker := time.NewTicker(pollInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			re.log.Warnf(ctx, "Context cancelled/timed out while waiting for deletion")
-			return fmt.Errorf("context cancelled while waiting for resource deletion: %w", ctx.Err())
-		case <-ticker.C:
-			_, err := re.k8sClient.GetResource(ctx, gvk, namespace, name)
-			if err != nil {
-				// NotFound means the resource is deleted - this is success
-				if apierrors.IsNotFound(err) {
-					re.log.Debugf(ctx, "Resource deletion confirmed")
-					return nil
-				}
-				// Any other error is unexpected
-				errCtx := logger.WithErrorField(ctx, err)
-				re.log.Errorf(errCtx, "Error checking resource deletion status")
-				return fmt.Errorf("error checking deletion status: %w", err)
-			}
-			// Resource still exists, continue polling
-			re.log.Debugf(ctx, "Resource still exists, waiting for deletion...")
-		}
-	}
 }
 
 // convertToStringKeyMap converts map[interface{}]interface{} to map[string]interface{}

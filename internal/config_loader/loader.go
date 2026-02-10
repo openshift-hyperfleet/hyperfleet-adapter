@@ -3,9 +3,8 @@ package config_loader
 import (
 	"fmt"
 	"os"
-	"path/filepath"
-	"strings"
 
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/utils"
 	"gopkg.in/yaml.v3"
 )
 
@@ -274,30 +273,5 @@ func loadYAMLFile(baseDir, refPath string) (map[string]interface{}, error) {
 // - Absolute paths are returned as-is (allows mounting files from /etc/adapter, etc.)
 // - Relative paths are resolved against the base directory and validated to not escape it
 func resolvePath(baseDir, refPath string) (string, error) {
-	// Absolute paths are allowed without restriction
-	// This supports Kubernetes deployments where files are mounted to fixed paths
-	if filepath.IsAbs(refPath) {
-		return filepath.Clean(refPath), nil
-	}
-
-	// Relative paths must be resolved against base directory
-	baseAbs, err := filepath.Abs(baseDir)
-	if err != nil {
-		return "", fmt.Errorf("failed to resolve base directory: %w", err)
-	}
-	baseClean := filepath.Clean(baseAbs)
-
-	targetPath := filepath.Clean(filepath.Join(baseClean, refPath))
-
-	// Check if target path is within base directory
-	rel, err := filepath.Rel(baseClean, targetPath)
-	if err != nil {
-		return "", fmt.Errorf("path %q escapes base directory", refPath)
-	}
-
-	if strings.HasPrefix(rel, "..") {
-		return "", fmt.Errorf("path %q escapes base directory", refPath)
-	}
-
-	return targetPath, nil
+	return utils.ResolveSecurePath(baseDir, refPath)
 }

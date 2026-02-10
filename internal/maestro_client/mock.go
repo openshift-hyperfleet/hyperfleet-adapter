@@ -2,8 +2,14 @@ package maestro_client
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transport_client"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	workv1 "open-cluster-management.io/api/work/v1"
 )
 
@@ -88,6 +94,9 @@ func NewMockMaestroClient() *MockMaestroClient {
 
 // Ensure MockMaestroClient implements ManifestWorkClient
 var _ ManifestWorkClient = (*MockMaestroClient)(nil)
+
+// Ensure MockMaestroClient implements TransportClient
+var _ transport_client.TransportClient = (*MockMaestroClient)(nil)
 
 // ApplyManifestWork creates or updates a ManifestWork (upsert operation)
 func (m *MockMaestroClient) ApplyManifestWork(ctx context.Context, consumerName string, work *workv1.ManifestWork) (*workv1.ManifestWork, error) {
@@ -242,4 +251,74 @@ func (m *MockMaestroClient) GetApplyConsumers() []string {
 	result := make([]string, len(m.ApplyManifestWorkConsumers))
 	copy(result, m.ApplyManifestWorkConsumers)
 	return result
+}
+
+// --- TransportClient implementation ---
+
+// ApplyResources implements transport_client.TransportClient.
+// It delegates to ApplyManifestWork internally so that existing test assertions
+// on GetAppliedWorks() and GetApplyConsumers() continue to work.
+func (m *MockMaestroClient) ApplyResources(ctx context.Context, resources []transport_client.ResourceToApply, opts transport_client.ApplyOptions) (*transport_client.ApplyResourcesResult, error) {
+	// Extract transport config
+	tc := opts.TransportConfig
+	if tc == nil {
+		return nil, fmt.Errorf("TransportConfig is required for Maestro mock")
+	}
+
+	targetCluster, _ := tc["targetCluster"].(string) //nolint:errcheck // type assertion with zero-value default
+	if targetCluster == "" {
+		return nil, fmt.Errorf("targetCluster is required in TransportConfig")
+	}
+
+	// Collect manifests
+	manifests := make([]*unstructured.Unstructured, 0, len(resources))
+	for _, res := range resources {
+		manifests = append(manifests, res.Manifest)
+	}
+
+	// Build ManifestWork using the shared helper (from client.go)
+	manifestWorkName, _ := tc["manifestWorkName"].(string)                 //nolint:errcheck // optional, zero-value default
+	resourceName, _ := tc["resourceName"].(string)                         //nolint:errcheck // optional, zero-value default
+	refContent, _ := tc["manifestWorkRefContent"].(map[string]interface{}) //nolint:errcheck // optional, nil default
+	params, _ := tc["params"].(map[string]interface{})                     //nolint:errcheck // optional, nil default
+
+	work, err := buildManifestWork(ctx, nil, manifests, manifestWorkName, resourceName, refContent, params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build ManifestWork: %w", err)
+	}
+
+	// Delegate to ApplyManifestWork so existing test assertions work
+	_, err = m.ApplyManifestWork(ctx, targetCluster, work)
+	if err != nil {
+		return nil, fmt.Errorf("failed to apply ManifestWork: %w", err)
+	}
+
+	// Build results
+	results := &transport_client.ApplyResourcesResult{
+		Results: make([]transport_client.ApplyResult, 0, len(resources)),
+	}
+	for _, res := range resources {
+		results.Results = append(results.Results, transport_client.ApplyResult{
+			Operation: string(manifest.OperationCreate),
+			Reason:    fmt.Sprintf("ManifestWork applied to cluster %s with %d manifests", targetCluster, len(manifests)),
+			Resource:  res.Manifest,
+		})
+	}
+
+	return results, nil
+}
+
+// GetResource implements transport_client.TransportClient.
+// Returns NotFound for consistency with the real Maestro client.
+func (m *MockMaestroClient) GetResource(ctx context.Context, gvk schema.GroupVersionKind, namespace, name string) (*unstructured.Unstructured, error) {
+	return nil, apierrors.NewNotFound(
+		schema.GroupResource{Group: gvk.Group, Resource: gvk.Kind},
+		name,
+	)
+}
+
+// DiscoverResources implements transport_client.TransportClient.
+// Returns an empty list for Maestro transport.
+func (m *MockMaestroClient) DiscoverResources(ctx context.Context, gvk schema.GroupVersionKind, discovery transport_client.Discovery) (*unstructured.UnstructuredList, error) {
+	return &unstructured.UnstructuredList{}, nil
 }

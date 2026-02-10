@@ -13,10 +13,9 @@ import (
 	"github.com/cloudevents/sdk-go/v2/event"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/executor"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/generation"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleet_api"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/k8s_client"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/maestro_client"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/constants"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -293,13 +292,11 @@ func TestExecutor_Maestro_CreateMultipleManifests(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// Create executor with mock K8s client and mock Maestro client
-	mockK8s := k8s_client.NewMockK8sClient()
+	// Create executor with mock Maestro client as transport
 	exec, err := executor.NewBuilder().
 		WithConfig(config).
 		WithAPIClient(apiClient).
-		WithK8sClient(mockK8s).
-		WithMaestroClient(mockMaestro).
+		WithTransportClient(mockMaestro).
 		WithLogger(testLog()).
 		Build()
 	require.NoError(t, err)
@@ -323,7 +320,7 @@ func TestExecutor_Maestro_CreateMultipleManifests(t *testing.T) {
 	rr := result.ResourceResults[0]
 	assert.Equal(t, "clusterResources", rr.Name)
 	assert.Equal(t, executor.StatusSuccess, rr.Status)
-	assert.Equal(t, generation.OperationCreate, rr.Operation)
+	assert.Equal(t, manifest.OperationCreate, rr.Operation)
 	t.Logf("Resource %s: operation=%s", rr.Name, rr.Operation)
 
 	// Verify ManifestWork was created with multiple manifests
@@ -358,12 +355,10 @@ func TestExecutor_Maestro_TemplateRendering(t *testing.T) {
 	apiClient, err := hyperfleet_api.NewClient(testLog())
 	require.NoError(t, err)
 
-	mockK8s := k8s_client.NewMockK8sClient()
 	exec, err := executor.NewBuilder().
 		WithConfig(config).
 		WithAPIClient(apiClient).
-		WithK8sClient(mockK8s).
-		WithMaestroClient(mockMaestro).
+		WithTransportClient(mockMaestro).
 		WithLogger(testLog()).
 		Build()
 	require.NoError(t, err)
@@ -436,12 +431,10 @@ func TestExecutor_Maestro_ManifestWorkNaming(t *testing.T) {
 		apiClient, err := hyperfleet_api.NewClient(testLog())
 		require.NoError(t, err)
 
-		mockK8s := k8s_client.NewMockK8sClient()
 		exec, err := executor.NewBuilder().
 			WithConfig(config).
 			WithAPIClient(apiClient).
-			WithK8sClient(mockK8s).
-			WithMaestroClient(mockMaestro).
+			WithTransportClient(mockMaestro).
 			WithLogger(testLog()).
 			Build()
 		require.NoError(t, err)
@@ -475,12 +468,10 @@ func TestExecutor_Maestro_ManifestWorkNaming(t *testing.T) {
 		apiClient, err := hyperfleet_api.NewClient(testLog())
 		require.NoError(t, err)
 
-		mockK8s := k8s_client.NewMockK8sClient()
 		exec, err := executor.NewBuilder().
 			WithConfig(config).
 			WithAPIClient(apiClient).
-			WithK8sClient(mockK8s).
-			WithMaestroClient(mockMaestro).
+			WithTransportClient(mockMaestro).
 			WithLogger(testLog()).
 			Build()
 		require.NoError(t, err)
@@ -518,12 +509,10 @@ func TestExecutor_Maestro_ErrorHandling(t *testing.T) {
 	apiClient, err := hyperfleet_api.NewClient(testLog())
 	require.NoError(t, err)
 
-	mockK8s := k8s_client.NewMockK8sClient()
 	exec, err := executor.NewBuilder().
 		WithConfig(config).
 		WithAPIClient(apiClient).
-		WithK8sClient(mockK8s).
-		WithMaestroClient(mockMaestro).
+		WithTransportClient(mockMaestro).
 		WithLogger(testLog()).
 		Build()
 	require.NoError(t, err)
@@ -566,12 +555,10 @@ func TestExecutor_Maestro_ManifestsStoredInContext(t *testing.T) {
 	apiClient, err := hyperfleet_api.NewClient(testLog())
 	require.NoError(t, err)
 
-	mockK8s := k8s_client.NewMockK8sClient()
 	exec, err := executor.NewBuilder().
 		WithConfig(config).
 		WithAPIClient(apiClient).
-		WithK8sClient(mockK8s).
-		WithMaestroClient(mockMaestro).
+		WithTransportClient(mockMaestro).
 		WithLogger(testLog()).
 		Build()
 	require.NoError(t, err)
