@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/google/cel-go/cel"
 
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
@@ -552,16 +553,31 @@ func IsSupportedAPIVersion(apiVersion string) bool {
 	return false
 }
 
-// ValidateAdapterVersion validates the config's adapter version matches the expected version
+// ValidateAdapterVersion validates that the config's adapter version is compatible
+// with the expected adapter version. Only major and minor versions are compared;
+// patch version differences are allowed (patch releases are bug fixes only).
+// For example, config "1.2.0" is compatible with adapter "1.2.3".
 func ValidateAdapterVersion(config *AdapterConfig, expectedVersion string) error {
 	if expectedVersion == "" {
 		return nil
 	}
 
 	configVersion := config.Spec.Adapter.Version
-	if configVersion != expectedVersion {
-		return fmt.Errorf("adapter version mismatch: config %q != adapter %q",
-			configVersion, expectedVersion)
+
+	configSemver, err := semver.NewVersion(configVersion)
+	if err != nil {
+		return fmt.Errorf("invalid config adapter version %q: %w", configVersion, err)
+	}
+
+	expectedSemver, err := semver.NewVersion(expectedVersion)
+	if err != nil {
+		return fmt.Errorf("invalid expected adapter version %q: %w", expectedVersion, err)
+	}
+
+	if configSemver.Major() != expectedSemver.Major() || configSemver.Minor() != expectedSemver.Minor() {
+		return fmt.Errorf("adapter version mismatch: config %q (major.minor=%d.%d) != adapter %q (major.minor=%d.%d)",
+			configVersion, configSemver.Major(), configSemver.Minor(),
+			expectedVersion, expectedSemver.Major(), expectedSemver.Minor())
 	}
 
 	return nil

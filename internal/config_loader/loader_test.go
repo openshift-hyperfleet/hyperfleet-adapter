@@ -695,11 +695,20 @@ func TestValidateAdapterVersion(t *testing.T) {
 		},
 	}
 
-	// Matching version
+	// Exact match
 	err := ValidateAdapterVersion(config, "1.0.0")
 	assert.NoError(t, err)
 
-	// Mismatched version
+	// Patch version differs - should pass (bug fix release)
+	err = ValidateAdapterVersion(config, "1.0.5")
+	assert.NoError(t, err)
+
+	// Minor version differs - should fail
+	err = ValidateAdapterVersion(config, "1.1.0")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "adapter version mismatch")
+
+	// Major version differs - should fail
 	err = ValidateAdapterVersion(config, "2.0.0")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "adapter version mismatch")
@@ -707,6 +716,27 @@ func TestValidateAdapterVersion(t *testing.T) {
 	// Empty expected version (skip validation)
 	err = ValidateAdapterVersion(config, "")
 	assert.NoError(t, err)
+
+	// Pre-release version with same major.minor - should pass
+	err = ValidateAdapterVersion(config, "1.0.1-rc.1")
+	assert.NoError(t, err)
+
+	// Invalid config version
+	invalidConfig := &AdapterConfig{
+		Spec: AdapterConfigSpec{
+			Adapter: AdapterInfo{
+				Version: "not-a-version",
+			},
+		},
+	}
+	err = ValidateAdapterVersion(invalidConfig, "1.0.0")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid config adapter version")
+
+	// Invalid expected version
+	err = ValidateAdapterVersion(config, "not-a-version")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid expected adapter version")
 }
 
 func TestIsSupportedAPIVersion(t *testing.T) {
