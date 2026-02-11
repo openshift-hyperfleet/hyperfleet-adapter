@@ -3,7 +3,6 @@ package executor
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/mitchellh/copystructure"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
@@ -114,7 +113,7 @@ func (re *ResourceExecutor) applyResource(ctx context.Context, resource config_l
 	} else {
 		// No Discovery config - lookup by name from manifest
 		re.log.Debugf(ctx, "Looking up existing resource by name...")
-		existingResource, err = re.client.GetResource(ctx, gvk, resourceManifest.GetNamespace(), resourceManifest.GetName())
+		existingResource, err = re.client.GetResource(ctx, gvk, resourceManifest.GetNamespace(), resourceManifest.GetName(), nil)
 	}
 
 	// Fail fast on any error except NotFound (which means resource doesn't exist yet)
@@ -180,7 +179,7 @@ func (re *ResourceExecutor) applyResource(ctx context.Context, resource config_l
 
 	successCtx := logger.WithK8sResult(ctx, "SUCCESS")
 	re.log.Infof(successCtx, "Resource[%s] processed: operation=%s reason=%s",
-		resource.Name, strings.ToUpper(string(result.Operation)), result.OperationReason)
+		resource.Name, result.Operation, result.OperationReason)
 
 	// Store resource in execution context
 	if result.Resource != nil {
@@ -269,7 +268,7 @@ func (re *ResourceExecutor) discoverExistingResource(ctx context.Context, gvk sc
 		if err != nil {
 			return nil, fmt.Errorf("failed to render byName template: %w", err)
 		}
-		return re.client.GetResource(ctx, gvk, namespace, name)
+		return re.client.GetResource(ctx, gvk, namespace, name, nil)
 	}
 
 	// Discover by label selector
@@ -295,7 +294,7 @@ func (re *ResourceExecutor) discoverExistingResource(ctx context.Context, gvk sc
 			LabelSelector: labelSelector,
 		}
 
-		list, err := re.client.DiscoverResources(ctx, gvk, discoveryConfig)
+		list, err := re.client.DiscoverResources(ctx, gvk, discoveryConfig, nil)
 		if err != nil {
 			return nil, err
 		}

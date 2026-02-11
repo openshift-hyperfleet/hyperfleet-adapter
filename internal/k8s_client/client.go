@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transport_client"
 	apperrors "github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -141,7 +142,7 @@ func (c *Client) CreateResource(ctx context.Context, obj *unstructured.Unstructu
 }
 
 // GetResource retrieves a specific Kubernetes resource by GVK, namespace, and name
-func (c *Client) GetResource(ctx context.Context, gvk schema.GroupVersionKind, namespace, name string) (*unstructured.Unstructured, error) {
+func (c *Client) GetResource(ctx context.Context, gvk schema.GroupVersionKind, namespace, name string, _ transport_client.TransportContext) (*unstructured.Unstructured, error) {
 	c.log.Infof(ctx, "Getting resource: %s/%s (namespace: %s)", gvk.Kind, name, namespace)
 
 	obj := &unstructured.Unstructured{}
@@ -357,5 +358,5 @@ func (c *Client) PatchResource(ctx context.Context, gvk schema.GroupVersionKind,
 	c.log.Infof(ctx, "Successfully patched resource: %s/%s", gvk.Kind, name)
 
 	// Get the updated resource to return
-	return c.GetResource(ctx, gvk, namespace, name)
+	return c.GetResource(ctx, gvk, namespace, name, nil)
 }

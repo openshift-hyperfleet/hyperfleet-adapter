@@ -95,7 +95,7 @@ func (c *Client) ApplyResource(
 	gvk := newManifest.GroupVersionKind()
 	name := newManifest.GetName()
 
-	c.log.Infof(ctx, "ApplyResource %s/%s: operation=%s reason=%s",
+	c.log.Debugf(ctx, "ApplyResource %s/%s: operation=%s reason=%s",
 		gvk.Kind, name, result.Operation, result.Reason)
 
 	// Execute the operation
@@ -189,7 +189,7 @@ func (c *Client) ApplyResources(
 		result.Results = append(result.Results, resourceResult)
 		result.SuccessCount++
 
-		c.log.Infof(ctx, "Applied resource %s: operation=%s", r.Name, applyResult.Operation)
+		c.log.Debugf(ctx, "Applied resource %s: operation=%s reason=%s", r.Name, applyResult.Operation, applyResult.Reason)
 	}
 
 	c.log.Infof(ctx, "Applied %d resources successfully", result.SuccessCount)
@@ -243,7 +243,7 @@ func (c *Client) waitForDeletion(
 			c.log.Warnf(ctx, "Context cancelled/timed out while waiting for deletion of %s/%s", gvk.Kind, name)
 			return fmt.Errorf("context cancelled while waiting for resource deletion: %w", ctx.Err())
 		case <-ticker.C:
-			_, err := c.GetResource(ctx, gvk, namespace, name)
+			_, err := c.GetResource(ctx, gvk, namespace, name, nil)
 			if err != nil {
 				// NotFound means the resource is deleted - this is success
 				if apierrors.IsNotFound(err) {

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transport_client"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -40,7 +41,7 @@ func NewMockK8sClient() *MockK8sClient {
 
 // GetResource implements K8sClient.GetResource
 // Returns a NotFound error when the resource doesn't exist, matching real K8s client behavior.
-func (m *MockK8sClient) GetResource(ctx context.Context, gvk schema.GroupVersionKind, namespace, name string) (*unstructured.Unstructured, error) {
+func (m *MockK8sClient) GetResource(ctx context.Context, gvk schema.GroupVersionKind, namespace, name string, _ transport_client.TransportContext) (*unstructured.Unstructured, error) {
 	// Check explicit error override first
 	if m.GetResourceError != nil {
 		return nil, m.GetResourceError
@@ -149,7 +150,7 @@ func (m *MockK8sClient) ApplyResources(ctx context.Context, resources []Resource
 }
 
 // DiscoverResources implements K8sClient.DiscoverResources
-func (m *MockK8sClient) DiscoverResources(ctx context.Context, gvk schema.GroupVersionKind, discovery manifest.Discovery) (*unstructured.UnstructuredList, error) {
+func (m *MockK8sClient) DiscoverResources(ctx context.Context, gvk schema.GroupVersionKind, discovery manifest.Discovery, _ transport_client.TransportContext) (*unstructured.UnstructuredList, error) {
 	if m.DiscoverError != nil {
 		return nil, m.DiscoverError
 	}

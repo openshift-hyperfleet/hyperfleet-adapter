@@ -14,7 +14,6 @@ import (
 
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transport_client"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/constants"
 	apperrors "github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/version"
@@ -85,14 +84,6 @@ type Config struct {
 	HTTPTimeout time.Duration
 	// ServerHealthinessTimeout is the timeout for gRPC server health checks (default: 20s)
 	ServerHealthinessTimeout time.Duration
-
-	// TransportClient configuration for implementing transport_client.TransportClient
-	// ConsumerName is the target cluster name (Maestro consumer) - required for TransportClient
-	ConsumerName string
-	// WorkName is the name of the ManifestWork to manage - required for TransportClient
-	WorkName string
-	// WorkLabels are optional labels to add to the ManifestWork
-	WorkLabels map[string]string
 }
 
 // NewMaestroClient creates a new Maestro client using the official Maestro client pattern
@@ -414,14 +405,30 @@ func (c *Client) SourceID() string {
 	return c.config.SourceID
 }
 
-// ConsumerName returns the target cluster name
-func (c *Client) ConsumerName() string {
-	return c.config.ConsumerName
+// TransportContext carries per-request routing information for the Maestro transport backend.
+// Pass this as the TransportContext (any) in ResourceToApply.Target or method parameters.
+type TransportContext struct {
+	// ConsumerName is the target cluster name (Maestro consumer).
+	// Required for all Maestro operations.
+	ConsumerName string
+
+	// ManifestWork is the ManifestWork template providing metadata (name, labels, annotations).
+	// The template's spec.workload.manifests will be replaced with the actual resources.
+	// Required for ApplyResources; ignored by GetResource/DiscoverResources.
+	ManifestWork *workv1.ManifestWork
 }
 
-// WorkName returns the ManifestWork name
-func (c *Client) WorkName() string {
-	return c.config.WorkName
+// resolveTransportContext extracts the maestro TransportContext from the generic transport context.
+// Returns nil if target is nil or wrong type.
+func (c *Client) resolveTransportContext(target transport_client.TransportContext) *TransportContext {
+	if target == nil {
+		return nil
+	}
+	tc, ok := target.(*TransportContext)
+	if !ok {
+		return nil
+	}
+	return tc
 }
 
 // =============================================================================
@@ -433,6 +440,7 @@ var _ transport_client.TransportClient = (*Client)(nil)
 
 // ApplyResources applies multiple resources by bundling them into a ManifestWork.
 // All resources are stored in a single ManifestWork for the target cluster.
+// Requires a *maestro_client.TransportContext with ConsumerName and ManifestWork template.
 func (c *Client) ApplyResources(
 	ctx context.Context,
 	resources []transport_client.ResourceToApply,
@@ -445,17 +453,32 @@ func (c *Client) ApplyResources(
 		return result, nil
 	}
 
-	// Build ManifestWork from resources
-	work, err := c.buildManifestWork(resources)
+	// Resolve maestro transport context from first resource
+	transportCtx := c.resolveTransportContext(resources[0].Target)
+	if transportCtx == nil {
+		return nil, fmt.Errorf("maestro TransportContext is required: set ResourceToApply.Target to *maestro_client.TransportContext")
+	}
+
+	consumerName := transportCtx.ConsumerName
+	if consumerName == "" {
+		return nil, fmt.Errorf("consumer name (target cluster) is required: set TransportContext.ConsumerName")
+	}
+
+	if transportCtx.ManifestWork == nil {
+		return nil, fmt.Errorf("ManifestWork template is required: set TransportContext.ManifestWork")
+	}
+
+	// Build ManifestWork from template and resources
+	work, err := c.buildManifestWork(transportCtx.ManifestWork, resources, consumerName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build ManifestWork: %w", err)
 	}
 
 	c.log.Infof(ctx, "Applying %d resources via ManifestWork %s/%s",
-		len(resources), c.config.ConsumerName, c.config.WorkName)
+		len(resources), consumerName, work.Name)
 
 	// Apply the ManifestWork (create or update)
-	appliedWork, err := c.ApplyManifestWork(ctx, c.config.ConsumerName, work)
+	appliedWork, err := c.ApplyManifestWork(ctx, consumerName, work)
 	if err != nil {
 		// Convert to result with error
 		for _, r := range resources {
@@ -485,7 +508,7 @@ func (c *Client) ApplyResources(
 			ApplyResult: &transport_client.ApplyResult{
 				Resource:  r.Manifest,
 				Operation: op,
-				Reason:    fmt.Sprintf("applied via ManifestWork %s", c.config.WorkName),
+				Reason:    fmt.Sprintf("applied via ManifestWork %s/%s", consumerName, work.Name),
 			},
 		}
 		result.Results = append(result.Results, resourceResult)
@@ -496,33 +519,42 @@ func (c *Client) ApplyResources(
 	return result, nil
 }
 
-// GetResource retrieves a resource from the ManifestWork's manifest list.
+// GetResource retrieves a resource by searching all ManifestWorks for the target consumer.
 func (c *Client) GetResource(
 	ctx context.Context,
 	gvk schema.GroupVersionKind,
 	namespace, name string,
+	target transport_client.TransportContext,
 ) (*unstructured.Unstructured, error) {
-	work, err := c.GetManifestWork(ctx, c.config.ConsumerName, c.config.WorkName)
+	transportCtx := c.resolveTransportContext(target)
+	consumerName := ""
+	if transportCtx != nil {
+		consumerName = transportCtx.ConsumerName
+	}
+	if consumerName == "" {
+		gr := schema.GroupResource{Group: gvk.Group, Resource: gvk.Kind}
+		return nil, apierrors.NewNotFound(gr, name)
+	}
+
+	// List all ManifestWorks for this consumer and search across them
+	workList, err := c.ListManifestWorks(ctx, consumerName, "")
 	if err != nil {
-		if apierrors.IsNotFound(err) {
-			gr := schema.GroupResource{Group: gvk.Group, Resource: gvk.Kind}
-			return nil, apierrors.NewNotFound(gr, name)
-		}
 		return nil, err
 	}
 
-	// Search for the resource in the manifests
-	for _, m := range work.Spec.Workload.Manifests {
-		obj, err := manifestToUnstructured(m)
-		if err != nil {
-			continue
-		}
+	for i := range workList.Items {
+		for _, m := range workList.Items[i].Spec.Workload.Manifests {
+			obj, err := manifestToUnstructured(m)
+			if err != nil {
+				continue
+			}
 
-		if obj.GetKind() == gvk.Kind &&
-			obj.GetAPIVersion() == gvk.GroupVersion().String() &&
-			obj.GetNamespace() == namespace &&
-			obj.GetName() == name {
-			return obj, nil
+			if obj.GetKind() == gvk.Kind &&
+				obj.GetAPIVersion() == gvk.GroupVersion().String() &&
+				obj.GetNamespace() == namespace &&
+				obj.GetName() == name {
+				return obj, nil
+			}
 		}
 	}
 
@@ -530,30 +562,54 @@ func (c *Client) GetResource(
 	return nil, apierrors.NewNotFound(gr, name)
 }
 
-// DiscoverResources discovers resources within the ManifestWork that match the discovery criteria.
+// DiscoverResources discovers resources by searching all ManifestWorks for the target consumer.
 func (c *Client) DiscoverResources(
 	ctx context.Context,
 	gvk schema.GroupVersionKind,
 	discovery manifest.Discovery,
+	target transport_client.TransportContext,
 ) (*unstructured.UnstructuredList, error) {
-	return c.DiscoverManifest(ctx, c.config.ConsumerName, c.config.WorkName, discovery)
-}
-
-// buildManifestWork creates a ManifestWork containing all resources as manifests.
-func (c *Client) buildManifestWork(resources []transport_client.ResourceToApply) (*workv1.ManifestWork, error) {
-	manifests := make([]workv1.Manifest, 0, len(resources))
-
-	// Find the highest generation among all resources
-	var maxGeneration int64
-	for _, r := range resources {
-		gen := manifest.GetGenerationFromUnstructured(r.Manifest)
-		if gen > maxGeneration {
-			maxGeneration = gen
-		}
+	transportCtx := c.resolveTransportContext(target)
+	consumerName := ""
+	if transportCtx != nil {
+		consumerName = transportCtx.ConsumerName
+	}
+	if consumerName == "" {
+		return &unstructured.UnstructuredList{}, nil
 	}
 
+	// List all ManifestWorks for this consumer and search across them
+	workList, err := c.ListManifestWorks(ctx, consumerName, "")
+	if err != nil {
+		return nil, err
+	}
+
+	allItems := &unstructured.UnstructuredList{}
+	for i := range workList.Items {
+		list, err := c.DiscoverManifestInWork(&workList.Items[i], discovery)
+		if err != nil {
+			continue
+		}
+		allItems.Items = append(allItems.Items, list.Items...)
+	}
+
+	return allItems, nil
+}
+
+// buildManifestWork creates a ManifestWork from the template, populating spec.workload.manifests
+// with the actual resources. The template provides metadata (name, labels, annotations).
+// The namespace is set to the consumer name (target cluster).
+func (c *Client) buildManifestWork(template *workv1.ManifestWork, resources []transport_client.ResourceToApply, consumerName string) (*workv1.ManifestWork, error) {
+	// DeepCopy the template so we don't mutate the original
+	work := template.DeepCopy()
+	work.Namespace = consumerName
+
 	// Convert each resource to a Manifest
+	manifests := make([]workv1.Manifest, 0, len(resources))
 	for _, r := range resources {
+		if r.Manifest == nil {
+			continue // Skip resources with no manifest. It means manifests already defined in the manifestWork template
+		}
 		raw, err := json.Marshal(r.Manifest.Object)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal manifest %s: %w", r.Name, err)
@@ -563,21 +619,10 @@ func (c *Client) buildManifestWork(resources []transport_client.ResourceToApply)
 		})
 	}
 
-	// Build the ManifestWork
-	work := &workv1.ManifestWork{}
-	work.Name = c.config.WorkName
-	work.Namespace = c.config.ConsumerName
-
-	if c.config.WorkLabels != nil {
-		work.Labels = c.config.WorkLabels
+	// Replace the template's manifests with actual resources (only if there are any)
+	if len(manifests) > 0 {
+		work.Spec.Workload.Manifests = manifests
 	}
-
-	if work.Annotations == nil {
-		work.Annotations = make(map[string]string)
-	}
-	work.Annotations[constants.AnnotationGeneration] = fmt.Sprintf("%d", maxGeneration)
-
-	work.Spec.Workload.Manifests = manifests
 
 	return work, nil
 }

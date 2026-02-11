@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transport_client"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -29,7 +30,7 @@ var BuildLabelSelector = manifest.BuildLabelSelector
 //	    LabelSelector: "app=myapp",
 //	}
 //	list, err := client.DiscoverResources(ctx, gvk, discovery)
-func (c *Client) DiscoverResources(ctx context.Context, gvk schema.GroupVersionKind, discovery manifest.Discovery) (*unstructured.UnstructuredList, error) {
+func (c *Client) DiscoverResources(ctx context.Context, gvk schema.GroupVersionKind, discovery manifest.Discovery, _ transport_client.TransportContext) (*unstructured.UnstructuredList, error) {
 	list := &unstructured.UnstructuredList{}
 	list.SetGroupVersionKind(gvk)
 	if discovery == nil {
@@ -41,7 +42,7 @@ func (c *Client) DiscoverResources(ctx context.Context, gvk schema.GroupVersionK
 		c.log.Infof(ctx, "Discovering single resource: %s/%s (namespace: %s)",
 			gvk.Kind, discovery.GetName(), discovery.GetNamespace())
 
-		obj, err := c.GetResource(ctx, gvk, discovery.GetNamespace(), discovery.GetName())
+		obj, err := c.GetResource(ctx, gvk, discovery.GetNamespace(), discovery.GetName(), nil)
 		if err != nil {
 			return list, err
 		}

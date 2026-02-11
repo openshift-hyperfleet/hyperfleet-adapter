@@ -128,7 +128,7 @@ func TestIntegration_GetResource(t *testing.T) {
 		require.NoError(t, err)
 
 		// Get the namespace
-		retrieved, err := env.GetClient().GetResource(env.GetContext(), gvk.Namespace, "", nsName)
+		retrieved, err := env.GetClient().GetResource(env.GetContext(), gvk.Namespace, "", nsName, nil)
 		require.NoError(t, err)
 		require.NotNil(t, retrieved)
 
@@ -137,7 +137,7 @@ func TestIntegration_GetResource(t *testing.T) {
 	})
 
 	t.Run("get non-existent resource returns error", func(t *testing.T) {
-		_, err := env.GetClient().GetResource(env.GetContext(), gvk.Namespace, "", "non-existent-namespace-12345")
+		_, err := env.GetClient().GetResource(env.GetContext(), gvk.Namespace, "", "non-existent-namespace-12345", nil)
 		require.Error(t, err)
 	})
 }
@@ -253,7 +253,7 @@ func TestIntegration_DeleteResource(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify it exists
-		_, err = env.GetClient().GetResource(env.GetContext(), gvk.Namespace, "", nsName)
+		_, err = env.GetClient().GetResource(env.GetContext(), gvk.Namespace, "", nsName, nil)
 		require.NoError(t, err)
 
 		// Delete the namespace
@@ -262,7 +262,7 @@ func TestIntegration_DeleteResource(t *testing.T) {
 
 		// Verify it's being deleted (namespaces go into Terminating phase)
 		time.Sleep(100 * time.Millisecond)
-		deletedNs, err := env.GetClient().GetResource(env.GetContext(), gvk.Namespace, "", nsName)
+		deletedNs, err := env.GetClient().GetResource(env.GetContext(), gvk.Namespace, "", nsName, nil)
 		if err == nil {
 			// Namespace still exists, should have deletionTimestamp set (Terminating state)
 			deletionTimestamp := deletedNs.GetDeletionTimestamp()
@@ -305,7 +305,7 @@ func TestIntegration_ResourceLifecycle(t *testing.T) {
 		assert.Equal(t, cmName, created.GetName())
 
 		// 2. Get and verify
-		retrieved, err := env.GetClient().GetResource(env.GetContext(), gvk.ConfigMap, "default", cmName)
+		retrieved, err := env.GetClient().GetResource(env.GetContext(), gvk.ConfigMap, "default", cmName, nil)
 		require.NoError(t, err)
 		data, _, _ := unstructured.NestedString(retrieved.Object, "data", "stage")
 		assert.Equal(t, "created", data)
@@ -319,7 +319,7 @@ func TestIntegration_ResourceLifecycle(t *testing.T) {
 		assert.Equal(t, "updated", data)
 
 		// 4. Get and verify update
-		retrieved2, err := env.GetClient().GetResource(env.GetContext(), gvk.ConfigMap, "default", cmName)
+		retrieved2, err := env.GetClient().GetResource(env.GetContext(), gvk.ConfigMap, "default", cmName, nil)
 		require.NoError(t, err)
 		data, _, _ = unstructured.NestedString(retrieved2.Object, "data", "stage")
 		assert.Equal(t, "updated", data)
@@ -329,7 +329,7 @@ func TestIntegration_ResourceLifecycle(t *testing.T) {
 		require.NoError(t, err)
 
 		// 6. Verify deletion
-		_, err = env.GetClient().GetResource(env.GetContext(), gvk.ConfigMap, "default", cmName)
+		_, err = env.GetClient().GetResource(env.GetContext(), gvk.ConfigMap, "default", cmName, nil)
 		assert.Error(t, err)
 	})
 }
@@ -515,7 +515,7 @@ func TestIntegration_ErrorScenarios(t *testing.T) {
 	})
 
 	t.Run("get with empty name returns error", func(t *testing.T) {
-		_, err := env.GetClient().GetResource(env.GetContext(), gvk.ConfigMap, "default", "")
+		_, err := env.GetClient().GetResource(env.GetContext(), gvk.ConfigMap, "default", "", nil)
 		require.Error(t, err)
 	})
 
@@ -578,7 +578,7 @@ func TestIntegration_ErrorScenarios(t *testing.T) {
 		// but behavior may vary - verify at least that it doesn't silently corrupt data
 		if err == nil {
 			// If it succeeded, verify the update was applied
-			retrieved, getErr := env.GetClient().GetResource(env.GetContext(), gvk.ConfigMap, "default", cmName)
+			retrieved, getErr := env.GetClient().GetResource(env.GetContext(), gvk.ConfigMap, "default", cmName, nil)
 			require.NoError(t, getErr)
 			data, _, _ := unstructured.NestedString(retrieved.Object, "data", "key")
 			assert.Equal(t, "updated", data)
@@ -628,7 +628,7 @@ func TestIntegration_DifferentResourceTypes(t *testing.T) {
 		assert.Equal(t, svcName, created.GetName())
 
 		// Get the service
-		retrieved, err := env.GetClient().GetResource(env.GetContext(), gvk.Service, "default", svcName)
+		retrieved, err := env.GetClient().GetResource(env.GetContext(), gvk.Service, "default", svcName, nil)
 		require.NoError(t, err)
 		assert.Equal(t, svcName, retrieved.GetName())
 	})

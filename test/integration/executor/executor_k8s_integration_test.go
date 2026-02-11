@@ -385,7 +385,7 @@ func TestExecutor_K8s_CreateResources(t *testing.T) {
 	// Verify ConfigMap exists in K8s
 	cmGVK := schema.GroupVersionKind{Group: "", Version: "v1", Kind: "ConfigMap"}
 	cmName := fmt.Sprintf("cluster-config-%s", clusterId)
-	cm, err := k8sEnv.Client.GetResource(ctx, cmGVK, testNamespace, cmName)
+	cm, err := k8sEnv.Client.GetResource(ctx, cmGVK, testNamespace, cmName, nil)
 	require.NoError(t, err, "ConfigMap should exist in K8s")
 	assert.Equal(t, cmName, cm.GetName())
 
@@ -408,7 +408,7 @@ func TestExecutor_K8s_CreateResources(t *testing.T) {
 	// Verify Secret exists in K8s
 	secretGVK := schema.GroupVersionKind{Group: "", Version: "v1", Kind: "Secret"}
 	secretName := fmt.Sprintf("cluster-secret-%s", clusterId)
-	secret, err := k8sEnv.Client.GetResource(ctx, secretGVK, testNamespace, secretName)
+	secret, err := k8sEnv.Client.GetResource(ctx, secretGVK, testNamespace, secretName, nil)
 	require.NoError(t, err, "Secret should exist in K8s")
 	assert.Equal(t, secretName, secret.GetName())
 	t.Logf("Secret verified: %s", secretName)
@@ -509,7 +509,7 @@ func TestExecutor_K8s_UpdateExistingResource(t *testing.T) {
 	// Verify ConfigMap was updated with new data
 	cmGVK := schema.GroupVersionKind{Group: "", Version: "v1", Kind: "ConfigMap"}
 	cmName := fmt.Sprintf("cluster-config-%s", clusterId)
-	updatedCM, err := k8sEnv.Client.GetResource(ctx, cmGVK, testNamespace, cmName)
+	updatedCM, err := k8sEnv.Client.GetResource(ctx, cmGVK, testNamespace, cmName, nil)
 	require.NoError(t, err)
 
 	cmData, _, _ := unstructured.NestedStringMap(updatedCM.Object, "data")
@@ -683,7 +683,7 @@ func TestExecutor_K8s_RecreateOnChange(t *testing.T) {
 	// Get the original UID
 	cmGVK := schema.GroupVersionKind{Group: "", Version: "v1", Kind: "ConfigMap"}
 	cmName := fmt.Sprintf("cluster-config-%s", clusterId)
-	originalCM, err := k8sEnv.Client.GetResource(ctx, cmGVK, testNamespace, cmName)
+	originalCM, err := k8sEnv.Client.GetResource(ctx, cmGVK, testNamespace, cmName, nil)
 	require.NoError(t, err)
 	originalUID := originalCM.GetUID()
 	t.Logf("Original ConfigMap UID: %s", originalUID)
@@ -696,7 +696,7 @@ func TestExecutor_K8s_RecreateOnChange(t *testing.T) {
 	t.Logf("Second execution: %s", result2.ResourceResults[0].Operation)
 
 	// Verify it's a new resource (different UID)
-	recreatedCM, err := k8sEnv.Client.GetResource(ctx, cmGVK, testNamespace, cmName)
+	recreatedCM, err := k8sEnv.Client.GetResource(ctx, cmGVK, testNamespace, cmName, nil)
 	require.NoError(t, err)
 	newUID := recreatedCM.GetUID()
 	assert.NotEqual(t, originalUID, newUID, "Resource should have new UID after recreate")

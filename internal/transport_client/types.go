@@ -26,6 +26,14 @@ type ApplyResult struct {
 	Reason string
 }
 
+// TransportContext carries per-request routing information for the transport backend.
+// Each transport client defines its own concrete context type and type-asserts:
+//   - k8s_client: ignores it (nil)
+//   - maestro_client: expects *maestro_client.TransportContext with ConsumerName, etc.
+//
+// This is typed as `any` to allow each backend to define its own context shape.
+type TransportContext = any
+
 // ResourceToApply represents a single resource to be applied in a batch operation.
 type ResourceToApply struct {
 	// Name is a logical name for the resource (used in results for identification)
@@ -39,6 +47,10 @@ type ResourceToApply struct {
 
 	// Options for this apply operation (optional, defaults to no special options)
 	Options *ApplyOptions
+
+	// Target provides per-request routing context for the transport backend.
+	// Each backend defines its own concrete type. Pass nil if not needed (e.g., k8s_client).
+	Target TransportContext
 }
 
 // ResourceApplyResult contains the result for a single resource in a batch operation.
