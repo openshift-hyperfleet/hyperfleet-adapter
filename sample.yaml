@@ -1,0 +1,48 @@
+# Mock API responses for adapter dry-run testing
+# Keys are URL patterns (exact match or regex)
+
+# Exact URL match for cluster status endpoint
+"https://api.example.com/api/hyperfleet/v1/clusters/cluster-123":
+  statusCode: 200
+  body:
+    id: "cluster-123"
+    kind: "Cluster"
+    generation: 1
+    status:
+      phase: "NotReady"
+      conditions:
+        - type: "Available"
+          status: "True"
+          reason: "ClusterReady"
+    cloudProvider: "aws"
+    region: "us-east-1"
+    vpcId: "vpc-12345"
+  headers:
+    Content-Type: "application/json"
+
+# Regex pattern to match any cluster ID
+"https://api.example.com/api/hyperfleet/v1/clusters/[^/]+$":
+  statusCode: 200
+  body:
+    phase: "Ready"
+    cloudProvider: "aws"
+    vpcId: "vpc-default"
+
+# Match cluster status updates (POST)
+"https://api.example.com/api/hyperfleet/v1/clusters/.*/status":
+  statusCode: 200
+  body:
+    message: "Status updated successfully"
+
+# Simulate a 404 for specific resource
+"https://api.example.com/api/hyperfleet/v1/nodepools/missing":
+  statusCode: 404
+  body:
+    error: "NodePool not found"
+    code: "NOT_FOUND"
+
+# Simulate a server error
+"https://api.example.com/api/hyperfleet/v1/clusters/broken":
+  statusCode: 500
+  body:
+    error: "Internal server error"
