@@ -1,7 +1,9 @@
 package criteria
 
 import (
+	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/google/cel-go/cel"
@@ -64,6 +66,7 @@ func buildCELOptions(ctx *EvaluationContext) []cel.EnvOption {
 
 	// Enable optional types for optional chaining syntax (e.g., a.?b.?c)
 	options = append(options, cel.OptionalTypes())
+	options = append(options, customCELFunctions()...)
 
 	// Get a snapshot of the data for thread safety
 	data := ctx.Data()
@@ -73,6 +76,103 @@ func buildCELOptions(ctx *EvaluationContext) []cel.EnvOption {
 	}
 
 	return options
+}
+
+// customCELFunctions registers helper functions used by config expressions.
+// These helpers are primarily for payload construction where deeply nested
+// resources/discoveries can be difficult to inspect safely.
+func customCELFunctions() []cel.EnvOption {
+	return []cel.EnvOption{
+		cel.Function("toJson",
+			cel.Overload(
+				"toJson_dyn",
+				[]*cel.Type{cel.DynType},
+				cel.StringType,
+				cel.UnaryBinding(func(arg ref.Val) ref.Val {
+					value, ok := unwrapCELValue(arg)
+					if !ok {
+						return types.NewErr("toJson() received invalid value")
+					}
+					b, err := json.Marshal(value)
+					if err != nil {
+						return types.NewErr("toJson() failed to marshal value: %v", err)
+					}
+					return types.String(string(b))
+				}),
+			),
+		),
+		cel.Function("dig",
+			cel.Overload(
+				"dig_dyn_string",
+				[]*cel.Type{cel.DynType, cel.StringType},
+				cel.DynType,
+				cel.BinaryBinding(func(target ref.Val, path ref.Val) ref.Val {
+					targetValue, ok := unwrapCELValue(target)
+					if !ok {
+						return types.NewErr("dig() received invalid target")
+					}
+
+					pathValue, ok := path.Value().(string)
+					if !ok {
+						return types.NewErr("dig() path must be a string")
+					}
+
+					found, exists := digValue(targetValue, pathValue)
+					if !exists {
+						return types.NullValue
+					}
+					return types.DefaultTypeAdapter.NativeToValue(found)
+				}),
+			),
+		),
+	}
+}
+
+func unwrapCELValue(value ref.Val) (interface{}, bool) {
+	if value == nil {
+		return nil, true
+	}
+	if _, isErr := value.(*types.Err); isErr {
+		return nil, false
+	}
+	return value.Value(), true
+}
+
+// digValue safely traverses map/list structures using dot-separated paths.
+// Returns (nil, false) when a path segment does not exist.
+func digValue(root interface{}, path string) (interface{}, bool) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return root, true
+	}
+
+	current := root
+	parts := strings.Split(path, ".")
+	for _, rawPart := range parts {
+		part := strings.TrimSpace(rawPart)
+		if part == "" {
+			continue
+		}
+
+		switch v := current.(type) {
+		case map[string]interface{}:
+			next, ok := v[part]
+			if !ok {
+				return nil, false
+			}
+			current = next
+		case []interface{}:
+			idx, err := strconv.Atoi(part)
+			if err != nil || idx < 0 || idx >= len(v) {
+				return nil, false
+			}
+			current = v[idx]
+		default:
+			return nil, false
+		}
+	}
+
+	return current, true
 }
 
 // inferCELType infers the CEL type from a Go value

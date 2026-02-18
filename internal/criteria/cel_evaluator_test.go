@@ -290,6 +290,53 @@ func TestEvaluatorCELIntegration(t *testing.T) {
 	assert.True(t, result.Matched)
 }
 
+func TestCELEvaluatorCustomFunctions(t *testing.T) {
+	ctx := NewEvaluationContext()
+	ctx.Set("resources", map[string]interface{}{
+		"managedCluster": map[string]interface{}{
+			"status": map[string]interface{}{
+				"phase": "Ready",
+			},
+		},
+		"manifestWork": map[string]interface{}{
+			"clusterClaim": map[string]interface{}{
+				"status": map[string]interface{}{
+					"value": "prod",
+				},
+			},
+		},
+	})
+
+	evaluator, err := newCELEvaluator(ctx)
+	require.NoError(t, err)
+
+	t.Run("toJson serializes structures", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`toJson(resources)`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+
+		jsonText, ok := result.Value.(string)
+		require.True(t, ok)
+		assert.Contains(t, jsonText, `"managedCluster"`)
+		assert.Contains(t, jsonText, `"manifestWork"`)
+	})
+
+	t.Run("dig safely reads nested fields", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`dig(resources, "managedCluster.status.phase")`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		assert.Equal(t, "Ready", result.Value)
+	})
+
+	t.Run("dig returns null for missing path", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`dig(resources, "managedCluster.status.missing") == null`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		assert.Equal(t, true, result.Value)
+		assert.True(t, result.Matched)
+	})
+}
+
 // TestEvaluateSafeErrorHandling tests how EvaluateSafe handles various error scenarios
 // and how callers can use the result to make decisions at a higher level
 func TestEvaluateSafeErrorHandling(t *testing.T) {

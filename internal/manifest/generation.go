@@ -431,6 +431,56 @@ func DiscoverNestedManifest(parent *unstructured.Unstructured, discovery Discove
 	return list, nil
 }
 
+// EnrichWithResourceStatus finds the matching status.resourceStatus.manifests[] entry
+// in the parent resource and merges its statusFeedback and conditions onto the nested object.
+// Correlation uses resourceMeta.name + resourceMeta.namespace matching against the nested
+// object's metadata.name and metadata.namespace.
+// No-op if parent or nested is nil, or if no matching entry is found.
+func EnrichWithResourceStatus(parent, nested *unstructured.Unstructured) {
+	if parent == nil || nested == nil {
+		return
+	}
+
+	statusManifests, found, err := unstructured.NestedSlice(parent.Object, "status", "resourceStatus", "manifests")
+	if err != nil || !found {
+		return
+	}
+
+	nestedName := nested.GetName()
+	nestedNamespace := nested.GetNamespace()
+
+	for _, entry := range statusManifests {
+		entryMap, ok := entry.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		resourceMeta, ok := entryMap["resourceMeta"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		metaName, ok := resourceMeta["name"].(string)
+		if !ok {
+			continue
+		}
+		metaNamespace, ok := resourceMeta["namespace"].(string)
+		if !ok {
+			continue
+		}
+
+		if metaName == nestedName && metaNamespace == nestedNamespace {
+			if sf, exists := entryMap["statusFeedback"]; exists {
+				nested.Object["statusFeedback"] = sf
+			}
+			if conds, exists := entryMap["conditions"]; exists {
+				nested.Object["conditions"] = conds
+			}
+			return
+		}
+	}
+}
+
 // MatchesDiscoveryCriteria checks if a resource matches the discovery criteria (namespace, name, or labels).
 func MatchesDiscoveryCriteria(obj *unstructured.Unstructured, discovery Discovery) bool {
 	// Check namespace if specified

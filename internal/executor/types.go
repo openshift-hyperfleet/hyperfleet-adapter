@@ -175,8 +175,8 @@ type ExecutionContext struct {
 	// - Populated during precondition phase with captured API response fields
 	Params map[string]interface{}
 	// Resources holds discovered resources keyed by resource name.
-	// Values are either *unstructured.Unstructured (single resource) or
-	// map[string]*unstructured.Unstructured (nested discoveries within a parent resource).
+	// Nested discoveries are also added as top-level entries keyed by nested discovery name.
+	// Values are expected to be *unstructured.Unstructured.
 	Resources map[string]interface{}
 	// Adapter holds adapter execution metadata
 	Adapter AdapterMetadata

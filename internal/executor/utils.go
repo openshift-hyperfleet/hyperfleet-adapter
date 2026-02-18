@@ -140,6 +140,7 @@ func ExecuteAPICall(ctx context.Context, apiCall *config_loader.APICall, execCtx
 				return nil, url, fmt.Errorf("failed to render body template: %w", err)
 			}
 		}
+		log.Debugf(ctx, "API call payload: %s %s payload=%s", apiCall.Method, url, string(body))
 		resp, err = apiClient.Post(ctx, url, body, opts...)
 		// Log body on failure for debugging
 		if err != nil || (resp != nil && !resp.IsSuccess()) {
@@ -160,6 +161,7 @@ func ExecuteAPICall(ctx context.Context, apiCall *config_loader.APICall, execCtx
 				return nil, "", fmt.Errorf("failed to render body template: %w", err)
 			}
 		}
+		log.Debugf(ctx, "API call payload: %s %s payload=%s", apiCall.Method, url, string(body))
 		resp, err = apiClient.Put(ctx, url, body, opts...)
 	case http.MethodPatch:
 		body := []byte(apiCall.Body)
@@ -169,6 +171,7 @@ func ExecuteAPICall(ctx context.Context, apiCall *config_loader.APICall, execCtx
 				return nil, "", fmt.Errorf("failed to render body template: %w", err)
 			}
 		}
+		log.Debugf(ctx, "API call payload: %s %s payload=%s", apiCall.Method, url, string(body))
 		resp, err = apiClient.Patch(ctx, url, body, opts...)
 	case http.MethodDelete:
 		resp, err = apiClient.Delete(ctx, url, opts...)

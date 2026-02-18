@@ -173,6 +173,13 @@ func (c *DryrunTransportClient) DiscoverResources(ctx context.Context, gvk schem
 			continue
 		}
 
+		// Filter by label selector if provided
+		if !discovery.IsSingleResource() && discovery.GetLabelSelector() != "" {
+			if !manifest.MatchesLabels(obj, discovery.GetLabelSelector()) {
+				continue
+			}
+		}
+
 		list.Items = append(list.Items, *obj.DeepCopy())
 	}
 

@@ -1,0 +1,119 @@
+apiVersion: work.open-cluster-management.io/v1
+kind: ManifestWork
+metadata:
+  name: "feedback-test"
+  labels:
+    hyperfleet.io/cluster-id: "cluster1"
+    hyperfleet.io/adapter: "maestro-cli"
+
+spec:
+  # ============================================================================
+  # Workload - Kubernetes manifests to deploy
+  # ============================================================================
+  workload:
+    manifests:
+    # 1) Namespace (cluster-scoped - no namespace field)
+    - apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "feedback-test-ns"
+        labels:
+          hyperfleet.io/managed: "true"
+
+    # 2) ConfigMap (namespaced)
+    - apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: "test-config"
+        namespace: "feedback-test-ns"
+      data:
+        key1: "value1"
+        key2: "value2"
+
+    # 3) Job - has rich status fields ideal for feedback
+    - apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: "test-job"
+        namespace: "feedback-test-ns"
+      spec:
+        backoffLimit: 0
+        template:
+          spec:
+            restartPolicy: Never
+            containers:
+            - name: worker
+              image: busybox:1.36
+              command: ["sh", "-c"]
+              args: ["echo 'Hello from feedback test'; sleep 5; echo 'Done'"]
+              resources:
+                limits:
+                  cpu: "50m"
+                  memory: "32Mi"
+                requests:
+                  cpu: "10m"
+                  memory: "16Mi"
+
+  # ============================================================================
+  # Delete Options
+  # ============================================================================
+  deleteOption:
+    propagationPolicy: "Foreground"
+
+  # ============================================================================
+  # Manifest Configurations - feedback rules per resource
+  # ============================================================================
+  manifestConfigs:
+    # --- Namespace feedback ---
+    - resourceIdentifier:
+        group: ""
+        resource: "namespaces"
+        name: "feedback-test-ns"
+      updateStrategy:
+        type: "ServerSideApply"
+      feedbackRules:
+        - type: "JSONPaths"
+          jsonPaths:
+            # .status.phase returns "Active" when namespace is ready
+            - name: "phase"
+              path: ".status.phase"
+
+    # --- ConfigMap feedback ---
+    # ConfigMaps don't have .status, so use WellKnownStatus or skip feedback.
+    # Here we use resourceIdentifier so Maestro tracks it, but no feedbackRules
+    # since ConfigMaps have no status fields.
+    - resourceIdentifier:
+        group: ""
+        resource: "configmaps"
+        namespace: "feedback-test-ns"
+        name: "test-config"
+      updateStrategy:
+        type: "ServerSideApply"
+
+    # --- Job feedback ---
+    - resourceIdentifier:
+        group: "batch"
+        resource: "jobs"
+        namespace: "feedback-test-ns"
+        name: "test-job"
+      updateStrategy:
+        type: "ServerSideApply"
+      feedbackRules:
+        - type: "JSONPaths"
+          jsonPaths:
+            # Full status object
+            - name: "status"
+              path: ".status"
+            # Job conditions (Complete, Failed)
+            - name: "conditions"
+              path: ".status.conditions"
+            # Count of succeeded pods
+            - name: "succeeded"
+              path: ".status.succeeded"
+            # Count of failed pods
+            - name: "failed"
+              path: ".status.failed"
+            # Count of active pods
+            - name: "active"
+              path: ".status.active"
+

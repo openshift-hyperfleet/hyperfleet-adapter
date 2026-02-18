@@ -1,0 +1,76 @@
+{
+  "abc123": {
+    "apiVersion": "v1",
+    "kind": "Namespace",
+    "metadata": {
+      "name": "abc123",
+      "uid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "resourceVersion": "200",
+      "creationTimestamp": "2026-02-18T10:22:10Z",
+      "labels": {
+        "hyperfleet.io/cluster-id": "abc123",
+        "hyperfleet.io/managed-by": "dry-run-adapter",
+        "hyperfleet.io/resource-type": "namespace",
+        "kubernetes.io/metadata.name": "abc123",
+        "environment": "production"
+      },
+      "annotations": {
+        "hyperfleet.io/created-by": "hyperfleet-adapter",
+        "hyperfleet.io/generation": "5",
+        "hyperfleet.io/last-reconciled": "2026-02-18T10:22:10Z"
+      }
+    },
+    "spec": {
+      "finalizers": ["kubernetes"]
+    },
+    "status": {
+      "phase": "Active"
+    }
+  },
+  "abc123-config": {
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+      "name": "abc123-config",
+      "namespace": "abc123",
+      "uid": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+      "resourceVersion": "201",
+      "creationTimestamp": "2026-02-18T10:22:11Z",
+      "labels": {
+        "hyperfleet.io/cluster-id": "abc123",
+        "hyperfleet.io/resource-type": "config"
+      },
+      "annotations": {
+        "hyperfleet.io/generation": "5"
+      }
+    },
+    "data": {
+      "cluster_id": "abc123",
+      "cluster_name": "abc123",
+      "cluster_metadata": "{\"region\":\"us-east-1\",\"provider\":\"aws\",\"tier\":\"production\",\"node_count\":3}"
+    }
+  },
+  "abc123-extra": {
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+      "name": "abc123-extra",
+      "namespace": "abc123",
+      "uid": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+      "resourceVersion": "202",
+      "creationTimestamp": "2026-02-18T10:22:12Z",
+      "labels": {
+        "hyperfleet.io/cluster-id": "abc123",
+        "hyperfleet.io/resource-type": "extra"
+      },
+      "annotations": {
+        "hyperfleet.io/generation": "5"
+      }
+    },
+    "data": {
+      "feature_flags": "ha-enabled,auto-scaling,monitoring",
+      "max_replicas": "10",
+      "endpoint": "https://abc123.us-east-1.hyperfleet.io"
+    }
+  }
+}

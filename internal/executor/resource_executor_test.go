@@ -2,10 +2,17 @@ package executor
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/k8s_client"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transport_client"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 func TestDeepCopyMap_BasicTypes(t *testing.T) {
@@ -235,4 +242,181 @@ func TestDeepCopyMap_RealWorldContext(t *testing.T) {
 	// Original template should remain unchanged for next iteration
 	originalMetadata := manifest["metadata"].(map[string]interface{})
 	assert.Equal(t, "{{ .namespace }}", originalMetadata["name"])
+}
+
+// TestResourceExecutor_ExecuteAll_DiscoveryFailure verifies that when discovery fails after a successful apply,
+// the error is logged and notified: ExecuteAll returns an error, result is failed, and execCtx.Adapter.ExecutionError is set.
+func TestResourceExecutor_ExecuteAll_DiscoveryFailure(t *testing.T) {
+	discoveryErr := errors.New("discovery failed: resource not found")
+	mock := k8s_client.NewMockK8sClient()
+	mock.GetResourceError = discoveryErr
+	// Apply succeeds so we reach discovery
+	mock.ApplyResourceResult = &transport_client.ApplyResult{
+		Operation: manifest.OperationCreate,
+		Reason:    "mock",
+	}
+
+	config := &ExecutorConfig{
+		TransportClient: mock,
+		Logger:          logger.NewTestLogger(),
+	}
+	re := newResourceExecutor(config)
+
+	resource := config_loader.Resource{
+		Name:      "test-resource",
+		Transport: &config_loader.TransportConfig{Client: "kubernetes"},
+		Manifest: map[string]interface{}{
+			"apiVersion": "v1",
+			"kind":       "ConfigMap",
+			"metadata": map[string]interface{}{
+				"name":      "test-cm",
+				"namespace": "default",
+			},
+		},
+		Discovery: &config_loader.DiscoveryConfig{
+			Namespace: "default",
+			ByName:    "test-cm",
+		},
+	}
+	resources := []config_loader.Resource{resource}
+	execCtx := NewExecutionContext(context.Background(), map[string]interface{}{}, nil)
+
+	results, err := re.ExecuteAll(context.Background(), resources, execCtx)
+
+	require.Error(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, StatusFailed, results[0].Status, "result status should be failed")
+	require.NotNil(t, results[0].Error)
+	assert.Contains(t, results[0].Error.Error(), "discovery failed", "result error should describe discovery failure")
+	require.NotNil(t, execCtx.Adapter.ExecutionError, "ExecutionError should be set for notification")
+	assert.Equal(t, string(PhaseResources), execCtx.Adapter.ExecutionError.Phase)
+	assert.Equal(t, resource.Name, execCtx.Adapter.ExecutionError.Step)
+	assert.Contains(t, execCtx.Adapter.ExecutionError.Message, "discovery failed")
+}
+
+func TestResourceExecutor_ExecuteAll_StoresNestedDiscoveriesByName(t *testing.T) {
+	mock := k8s_client.NewMockK8sClient()
+	mock.ApplyResourceResult = &transport_client.ApplyResult{
+		Operation: manifest.OperationCreate,
+		Reason:    "mock",
+	}
+	mock.GetResourceResult = &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "work.open-cluster-management.io/v1",
+			"kind":       "ManifestWork",
+			"metadata": map[string]interface{}{
+				"name":      "cluster-1-adapter2",
+				"namespace": "default",
+			},
+			"spec": map[string]interface{}{
+				"workload": map[string]interface{}{
+					"manifests": []interface{}{
+						map[string]interface{}{
+							"apiVersion": "v1",
+							"kind":       "ConfigMap",
+							"metadata": map[string]interface{}{
+								"name":      "cluster-1-adapter2-configmap",
+								"namespace": "default",
+							},
+							"data": map[string]interface{}{
+								"cluster_id": "cluster-1",
+							},
+						},
+					},
+				},
+			},
+			"status": map[string]interface{}{
+				"resourceStatus": map[string]interface{}{
+					"manifests": []interface{}{
+						map[string]interface{}{
+							"resourceMeta": map[string]interface{}{
+								"name":      "cluster-1-adapter2-configmap",
+								"namespace": "default",
+								"resource":  "configmaps",
+								"group":     "",
+							},
+							"statusFeedback": map[string]interface{}{
+								"values": []interface{}{
+									map[string]interface{}{
+										"name": "data",
+										"fieldValue": map[string]interface{}{
+											"type":    "JsonRaw",
+											"jsonRaw": "{\"cluster_id\":\"cluster-1\"}",
+										},
+									},
+								},
+							},
+							"conditions": []interface{}{
+								map[string]interface{}{
+									"type":   "Applied",
+									"status": "True",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	re := newResourceExecutor(&ExecutorConfig{
+		TransportClient: mock,
+		Logger:          logger.NewTestLogger(),
+	})
+
+	resource := config_loader.Resource{
+		Name: "resource0",
+		Transport: &config_loader.TransportConfig{
+			Client: "kubernetes",
+		},
+		Manifest: map[string]interface{}{
+			"apiVersion": "work.open-cluster-management.io/v1",
+			"kind":       "ManifestWork",
+			"metadata": map[string]interface{}{
+				"name":      "cluster-1-adapter2",
+				"namespace": "default",
+			},
+		},
+		Discovery: &config_loader.DiscoveryConfig{
+			Namespace: "default",
+			ByName:    "cluster-1-adapter2",
+		},
+		NestedDiscoveries: []config_loader.NestedDiscovery{
+			{
+				Name: "configmap0",
+				Discovery: &config_loader.DiscoveryConfig{
+					Namespace: "default",
+					ByName:    "cluster-1-adapter2-configmap",
+				},
+			},
+		},
+	}
+
+	execCtx := NewExecutionContext(context.Background(), map[string]interface{}{}, nil)
+	results, err := re.ExecuteAll(context.Background(), []config_loader.Resource{resource}, execCtx)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, StatusSuccess, results[0].Status)
+
+	parent, ok := execCtx.Resources["resource0"].(*unstructured.Unstructured)
+	require.True(t, ok, "resource0 should store the discovered parent resource")
+	assert.Equal(t, "ManifestWork", parent.GetKind())
+	assert.Equal(t, "cluster-1-adapter2", parent.GetName())
+
+	nested, ok := execCtx.Resources["configmap0"].(*unstructured.Unstructured)
+	require.True(t, ok, "configmap0 should be stored as top-level nested discovery")
+	assert.Equal(t, "ConfigMap", nested.GetKind())
+	assert.Equal(t, "cluster-1-adapter2-configmap", nested.GetName())
+
+	// Verify statusFeedback and conditions were enriched from parent's status.resourceStatus
+	_, hasSF := nested.Object["statusFeedback"]
+	assert.True(t, hasSF, "configmap0 should have statusFeedback merged from parent")
+	_, hasConds := nested.Object["conditions"]
+	assert.True(t, hasConds, "configmap0 should have conditions merged from parent")
+
+	sf := nested.Object["statusFeedback"].(map[string]interface{})
+	values := sf["values"].([]interface{})
+	assert.Len(t, values, 1)
+	v0 := values[0].(map[string]interface{})
+	assert.Equal(t, "data", v0["name"])
 }

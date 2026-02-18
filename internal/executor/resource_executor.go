@@ -132,16 +132,42 @@ func (re *ResourceExecutor) executeResource(ctx context.Context, resource config
 	if resource.Discovery != nil {
 		discovered, discoverErr := re.discoverResource(ctx, resource, execCtx, transportTarget)
 		if discoverErr != nil {
-			re.log.Warnf(ctx, "Resource[%s] discovery after apply failed: %v", resource.Name, discoverErr)
-		} else if discovered != nil {
+			result.Status = StatusFailed
+			result.Error = discoverErr
+			execCtx.Adapter.ExecutionError = &ExecutionError{
+				Phase:   string(PhaseResources),
+				Step:    resource.Name,
+				Message: discoverErr.Error(),
+			}
+			errCtx := logger.WithK8sResult(ctx, "FAILED")
+			errCtx = logger.WithErrorField(errCtx, discoverErr)
+			re.log.Errorf(errCtx, "Resource[%s] discovery after apply failed: %v", resource.Name, discoverErr)
+			return result, NewExecutorError(PhaseResources, resource.Name, "failed to discover resource after apply", discoverErr)
+		}
+		if discovered != nil {
+			// Always store the discovered top-level resource by resource name.
+			// Nested discoveries are added as independent entries keyed by nested name.
+			execCtx.Resources[resource.Name] = discovered
+			re.log.Debugf(ctx, "Resource[%s] discovered and stored in context", resource.Name)
+
 			// Step 8: Nested discoveries — find sub-resources within the discovered parent (e.g., ManifestWork)
 			if len(resource.NestedDiscoveries) > 0 {
 				nestedResults := re.discoverNestedResources(ctx, resource, execCtx, discovered)
-				execCtx.Resources[resource.Name] = nestedResults
-				re.log.Debugf(ctx, "Resource[%s] discovered with %d nested resources", resource.Name, len(nestedResults))
-			} else {
-				execCtx.Resources[resource.Name] = discovered
-				re.log.Debugf(ctx, "Resource[%s] discovered and stored in context", resource.Name)
+				for nestedName, nestedObj := range nestedResults {
+					if nestedName == resource.Name {
+						re.log.Warnf(ctx, "Nested discovery %q has the same name as parent resource; skipping to avoid overwriting parent", nestedName)
+						continue
+					}
+					if nestedObj == nil {
+						continue
+					}
+					if _, exists := execCtx.Resources[nestedName]; exists {
+						re.log.Warnf(ctx, "Nested discovery key collision for %q; overriding previous value", nestedName)
+					}
+					execCtx.Resources[nestedName] = nestedObj
+				}
+				re.log.Debugf(ctx, "Resource[%s] discovered with %d nested resources added to context",
+					resource.Name, len(nestedResults))
 			}
 		}
 	}
@@ -295,6 +321,7 @@ func (re *ResourceExecutor) discoverNestedResources(
 		// Use the latest generation match
 		best := manifest.GetLatestGenerationFromList(list)
 		if best != nil {
+			manifest.EnrichWithResourceStatus(parent, best)
 			nestedResults[nd.Name] = best
 			re.log.Debugf(ctx, "Resource[%s] nested discovery[%s] found: %s/%s",
 				resource.Name, nd.Name, best.GetKind(), best.GetName())

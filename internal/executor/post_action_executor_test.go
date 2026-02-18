@@ -2,6 +2,7 @@ package executor
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"testing"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 // testPAE creates a PostActionExecutor for tests
@@ -411,6 +413,7 @@ func TestExecuteAPICall(t *testing.T) {
 		mockError    error
 		expectError  bool
 		expectedURL  string
+		expectedBody string // optional: for POST/PUT/PATCH, assert last request body (rendered payload)
 	}{
 		{
 			name:        "nil api call",
@@ -464,8 +467,9 @@ func TestExecuteAPICall(t *testing.T) {
 				StatusCode: http.StatusCreated,
 				Status:     "201 Created",
 			},
-			expectError: false,
-			expectedURL: "http://api.example.com/clusters",
+			expectError:  false,
+			expectedURL:  "http://api.example.com/clusters",
+			expectedBody: `{"name": "new-cluster"}`,
 		},
 		{
 			name: "PUT request",
@@ -479,8 +483,9 @@ func TestExecuteAPICall(t *testing.T) {
 				StatusCode: http.StatusOK,
 				Status:     "200 OK",
 			},
-			expectError: false,
-			expectedURL: "http://api.example.com/clusters/123",
+			expectError:  false,
+			expectedURL:  "http://api.example.com/clusters/123",
+			expectedBody: `{"status": "updated"}`,
 		},
 		{
 			name: "PATCH request",
@@ -494,8 +499,25 @@ func TestExecuteAPICall(t *testing.T) {
 				StatusCode: http.StatusOK,
 				Status:     "200 OK",
 			},
-			expectError: false,
-			expectedURL: "http://api.example.com/clusters/123",
+			expectError:  false,
+			expectedURL:  "http://api.example.com/clusters/123",
+			expectedBody: `{"field": "value"}`,
+		},
+		{
+			name: "POST with empty body",
+			apiCall: &config_loader.APICall{
+				Method: "POST",
+				URL:    "http://api.example.com/clusters",
+				Body:   "",
+			},
+			params: map[string]interface{}{},
+			mockResponse: &hyperfleet_api.Response{
+				StatusCode: http.StatusOK,
+				Status:     "200 OK",
+			},
+			expectError:  false,
+			expectedURL:  "http://api.example.com/clusters",
+			expectedBody: "",
 		},
 		{
 			name: "DELETE request",
@@ -612,6 +634,54 @@ func TestExecuteAPICall(t *testing.T) {
 			require.NoError(t, err)
 			assert.NotNil(t, resp)
 			assert.Equal(t, tt.expectedURL, url)
+
+			// For body-based methods, verify the rendered payload sent to the client
+			if tt.apiCall != nil && (tt.apiCall.Method == http.MethodPost || tt.apiCall.Method == http.MethodPut || tt.apiCall.Method == http.MethodPatch) {
+				lastReq := mockClient.GetLastRequest()
+				require.NotNil(t, lastReq, "expected a request for %s", tt.apiCall.Method)
+				assert.Equal(t, tt.expectedBody, string(lastReq.Body), "request body should match rendered payload")
+			}
 		})
 	}
+}
+
+func TestBuildPostPayloads_WithResourceDiscoveryCELHelpers(t *testing.T) {
+	pae := testPAE()
+	execCtx := NewExecutionContext(context.Background(), map[string]interface{}{}, nil)
+
+	execCtx.Resources["manifestWork"] = map[string]*unstructured.Unstructured{
+		"clusterClaim": {
+			Object: map[string]interface{}{
+				"status": map[string]interface{}{
+					"value": "prod",
+				},
+			},
+		},
+	}
+
+	payloads := []config_loader.Payload{
+		{
+			Name: "inspectPayload",
+			Build: map[string]interface{}{
+				"claimValue": map[string]interface{}{
+					"expression": `dig(resources, "manifestWork.clusterClaim.status.value")`,
+				},
+				"resourceSnapshot": map[string]interface{}{
+					"expression": `toJson(resources)`,
+				},
+			},
+		},
+	}
+
+	err := pae.buildPostPayloads(context.Background(), payloads, execCtx)
+	require.NoError(t, err)
+
+	rawPayload, ok := execCtx.Params["inspectPayload"].(string)
+	require.True(t, ok, "payload should be stored as json string in params")
+
+	var built map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(rawPayload), &built))
+	assert.Equal(t, "prod", built["claimValue"])
+	assert.Contains(t, built["resourceSnapshot"], `"manifestWork"`)
+	assert.Contains(t, built["resourceSnapshot"], `"clusterClaim"`)
 }
