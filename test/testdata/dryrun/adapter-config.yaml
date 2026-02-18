@@ -1,0 +1,24 @@
+# Adapter deployment configuration for dry-run testing
+apiVersion: hyperfleet.redhat.com/v1alpha1
+kind: AdapterConfig
+metadata:
+  name: dryrun-adapter
+  labels:
+    hyperfleet.io/component: adapter
+
+spec:
+  adapter:
+    version: "0.1.0"
+
+  clients:
+    hyperfleetApi:
+      timeout: 10s
+      retryAttempts: 3
+      retryBackoff: exponential
+
+    broker:
+      subscriptionId: "dryrun-sub"
+      topic: "cluster-events"
+
+    kubernetes:
+      apiVersion: "v1"

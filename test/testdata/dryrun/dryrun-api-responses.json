@@ -1,0 +1,55 @@
+{
+  "responses": [
+    {
+      "match": {
+        "method": "GET",
+        "urlPattern": "/api/hyperfleet/v1/clusters/.*"
+      },
+      "responses": [
+        {
+          "statusCode": 200,
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "id": "abc-123",
+            "name": "abc123",
+            "kind": "Cluster",
+            "href": "/api/hyperfleet/v1/clusters/abc123",
+            "generation": "77",
+            "nodes": {
+              "compute": 3
+            },
+            "spec": {
+              "region": "us-east-1",
+              "provider": "aws"
+            },
+            "status": {
+              "conditions": [
+                {
+                  "type": "Ready",
+                  "status": "False"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "match": {
+        "method": "PATCH",
+        "urlPattern": "/api/hyperfleet/v1/clusters/.*/status"
+      },
+      "responses": [
+        {
+          "statusCode": 200,
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {}
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+# Invalid task configuration for testing validate command error reporting
+apiVersion: hyperfleet.redhat.com/v1alpha1
+kind: AdapterTaskConfig
+metadata:
+  name: invalid-task
+
+spec:
+  params:
+    - name: "clusterId"
+      source: "event.id"
+      type: "string"
+      required: true
+
+  preconditions:
+    - name: "bad-cel"
+      expression: |
+        this is not valid CEL !!!
+
+  resources:
+    - name: "missingFields"
+      manifest:
+        apiVersion: v1
+        kind: ConfigMap
+        # missing metadata.name — validation should catch this
+        metadata:
+          labels:
+            app: test
+          annotations:
+            hyperfleet.io/generation: "1"
+      discovery:
+        namespace: "default"
+        byName: "test"
+
+    - name: "undefinedVar"
+      manifest:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: "{{ .nonExistentVariable }}"
+          annotations:
+            hyperfleet.io/generation: "1"
+      discovery:
+        namespace: "default"
+        byName: "test"

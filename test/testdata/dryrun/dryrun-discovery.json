@@ -1,0 +1,46 @@
+{
+  "manifestwork-symbol000": {
+    "apiVersion": "work.open-cluster-management.io/v1",
+    "kind": "ManifestWork",
+    "metadata": {
+      "name": "manifestwork000-this-name-not-used",
+      "namespace": "cluster1",
+      "labels": {
+        "hyperfleet.io/resource-type": "manifestwork"
+      }
+    },
+    "spec": {
+      "workload": {
+        "manifests": [
+          {
+            "apiVersion": "v1",
+            "kind": "Namespace",
+            "metadata": {
+              "name": "abc123",
+              "labels": {
+                "hyperfleet.io/resource-type": "namespace",
+                "hyperfleet.io/cluster-id": "abc123",
+                "hyperfleet.io/label-for-discovery": "namespace-symbol111"
+              }
+            }
+          },
+          {
+            "apiVersion": "v1",
+            "kind": "ConfigMap",
+            "metadata": {
+              "name": "abc123-symbol222",
+              "namespace": "abc123",
+              "labels": {
+                "hyperfleet.io/cluster-id": "abc123"
+              }
+            },
+            "data": {
+              "cluster_id": "abc123",
+              "cluster_name": "test-cluster"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

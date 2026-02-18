@@ -172,6 +172,7 @@ A  HyperFleet Adapter requires several files for configuration:
 To see all configuration options read [configuration.md](configuration.md) file
 
 #### Adapter configuration
+
 The adapter deployment configuration (`AdapterConfig`) controls runtime and infrastructure
 settings for the adapter process, such as client connections, retries, and broker
 subscription details. It is loaded with Viper, so values can be overridden by CLI flags
@@ -182,10 +183,12 @@ and environment variables in this priority order: CLI flags > env vars > file > 
   (HyperFleet API, Maestro, broker, Kubernetes)
 
 Reference examples:
+
 - `configs/adapter-deployment-config.yaml` (full reference with env/flag notes)
 - `charts/examples/adapter-config.yaml` (minimal deployment example)
 
 #### Adapter task configuration
+
 The adapter task configuration (`AdapterTaskConfig`) defines the **business logic** for
 processing events: parameters, preconditions, resources to create, and post-actions.
 This file is loaded as **static YAML** (no Viper overrides) and is required at runtime.
@@ -195,19 +198,155 @@ This file is loaded as **static YAML** (no Viper overrides) and is required at r
 - **Resource manifests**: inline YAML or external file via `manifest.ref`
 
 Reference examples:
+
 - `charts/examples/adapter-task-config.yaml` (worked example)
 - `configs/adapter-task-config-template.yaml` (complete schema reference)
-
 
 ### Broker Configuration
 
 Broker configuration is particular since responsibility is split between:
+
 - **Hyperfleet broker library**: configures the connection to a concrete broker (google pubsub, rabbitmq, ...)
   - Configured using a YAML file specified by the `BROKER_CONFIG_FILE` environment variable
 - **Adapter**: configures which topic/subscriptions to use on the broker
-  - Configure topic/subscription in the `adapter-config.yaml` but can be overriden with env variables or cli params
+  - Configure topic/subscription in the `adapter-config.yaml` but can be overridden with env variables or cli params
 
 See the Helm chart documentation for broker configuration options.
+
+## Dry-Run Mode
+
+Dry-run mode lets you simulate the full adapter execution pipeline locally without connecting to any real infrastructure (no broker, no Kubernetes cluster, no HyperFleet API). It processes a single CloudEvent from a JSON file and produces a detailed trace of what the adapter would do.
+
+### Usage
+
+```bash
+hyperfleet-adapter serve \
+  --config ./adapter-config.yaml \
+  --task-config ./task-config.yaml \
+  --dry-run-event ./event.json
+```
+
+Dry-run mode is activated when the `--dry-run-event` flag is present. Instead of subscribing to a broker, the adapter loads the event from the specified file and runs through all phases (params, preconditions, resources, post-actions) using mock clients.
+
+### Flags
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--dry-run-event <path>` | Yes | Path to a CloudEvent JSON file to process |
+| `--dry-run-api-responses <path>` | No | Path to mock API responses JSON file (defaults to 200 OK for all requests) |
+| `--dry-run-discovery <path>` | No | Path to mock discovery overrides JSON file (simulates server-populated fields) |
+| `--dry-run-verbose` | No | Show rendered manifests and API request/response bodies in output |
+| `--dry-run-output <format>` | No | Output format: `text` (default) or `json` |
+
+### Input Files
+
+#### CloudEvent File (`--dry-run-event`)
+
+A standard CloudEvents JSON file:
+
+```json
+{
+  "specversion": "1.0",
+  "id": "abc123",
+  "type": "io.hyperfleet.cluster.updated",
+  "source": "/api/clusters_mgmt/v1/clusters/abc123",
+  "time": "2025-01-15T10:30:00Z",
+  "datacontenttype": "application/json",
+  "data": {
+    "id": "abc123",
+    "kind": "Cluster",
+    "href": "/api/clusters_mgmt/v1/clusters/abc123",
+    "generation": 5
+  }
+}
+```
+
+#### Mock API Responses File (`--dry-run-api-responses`)
+
+Defines canned responses for HyperFleet API calls. Requests are matched by HTTP method and URL regex pattern. When multiple responses are defined for a match, they are returned sequentially (the last response repeats):
+
+```json
+{
+  "responses": [
+    {
+      "match": {
+        "method": "GET",
+        "urlPattern": "/api/hyperfleet/v1/clusters/.*"
+      },
+      "responses": [
+        {
+          "statusCode": 200,
+          "headers": { "Content-Type": "application/json" },
+          "body": { "id": "abc-123", "name": "abc123", "kind": "Cluster" }
+        }
+      ]
+    }
+  ]
+}
+```
+
+If no file is provided, all API requests return 200 OK by default.
+
+#### Discovery Overrides File (`--dry-run-discovery`)
+
+Maps rendered resource names to complete resource objects, allowing you to simulate server-populated fields (status, uid, resourceVersion, etc.) that would normally be set by the Kubernetes API server:
+
+```json
+{
+  "rendered-resource-name": {
+    "apiVersion": "work.open-cluster-management.io/v1",
+    "kind": "ManifestWork",
+    "metadata": { "name": "manifestwork-001", "namespace": "cluster1" },
+    "status": { "conditions": [{ "type": "Applied", "status": "True" }] }
+  }
+}
+```
+
+These overrides replace applied manifests in the in-memory store, making the simulated discovery results available as `resources.*` in post-action CEL expressions.
+
+Having the discovery mocked is useful to develop the status payload to return to the hyperfleet_api
+
+### Output
+
+The trace output shows the result of each execution phase:
+
+1. **Event Info** - Event ID and type
+2. **Phase 1: Parameter Extraction** - Extracted parameters and their values
+3. **Phase 2: Preconditions** - Precondition evaluation results (SUCCESS/FAILED/NOT MET) with API calls made
+4. **Phase 3: Resources** - Resource operations (CREATE/UPDATE/RECREATE) with kind, namespace, and name
+5. **Phase 3.5: Discovery Results** - Resources available for post-action CEL evaluation
+6. **Phase 4: Post Actions** - Post-action API calls and skip reasons
+7. **Result** - Overall SUCCESS or FAILED
+
+Use `--dry-run-verbose` to include rendered manifests and full API request/response bodies.
+
+Use `--dry-run-output json` for structured JSON output suitable for programmatic consumption.
+
+### Examples
+
+Minimal dry-run (mock API returns 200 OK for everything):
+
+```bash
+hyperfleet-adapter serve \
+  --config ./adapter-config.yaml \
+  --task-config ./task-config.yaml \
+  --dry-run-event ./event.json
+```
+
+Full dry-run with mock API responses, discovery overrides, and verbose JSON output:
+
+```bash
+hyperfleet-adapter serve \
+  --config ./adapter-config.yaml \
+  --task-config ./task-config.yaml \
+  --dry-run-event ./event.json \
+  --dry-run-api-responses ./api-responses.json \
+  --dry-run-discovery ./discovery-overrides.json \
+  --dry-run-verbose \
+  --dry-run-output json
+```
+
+Example input files are available in `test/testdata/dryrun/`.
 
 ## Deployment
 

@@ -1,0 +1,14 @@
+{
+  "specversion": "1.0",
+  "id": "abc123",
+  "type": "io.hyperfleet.cluster.updated",
+  "source": "/api/clusters_mgmt/v1/clusters/abc123",
+  "time": "2025-01-15T10:30:00Z",
+  "datacontenttype": "application/json",
+  "data": {
+    "id": "abc123",
+    "kind": "Cluster",
+    "href": "/api/clusters_mgmt/v1/clusters/abc123",
+    "generation": 5
+  }
+}

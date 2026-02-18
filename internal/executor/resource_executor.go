@@ -76,13 +76,21 @@ func (re *ResourceExecutor) executeResource(ctx context.Context, resource config
 		return result, NewExecutorError(PhaseResources, resource.Name, "failed to render manifest", err)
 	}
 
-	// Step 2: Prepare apply options
+	// Step 2: Extract resource identity from rendered manifest for result reporting
+	var obj unstructured.Unstructured
+	if err := json.Unmarshal(renderedBytes, &obj.Object); err == nil {
+		result.Kind = obj.GetKind()
+		result.Namespace = obj.GetNamespace()
+		result.ResourceName = obj.GetName()
+	}
+
+	// Step 3: Prepare apply options
 	var applyOpts *transport_client.ApplyOptions
 	if resource.RecreateOnChange {
 		applyOpts = &transport_client.ApplyOptions{RecreateOnChange: true}
 	}
 
-	// Step 3: Build transport context (nil for k8s, *maestro_client.TransportContext for maestro)
+	// Step 4: Build transport context (nil for k8s, *maestro_client.TransportContext for maestro)
 	var transportTarget transport_client.TransportContext
 	if resource.IsMaestroTransport() && resource.Transport.Maestro != nil {
 		targetCluster, tplErr := renderTemplate(resource.Transport.Maestro.TargetCluster, execCtx.Params)
@@ -96,7 +104,7 @@ func (re *ResourceExecutor) executeResource(ctx context.Context, resource config
 		}
 	}
 
-	// Step 4: Call transport client ApplyResource with rendered bytes
+	// Step 5: Call transport client ApplyResource with rendered bytes
 	applyResult, err := transportClient.ApplyResource(ctx, renderedBytes, applyOpts, transportTarget)
 	if err != nil {
 		result.Status = StatusFailed
@@ -112,7 +120,7 @@ func (re *ResourceExecutor) executeResource(ctx context.Context, resource config
 		return result, NewExecutorError(PhaseResources, resource.Name, "failed to apply resource", err)
 	}
 
-	// Step 5: Extract result
+	// Step 6: Extract result
 	result.Operation = applyResult.Operation
 	result.OperationReason = applyResult.Reason
 
@@ -120,13 +128,13 @@ func (re *ResourceExecutor) executeResource(ctx context.Context, resource config
 	re.log.Infof(successCtx, "Resource[%s] processed: operation=%s reason=%s",
 		resource.Name, result.Operation, result.OperationReason)
 
-	// Step 6: Post-apply discovery — find the applied resource and store in execCtx for CEL evaluation
+	// Step 7: Post-apply discovery — find the applied resource and store in execCtx for CEL evaluation
 	if resource.Discovery != nil {
 		discovered, discoverErr := re.discoverResource(ctx, resource, execCtx, transportTarget)
 		if discoverErr != nil {
 			re.log.Warnf(ctx, "Resource[%s] discovery after apply failed: %v", resource.Name, discoverErr)
 		} else if discovered != nil {
-			// Step 7: Nested discoveries — find sub-resources within the discovered parent (e.g., ManifestWork)
+			// Step 8: Nested discoveries — find sub-resources within the discovered parent (e.g., ManifestWork)
 			if len(resource.NestedDiscoveries) > 0 {
 				nestedResults := re.discoverNestedResources(ctx, resource, execCtx, discovered)
 				execCtx.Resources[resource.Name] = nestedResults

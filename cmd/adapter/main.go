@@ -10,10 +10,12 @@ import (
 	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/dryrun"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/executor"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleet_api"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/k8s_client"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/maestro_client"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transport_client"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/health"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/otel"
@@ -32,6 +34,13 @@ var (
 	logFormat      string
 	logOutput      string
 	serveFlags     *pflag.FlagSet
+
+	// Dry-run flags
+	dryRunEvent        string // Path to CloudEvent JSON file
+	dryRunAPIResponses string // Path to mock API responses JSON file
+	dryRunDiscovery    string // Path to mock discovery responses JSON file
+	dryRunVerbose      bool   // Show verbose dry-run output
+	dryRunOutput       string // Output format: text or json
 )
 
 // Timeout constants
@@ -51,13 +60,12 @@ const (
 )
 
 func main() {
-
 	// Root command
 	rootCmd := &cobra.Command{
 		Use:   "adapter",
 		Short: "HyperFleet Adapter - event-driven Kubernetes resource manager",
-		Long: `HyperFleet Adapter listens for events from a message broker and 
-executes configured actions including Kubernetes resource management 
+		Long: `HyperFleet Adapter listens for events from a message broker and
+executes configured actions including Kubernetes resource management
 and HyperFleet API calls.`,
 		// Disable default completion command
 		CompletionOptions: cobra.CompletionOptions{
@@ -76,8 +84,16 @@ and HyperFleet API calls.`,
 - Connect to the configured message broker
 - Subscribe to the specified topic
 - Process incoming events according to the adapter configuration
-- Execute Kubernetes operations and HyperFleet API calls`,
+- Execute Kubernetes operations and HyperFleet API calls
+
+Dry-run mode:
+  Pass --dry-run-event to process a single CloudEvent from a JSON file
+  using mock transport clients. No broker, cluster, or API is required.
+  Optionally pass --dry-run-api-responses to configure mock API responses.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if isDryRun() {
+				return runDryRun()
+			}
 			return runServe()
 		},
 	}
@@ -116,6 +132,18 @@ and HyperFleet API calls.`,
 	serveCmd.Flags().StringVar(&logOutput, "log-output", "",
 		"Log output (stdout, stderr). Env: LOG_OUTPUT")
 
+	// Add dry-run flags to serve command
+	serveCmd.Flags().StringVar(&dryRunEvent, "dry-run-event", "",
+		"Path to CloudEvent JSON file for dry-run mode")
+	serveCmd.Flags().StringVar(&dryRunAPIResponses, "dry-run-api-responses", "",
+		"Path to mock API responses JSON file for dry-run mode (defaults to 200 OK)")
+	serveCmd.Flags().StringVar(&dryRunDiscovery, "dry-run-discovery", "",
+		"Path to mock discovery responses JSON file for dry-run mode (overrides applied resources by name)")
+	serveCmd.Flags().BoolVar(&dryRunVerbose, "dry-run-verbose", false,
+		"Show rendered manifests, API request/response bodies in dry-run output")
+	serveCmd.Flags().StringVar(&dryRunOutput, "dry-run-output", "text",
+		"Dry-run output format: text or json")
+
 	// Version command
 	versionCmd := &cobra.Command{
 		Use:   "version",
@@ -140,6 +168,15 @@ and HyperFleet API calls.`,
 	}
 }
 
+// isDryRun returns true when dry-run flags are present.
+func isDryRun() bool {
+	return dryRunEvent != "" || dryRunAPIResponses != ""
+}
+
+// -----------------------------------------------------------------------------
+// Configuration loading (shared between serve and dry-run)
+// -----------------------------------------------------------------------------
+
 // buildLoggerConfig creates a logger configuration from environment variables
 // and command-line flags. Flags take precedence over environment variables.
 func buildLoggerConfig(component string) logger.Config {
@@ -162,21 +199,8 @@ func buildLoggerConfig(component string) logger.Config {
 	return cfg
 }
 
-// runServe contains the main application logic for the serve command
-func runServe() error {
-	// Create context that cancels on system signals
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Create bootstrap logger (before config is loaded)
-	log, err := logger.NewLogger(buildLoggerConfig("hyperfleet-adapter"))
-	if err != nil {
-		return fmt.Errorf("failed to create logger: %w", err)
-	}
-
-	log.Infof(ctx, "Starting Hyperfleet Adapter version=%s commit=%s built=%s tag=%s", version.Version, version.Commit, version.BuildDate, version.Tag)
-
-	// Load unified configuration (deployment + task configs)
+// loadConfig loads the unified adapter configuration from both config files.
+func loadConfig(ctx context.Context, log logger.Logger) (*config_loader.Config, error) {
 	log.Info(ctx, "Loading adapter configuration...")
 	config, err := config_loader.LoadConfig(
 		config_loader.WithAdapterConfigPath(configPath),
@@ -187,271 +211,14 @@ func runServe() error {
 	if err != nil {
 		errCtx := logger.WithErrorField(ctx, err)
 		log.Errorf(errCtx, "Failed to load adapter configuration")
-		return fmt.Errorf("failed to load adapter configuration: %w", err)
+		return nil, fmt.Errorf("failed to load adapter configuration: %w", err)
 	}
-
-	// Recreate logger with component name from config
-	log, err = logger.NewLogger(buildLoggerConfig(config.Metadata.Name))
-	if err != nil {
-		return fmt.Errorf("failed to create logger with adapter config: %w", err)
-	}
-
-	log.Infof(ctx, "Adapter configuration loaded successfully: name=%s ",
-		config.Metadata.Name)
-	log.Infof(ctx, "HyperFleet API client configured: timeout=%s retryAttempts=%d",
-		config.Spec.Clients.HyperfleetAPI.Timeout.String(),
-		config.Spec.Clients.HyperfleetAPI.RetryAttempts)
-	if config.Spec.DebugConfig {
-		configBytes, err := yaml.Marshal(config)
-		if err != nil {
-			errCtx := logger.WithErrorField(ctx, err)
-			log.Warnf(errCtx, "Failed to marshal adapter configuration for logging")
-		} else {
-			log.Infof(ctx, "Loaded adapter configuration:\n%s", string(configBytes))
-		}
-	}
-
-	// Get trace sample ratio from environment (default: 10%)
-	sampleRatio := otel.GetTraceSampleRatio(log, ctx)
-
-	// Initialize OpenTelemetry for trace_id/span_id generation and HTTP propagation
-	tp, err := otel.InitTracer(config.Metadata.Name, version.Version, sampleRatio)
-	if err != nil {
-		errCtx := logger.WithErrorField(ctx, err)
-		log.Errorf(errCtx, "Failed to initialize OpenTelemetry")
-		return fmt.Errorf("failed to initialize OpenTelemetry: %w", err)
-	}
-	defer func() {
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), OTelShutdownTimeout)
-		defer shutdownCancel()
-		if err := tp.Shutdown(shutdownCtx); err != nil {
-			errCtx := logger.WithErrorField(shutdownCtx, err)
-			log.Warnf(errCtx, "Failed to shutdown TracerProvider")
-		}
-	}()
-
-	// Start health server immediately (readiness starts as false)
-	healthServer := health.NewServer(log, HealthServerPort, config.Metadata.Name)
-	if err := healthServer.Start(ctx); err != nil {
-		errCtx := logger.WithErrorField(ctx, err)
-		log.Errorf(errCtx, "Failed to start health server")
-		return fmt.Errorf("failed to start health server: %w", err)
-	}
-	// Mark config as loaded since we got here successfully
-	healthServer.SetConfigLoaded()
-	defer func() {
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), HealthServerShutdownTimeout)
-		defer shutdownCancel()
-		if err := healthServer.Shutdown(shutdownCtx); err != nil {
-			errCtx := logger.WithErrorField(shutdownCtx, err)
-			log.Warnf(errCtx, "Failed to shutdown health server")
-		}
-	}()
-
-	// Start metrics server with build info
-	metricsServer := health.NewMetricsServer(log, MetricsServerPort, health.MetricsConfig{
-		Component: config.Metadata.Name,
-		Version:   version.Version,
-		Commit:    version.Commit,
-	})
-	if err := metricsServer.Start(ctx); err != nil {
-		errCtx := logger.WithErrorField(ctx, err)
-		log.Errorf(errCtx, "Failed to start metrics server")
-		return fmt.Errorf("failed to start metrics server: %w", err)
-	}
-	defer func() {
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), HealthServerShutdownTimeout)
-		defer shutdownCancel()
-		if err := metricsServer.Shutdown(shutdownCtx); err != nil {
-			errCtx := logger.WithErrorField(shutdownCtx, err)
-			log.Warnf(errCtx, "Failed to shutdown metrics server")
-		}
-	}()
-
-	// Create HyperFleet API client from config
-	log.Info(ctx, "Creating HyperFleet API client...")
-	apiClient, err := createAPIClient(config.Spec.Clients.HyperfleetAPI, log)
-	if err != nil {
-		errCtx := logger.WithErrorField(ctx, err)
-		log.Errorf(errCtx, "Failed to create HyperFleet API client")
-		return fmt.Errorf("failed to create HyperFleet API client: %w", err)
-	}
-
-	// Create transport client - only one transport is supported per adapter instance
-	execBuilder := executor.NewBuilder().
-		WithConfig(config).
-		WithAPIClient(apiClient).
-		WithLogger(log)
-
-	if config.Spec.Clients.Maestro != nil {
-		log.Info(ctx, "Creating Maestro transport client...")
-		maestroClient, err := createMaestroClient(ctx, config.Spec.Clients.Maestro, log)
-		if err != nil {
-			errCtx := logger.WithErrorField(ctx, err)
-			log.Errorf(errCtx, "Failed to create Maestro client")
-			return fmt.Errorf("failed to create Maestro client: %w", err)
-		}
-		execBuilder = execBuilder.WithTransportClient(maestroClient)
-		log.Info(ctx, "Maestro transport client created successfully")
-	} else {
-		log.Info(ctx, "Creating Kubernetes transport client...")
-		k8sClient, err := createK8sClient(ctx, config.Spec.Clients.Kubernetes, log)
-		if err != nil {
-			errCtx := logger.WithErrorField(ctx, err)
-			log.Errorf(errCtx, "Failed to create Kubernetes client")
-			return fmt.Errorf("failed to create Kubernetes client: %w", err)
-		}
-		execBuilder = execBuilder.WithTransportClient(k8sClient)
-		log.Info(ctx, "Kubernetes transport client created successfully")
-	}
-
-	// Create the executor using the builder pattern
-	log.Info(ctx, "Creating event executor...")
-	exec, err := execBuilder.Build()
-	if err != nil {
-		errCtx := logger.WithErrorField(ctx, err)
-		log.Errorf(errCtx, "Failed to create executor")
-		return fmt.Errorf("failed to create executor: %w", err)
-	}
-
-	// Create the event handler from the executor
-	// This handler will:
-	// 1. Extract params from event data
-	// 2. Execute preconditions (API calls, condition checks)
-	// 3. Create/update Kubernetes resources
-	// 4. Execute post actions (status reporting)
-	handler := exec.CreateHandler()
-
-	// Handle signals for graceful shutdown
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		sig := <-sigCh
-		log.Infof(ctx, "Received signal %s, initiating graceful shutdown...", sig)
-		// Mark as not ready immediately per HyperFleet Graceful Shutdown Standard
-		// This must happen BEFORE context cancellation to ensure /readyz returns 503
-		log.Info(ctx, "Shutdown initiated, marking not ready")
-		healthServer.SetShuttingDown(true)
-		cancel()
-
-		// Second signal forces immediate exit
-		sig = <-sigCh
-		log.Infof(ctx, "Received second signal %s, forcing immediate exit", sig)
-		os.Exit(1)
-	}()
-
-	// Get broker subscription ID from config
-	subscriptionID := config.Spec.Clients.Broker.SubscriptionID
-	if subscriptionID == "" {
-		err := fmt.Errorf("spec.clients.broker.subscriptionId is required")
-		errCtx := logger.WithErrorField(ctx, err)
-		log.Errorf(errCtx, "Missing required broker configuration")
-		return err
-	}
-
-	// Get broker topic from config
-	topic := config.Spec.Clients.Broker.Topic
-	if topic == "" {
-		err := fmt.Errorf("spec.clients.broker.topic is required")
-		errCtx := logger.WithErrorField(ctx, err)
-		log.Errorf(errCtx, "Missing required broker configuration")
-		return err
-	}
-
-	// Create broker subscriber
-	// Configuration is loaded from environment variables by the broker library:
-	//   - BROKER_TYPE: "rabbitmq" or "googlepubsub"
-	//   - BROKER_GOOGLEPUBSUB_PROJECT_ID: GCP project ID (for googlepubsub)
-	//   - BROKER_RABBITMQ_URL: RabbitMQ URL (for rabbitmq)
-	//   - SUBSCRIBER_PARALLELISM: number of parallel workers (default: 1)
-	log.Info(ctx, "Creating broker subscriber...")
-	subscriber, err := broker.NewSubscriber(log, subscriptionID)
-	if err != nil {
-		errCtx := logger.WithErrorField(ctx, err)
-		log.Errorf(errCtx, "Failed to create subscriber")
-		return fmt.Errorf("failed to create subscriber: %w", err)
-	}
-	log.Info(ctx, "Broker subscriber created successfully")
-
-	// Subscribe to topic - this is NON-BLOCKING, it returns immediately after setup
-	log.Info(ctx, "Subscribing to broker topic...")
-	err = subscriber.Subscribe(ctx, topic, handler)
-	if err != nil {
-		errCtx := logger.WithErrorField(ctx, err)
-		log.Errorf(errCtx, "Failed to subscribe to topic")
-		return fmt.Errorf("failed to subscribe to topic: %w", err)
-	}
-	log.Info(ctx, "Successfully subscribed to broker topic")
-
-	// Mark as ready now that broker subscription is established
-	healthServer.SetBrokerReady(true)
-	log.Info(ctx, "Adapter is ready to process events")
-
-	// Channel to signal fatal errors from the errors goroutine
-	fatalErrCh := make(chan error, 1)
-
-	// Monitor subscription errors channel in a separate goroutine.
-	// Note: Error context here reflects the handler's location, not the error's origin
-	// in the broker library. Stack traces (if captured) would show this goroutine's
-	// call stack. For richer error context, the broker library would need to provide
-	// errors with embedded stack traces or structured error details.
-	go func() {
-		for subErr := range subscriber.Errors() {
-			errCtx := logger.WithErrorField(ctx, subErr)
-			log.Errorf(errCtx, "Subscription error")
-			// For critical errors, signal shutdown
-			select {
-			case fatalErrCh <- subErr:
-				// Signal sent, trigger shutdown
-			default:
-				// Channel already has an error, don't block
-			}
-		}
-	}()
-
-	log.Info(ctx, "Adapter started, waiting for events...")
-
-	// Wait for shutdown signal or fatal subscription error
-	select {
-	case <-ctx.Done():
-		log.Info(ctx, "Context cancelled, shutting down...")
-	case err := <-fatalErrCh:
-		errCtx := logger.WithErrorField(ctx, err)
-		log.Errorf(errCtx, "Fatal subscription error, shutting down")
-		// Mark as not ready before shutdown per HyperFleet Graceful Shutdown Standard
-		healthServer.SetShuttingDown(true)
-		cancel() // Cancel context to trigger graceful shutdown
-	}
-
-	// Close subscriber gracefully with timeout
-	log.Info(ctx, "Closing broker subscriber...")
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer shutdownCancel()
-
-	// Close subscriber in a goroutine with timeout
-	closeDone := make(chan error, 1)
-	go func() {
-		closeDone <- subscriber.Close()
-	}()
-
-	select {
-	case err := <-closeDone:
-		if err != nil {
-			errCtx := logger.WithErrorField(ctx, err)
-			log.Errorf(errCtx, "Error closing subscriber")
-		} else {
-			log.Info(ctx, "Subscriber closed successfully")
-		}
-	case <-shutdownCtx.Done():
-		err := fmt.Errorf("subscriber close timed out after 30 seconds")
-		errCtx := logger.WithErrorField(ctx, err)
-		log.Error(errCtx, "Subscriber close timed out")
-	}
-
-	log.Info(ctx, "Adapter shutdown complete")
-
-	return nil
+	return config, nil
 }
+
+// -----------------------------------------------------------------------------
+// Client creation (shared between serve and dry-run)
+// -----------------------------------------------------------------------------
 
 // createAPIClient creates a HyperFleet API client from the config
 func createAPIClient(apiConfig config_loader.HyperfleetAPIConfig, log logger.Logger) (hyperfleet_api.Client, error) {
@@ -500,6 +267,27 @@ func createAPIClient(apiConfig config_loader.HyperfleetAPIConfig, log logger.Log
 	return hyperfleet_api.NewClient(log, opts...)
 }
 
+// createTransportClient creates the appropriate transport client based on config.
+func createTransportClient(ctx context.Context, config *config_loader.Config, log logger.Logger) (transport_client.TransportClient, error) {
+	if config.Spec.Clients.Maestro != nil {
+		log.Info(ctx, "Creating Maestro transport client...")
+		client, err := createMaestroClient(ctx, config.Spec.Clients.Maestro, log)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create Maestro client: %w", err)
+		}
+		log.Info(ctx, "Maestro transport client created successfully")
+		return client, nil
+	}
+
+	log.Info(ctx, "Creating Kubernetes transport client...")
+	client, err := createK8sClient(ctx, config.Spec.Clients.Kubernetes, log)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Kubernetes client: %w", err)
+	}
+	log.Info(ctx, "Kubernetes transport client created successfully")
+	return client, nil
+}
+
 // createK8sClient creates a Kubernetes client from the config
 func createK8sClient(ctx context.Context, k8sConfig config_loader.KubernetesConfig, log logger.Logger) (*k8s_client.Client, error) {
 	clientConfig := k8s_client.ClientConfig{
@@ -527,4 +315,350 @@ func createMaestroClient(ctx context.Context, maestroConfig *config_loader.Maest
 	}
 
 	return maestro_client.NewMaestroClient(ctx, config, log)
+}
+
+// buildExecutor creates the executor with the given clients.
+func buildExecutor(config *config_loader.Config, apiClient hyperfleet_api.Client, tc transport_client.TransportClient, log logger.Logger) (*executor.Executor, error) {
+	return executor.NewBuilder().
+		WithConfig(config).
+		WithAPIClient(apiClient).
+		WithTransportClient(tc).
+		WithLogger(log).
+		Build()
+}
+
+// -----------------------------------------------------------------------------
+// Serve mode (normal operation)
+// -----------------------------------------------------------------------------
+
+// runServe contains the main application logic for the serve command
+func runServe() error {
+	// Create context that cancels on system signals
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Create bootstrap logger (before config is loaded)
+	log, err := logger.NewLogger(buildLoggerConfig("hyperfleet-adapter"))
+	if err != nil {
+		return fmt.Errorf("failed to create logger: %w", err)
+	}
+
+	log.Infof(ctx, "Starting Hyperfleet Adapter version=%s commit=%s built=%s tag=%s", version.Version, version.Commit, version.BuildDate, version.Tag)
+
+	// Load unified configuration (deployment + task configs)
+	config, err := loadConfig(ctx, log)
+	if err != nil {
+		return err
+	}
+
+	// Recreate logger with component name from config
+	log, err = logger.NewLogger(buildLoggerConfig(config.Metadata.Name))
+	if err != nil {
+		return fmt.Errorf("failed to create logger with adapter config: %w", err)
+	}
+
+	log.Infof(ctx, "Adapter configuration loaded successfully: name=%s ",
+		config.Metadata.Name)
+	log.Infof(ctx, "HyperFleet API client configured: timeout=%s retryAttempts=%d",
+		config.Spec.Clients.HyperfleetAPI.Timeout.String(),
+		config.Spec.Clients.HyperfleetAPI.RetryAttempts)
+	if config.Spec.DebugConfig {
+		configBytes, err := yaml.Marshal(config)
+		if err != nil {
+			errCtx := logger.WithErrorField(ctx, err)
+			log.Warnf(errCtx, "Failed to marshal adapter configuration for logging")
+		} else {
+			log.Infof(ctx, "Loaded adapter configuration:\n%s", string(configBytes))
+		}
+	}
+
+	// Initialize OpenTelemetry
+	sampleRatio := otel.GetTraceSampleRatio(log, ctx)
+	tp, err := otel.InitTracer(config.Metadata.Name, version.Version, sampleRatio)
+	if err != nil {
+		errCtx := logger.WithErrorField(ctx, err)
+		log.Errorf(errCtx, "Failed to initialize OpenTelemetry")
+		return fmt.Errorf("failed to initialize OpenTelemetry: %w", err)
+	}
+	defer func() {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), OTelShutdownTimeout)
+		defer shutdownCancel()
+		if err := tp.Shutdown(shutdownCtx); err != nil {
+			errCtx := logger.WithErrorField(shutdownCtx, err)
+			log.Warnf(errCtx, "Failed to shutdown TracerProvider")
+		}
+	}()
+
+	// Start health server
+	healthServer := health.NewServer(log, HealthServerPort, config.Metadata.Name)
+	if err := healthServer.Start(ctx); err != nil {
+		errCtx := logger.WithErrorField(ctx, err)
+		log.Errorf(errCtx, "Failed to start health server")
+		return fmt.Errorf("failed to start health server: %w", err)
+	}
+	healthServer.SetConfigLoaded()
+	defer func() {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), HealthServerShutdownTimeout)
+		defer shutdownCancel()
+		if err := healthServer.Shutdown(shutdownCtx); err != nil {
+			errCtx := logger.WithErrorField(shutdownCtx, err)
+			log.Warnf(errCtx, "Failed to shutdown health server")
+		}
+	}()
+
+	// Start metrics server
+	metricsServer := health.NewMetricsServer(log, MetricsServerPort, health.MetricsConfig{
+		Component: config.Metadata.Name,
+		Version:   version.Version,
+		Commit:    version.Commit,
+	})
+	if err := metricsServer.Start(ctx); err != nil {
+		errCtx := logger.WithErrorField(ctx, err)
+		log.Errorf(errCtx, "Failed to start metrics server")
+		return fmt.Errorf("failed to start metrics server: %w", err)
+	}
+	defer func() {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), HealthServerShutdownTimeout)
+		defer shutdownCancel()
+		if err := metricsServer.Shutdown(shutdownCtx); err != nil {
+			errCtx := logger.WithErrorField(shutdownCtx, err)
+			log.Warnf(errCtx, "Failed to shutdown metrics server")
+		}
+	}()
+
+	// Create real clients
+	log.Info(ctx, "Creating HyperFleet API client...")
+	apiClient, err := createAPIClient(config.Spec.Clients.HyperfleetAPI, log)
+	if err != nil {
+		errCtx := logger.WithErrorField(ctx, err)
+		log.Errorf(errCtx, "Failed to create HyperFleet API client")
+		return fmt.Errorf("failed to create HyperFleet API client: %w", err)
+	}
+
+	tc, err := createTransportClient(ctx, config, log)
+	if err != nil {
+		errCtx := logger.WithErrorField(ctx, err)
+		log.Errorf(errCtx, "Failed to create transport client")
+		return err
+	}
+
+	// Build executor
+	log.Info(ctx, "Creating event executor...")
+	exec, err := buildExecutor(config, apiClient, tc, log)
+	if err != nil {
+		errCtx := logger.WithErrorField(ctx, err)
+		log.Errorf(errCtx, "Failed to create executor")
+		return fmt.Errorf("failed to create executor: %w", err)
+	}
+
+	// Create the event handler and subscribe to broker
+	handler := exec.CreateHandler()
+
+	// Handle signals for graceful shutdown
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		sig := <-sigCh
+		log.Infof(ctx, "Received signal %s, initiating graceful shutdown...", sig)
+		log.Info(ctx, "Shutdown initiated, marking not ready")
+		healthServer.SetShuttingDown(true)
+		cancel()
+
+		// Second signal forces immediate exit
+		sig = <-sigCh
+		log.Infof(ctx, "Received second signal %s, forcing immediate exit", sig)
+		os.Exit(1)
+	}()
+
+	// Get broker config
+	subscriptionID := config.Spec.Clients.Broker.SubscriptionID
+	if subscriptionID == "" {
+		err := fmt.Errorf("spec.clients.broker.subscriptionId is required")
+		errCtx := logger.WithErrorField(ctx, err)
+		log.Errorf(errCtx, "Missing required broker configuration")
+		return err
+	}
+
+	topic := config.Spec.Clients.Broker.Topic
+	if topic == "" {
+		err := fmt.Errorf("spec.clients.broker.topic is required")
+		errCtx := logger.WithErrorField(ctx, err)
+		log.Errorf(errCtx, "Missing required broker configuration")
+		return err
+	}
+
+	// Create broker subscriber and subscribe
+	log.Info(ctx, "Creating broker subscriber...")
+	subscriber, err := broker.NewSubscriber(log, subscriptionID)
+	if err != nil {
+		errCtx := logger.WithErrorField(ctx, err)
+		log.Errorf(errCtx, "Failed to create subscriber")
+		return fmt.Errorf("failed to create subscriber: %w", err)
+	}
+	log.Info(ctx, "Broker subscriber created successfully")
+
+	log.Info(ctx, "Subscribing to broker topic...")
+	err = subscriber.Subscribe(ctx, topic, handler)
+	if err != nil {
+		errCtx := logger.WithErrorField(ctx, err)
+		log.Errorf(errCtx, "Failed to subscribe to topic")
+		return fmt.Errorf("failed to subscribe to topic: %w", err)
+	}
+	log.Info(ctx, "Successfully subscribed to broker topic")
+
+	// Mark as ready
+	healthServer.SetBrokerReady(true)
+	log.Info(ctx, "Adapter is ready to process events")
+
+	// Monitor subscription errors
+	fatalErrCh := make(chan error, 1)
+	go func() {
+		for subErr := range subscriber.Errors() {
+			errCtx := logger.WithErrorField(ctx, subErr)
+			log.Errorf(errCtx, "Subscription error")
+			select {
+			case fatalErrCh <- subErr:
+			default:
+			}
+		}
+	}()
+
+	log.Info(ctx, "Adapter started, waiting for events...")
+
+	// Wait for shutdown signal or fatal subscription error
+	select {
+	case <-ctx.Done():
+		log.Info(ctx, "Context cancelled, shutting down...")
+	case err := <-fatalErrCh:
+		errCtx := logger.WithErrorField(ctx, err)
+		log.Errorf(errCtx, "Fatal subscription error, shutting down")
+		healthServer.SetShuttingDown(true)
+		cancel()
+	}
+
+	// Close subscriber gracefully
+	log.Info(ctx, "Closing broker subscriber...")
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
+
+	closeDone := make(chan error, 1)
+	go func() {
+		closeDone <- subscriber.Close()
+	}()
+
+	select {
+	case err := <-closeDone:
+		if err != nil {
+			errCtx := logger.WithErrorField(ctx, err)
+			log.Errorf(errCtx, "Error closing subscriber")
+		} else {
+			log.Info(ctx, "Subscriber closed successfully")
+		}
+	case <-shutdownCtx.Done():
+		err := fmt.Errorf("subscriber close timed out after 30 seconds")
+		errCtx := logger.WithErrorField(ctx, err)
+		log.Error(errCtx, "Subscriber close timed out")
+	}
+
+	log.Info(ctx, "Adapter shutdown complete")
+
+	return nil
+}
+
+// -----------------------------------------------------------------------------
+// Dry-run mode
+// -----------------------------------------------------------------------------
+
+// runDryRun processes a single CloudEvent from file using mock clients.
+func runDryRun() error {
+	ctx := context.Background()
+
+	// Create logger on stderr so stdout is reserved for trace output
+	log, err := logger.NewLogger(logger.Config{
+		Level:     "warn",
+		Format:    "text",
+		Output:    "stderr",
+		Component: "dry-run",
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create logger: %w", err)
+	}
+
+	// Load config (same path as serve)
+	config, err := loadConfig(ctx, log)
+	if err != nil {
+		return err
+	}
+
+	// Load CloudEvent from file
+	if dryRunEvent == "" {
+		return fmt.Errorf("--dry-run-event is required for dry-run mode")
+	}
+	evt, err := dryrun.LoadCloudEvent(dryRunEvent)
+	if err != nil {
+		return fmt.Errorf("failed to load event: %w", err)
+	}
+
+	// Create dryrun API client
+	var dryrunResponsesFile *dryrun.DryrunResponsesFile
+	if dryRunAPIResponses != "" {
+		dryrunResponsesFile, err = dryrun.LoadDryrunResponses(dryRunAPIResponses)
+		if err != nil {
+			return fmt.Errorf("failed to load dryrun responses: %w", err)
+		}
+	}
+	dryrunAPI, err := dryrun.NewDryrunAPIClient(dryrunResponsesFile)
+	if err != nil {
+		return fmt.Errorf("failed to create dryrun API client: %w", err)
+	}
+
+	// Create recording transport client
+	var dryrunClient *dryrun.DryrunTransportClient
+	if dryRunDiscovery != "" {
+		overrides, err := dryrun.LoadDiscoveryOverrides(dryRunDiscovery)
+		if err != nil {
+			return fmt.Errorf("failed to load discovery overrides: %w", err)
+		}
+		dryrunClient = dryrun.NewDryrunTransportClientWithOverrides(overrides)
+	} else {
+		dryrunClient = dryrun.NewDryrunTransportClient()
+	}
+
+	// Build executor with mock clients (same builder as serve)
+	exec, err := buildExecutor(config, dryrunAPI, dryrunClient, log)
+	if err != nil {
+		return fmt.Errorf("failed to create executor: %w", err)
+	}
+
+	// Execute with event data
+	result := exec.Execute(ctx, evt.Data())
+
+	// Build and output execution trace
+	trace := &dryrun.ExecutionTrace{
+		EventID:   evt.ID(),
+		EventType: evt.Type(),
+		Result:    result,
+		APIClient: dryrunAPI,
+		Transport: dryrunClient,
+		Verbose:   dryRunVerbose,
+	}
+
+	switch dryRunOutput {
+	case "json":
+		data, err := trace.FormatJSON()
+		if err != nil {
+			return fmt.Errorf("failed to format trace as JSON: %w", err)
+		}
+		fmt.Println(string(data))
+	default:
+		fmt.Print(trace.FormatText())
+	}
+
+	if result.Status == executor.StatusFailed {
+		for phase, err := range result.Errors {
+			fmt.Fprintf(os.Stderr, "Error in %s: %v\n", phase, err)
+		}
+	}
+
+	return nil
 }
