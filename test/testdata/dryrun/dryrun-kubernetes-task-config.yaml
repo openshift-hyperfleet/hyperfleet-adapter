@@ -20,7 +20,7 @@ spec:
       type: "string"
       default: "Cluster"
 
-    - name: "generationValue"
+    - name: "generation"
       source: "event.generation"
       type: "string"
       required: true
@@ -75,7 +75,7 @@ spec:
             hyperfleet.io/resource-type: "namespace"
           annotations:
             hyperfleet.io/created-by: "hyperfleet-adapter"
-            hyperfleet.io/generation: "{{ .generationValue }}"
+            hyperfleet.io/generation: "{{ .generation }}"
 
       discovery:
         byName: "{{ .clusterId | lower }}"
@@ -93,7 +93,7 @@ spec:
           labels:
             hyperfleet.io/cluster-id: "{{ .clusterId }}"
           annotations:
-            hyperfleet.io/generation: "{{ .generationValue }}"
+            hyperfleet.io/generation: "{{ .generation }}"
         data:
           cluster_id: "{{ .clusterId }}"
           cluster_name: "{{ .clusterName }}"
@@ -182,7 +182,7 @@ spec:
                     : "Adapter execution completed successfully"
 
           observed_generation:
-            expression: "generationSpec"
+            expression: "generation"
           observed_time: "{{ now | date \"2006-01-02T15:04:05Z07:00\" }}"
 
           data:

@@ -8,7 +8,7 @@ metadata:
     hyperfleet.io/cluster-id: "{{ .clusterId }}"
     hyperfleet.io/resource-type: "deployment"
   annotations:
-    hyperfleet.io/generation: "{{ .generationSpec }}"
+    hyperfleet.io/generation: "{{ .generation }}"
 spec:
   replicas: 1
   selector:
