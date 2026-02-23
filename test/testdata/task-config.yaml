@@ -41,7 +41,7 @@ spec:
             status.conditions.filter(c, c.type == "Ready").size() > 0
               ? status.conditions.filter(c, c.type == "Ready")[0].status
               : "False"
-        - name: "generationSpec"
+        - name: "generation"
           field: "generation"
       # Structured conditions with valid operators
       conditions:
@@ -61,7 +61,7 @@ spec:
             hyperfleet.io/cluster-id: "{{ .clusterId }}"
             hyperfleet.io/managed-by: "hyperfleet-adapter"
           annotations:
-            hyperfleet.io/generation: "{{ .generationSpec }}"
+            hyperfleet.io/generation: "{{ .generation }}"
       discovery:
         namespace: "*"
         byName: "{{ .clusterId | lower }}"
@@ -74,7 +74,7 @@ spec:
           name: "cluster-{{ .clusterId }}-config"
           namespace: "{{ .clusterId | lower }}"
           annotations:
-            hyperfleet.io/generation: "{{ .generationSpec }}"
+            hyperfleet.io/generation: "{{ .generation }}"
         data:
           cluster_id: "{{ .clusterId }}"
       discovery:
@@ -129,7 +129,7 @@ spec:
                   adapter.?errorMessage.orValue("") != "" ? adapter.?errorMessage.orValue("") : "All adapter operations in progress or completed successfully"
           # Event generation ID metadata field needs to use expression to avoid interpolation issues
           observed_generation:
-            expression: "generationSpec"
+            expression: "generation"
           observed_time: "{{ now | date \"2006-01-02T15:04:05Z07:00\" }}"
 
     postActions:

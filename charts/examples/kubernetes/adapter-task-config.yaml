@@ -56,7 +56,7 @@ spec:
       capture:
         - name: "clusterName"
           field: "name"
-        - name: "generationSpec"
+        - name: "generation"
           field: "generation"
         - name: "readyConditionStatus"
           expression: |
@@ -88,7 +88,7 @@ spec:
             hyperfleet.io/cluster-id: "{{ .clusterId }}"
             hyperfleet.io/cluster-name: "{{ .clusterName }}"
           annotations:
-            hyperfleet.io/generation: "{{ .generationSpec }}"
+            hyperfleet.io/generation: "{{ .generation }}"
       discovery:
         namespace: "*"  # Cluster-scoped resource (Namespace)
         bySelectors:
@@ -218,7 +218,7 @@ spec:
                   adapter.?errorMessage.orValue("") != "" ? adapter.?errorMessage.orValue("") : "All adapter operations in progress or completed successfully"
           # Event generation ID metadata field needs to use expression to avoid interpolation issues
           observed_generation:
-            expression: "generationSpec"
+            expression: "generation"
           observed_time: "{{ now | date \"2006-01-02T15:04:05Z07:00\" }}"
 
     postActions:

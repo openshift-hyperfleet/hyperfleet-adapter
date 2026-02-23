@@ -17,7 +17,7 @@ metadata:
     hyperfleet.io/cluster-id: "{{ .clusterId }}"
     hyperfleet.io/resource-type: "job"
   annotations:
-    hyperfleet.io/generation: "{{ .generationSpec }}"  # <- this gets resolved from adapterconfig params
+    hyperfleet.io/generation: "{{ .generation }}"  # <- this gets resolved from adapterconfig params
 spec:
   backoffLimit: 0
   activeDeadlineSeconds: 310  # 300 + 10 second buffer
