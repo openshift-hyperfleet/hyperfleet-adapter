@@ -576,7 +576,12 @@ The adapter reads status from the standard Kubernetes status subresource. The th
 
 The possible values for these conditions statuses are: `True`, `False` and `Unknown`.
 
-The `Unknown` value is used when there the condition value is still pending and there is no valid answer yet. Since adapters report always to the API, the status payload should account for this case.
+The `Unknown` value is used when there the condition value is still pending and there is no valid answer yet. Since adapters report always to the API, the status payload should account for this case:
+
+- If there are errors applying the resources
+- If conditions from resources are not conclusive
+
+When the HyperFleet API receives an status update with any of the mandatory condition's status to `Unknown` value, the API will not update the internal state. Therefore, Sentinel will keep emitting reconciliation events for status updates.
 
 **Applied** and **Available** are derived from your K8s object's status. **Health** reflects the adapter framework's own execution and uses the standard boilerplate (see section 8).
 

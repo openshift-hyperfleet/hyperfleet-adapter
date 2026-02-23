@@ -1,119 +1,76 @@
-# Adapter example to create resources in a regional cluster
+# Adapter Examples
 
-This `values.yaml` deploys an `adapter-task-config.yaml` that creates:
+This directory contains example configurations for deploying the HyperFleet Adapter using different transport clients.
 
-- A new namespace with the name of the cluster ID from the CloudEvent
-- A service account, role and role bindings in that new namespace
-- A Kubernetes Job with a status-reporter sidecar in that new namespace
-- A nginx deployment in the same namespace as the adapter itself
+## Examples
 
-## Overview
+| Directory | Transport | Description |
+|-----------|-----------|-------------|
+| [`kubernetes/`](./kubernetes/) | Kubernetes only | Creates resources directly in the local cluster using the Kubernetes client |
+| [`maestro/`](./maestro/) | Maestro only | Deploys resources to a remote cluster via Maestro using ManifestWork |
+| [`maestro-kubernetes/`](./maestro-kubernetes/) | Maestro + Kubernetes | Hybrid example combining both transport clients in a single task |
 
-This example showcases:
+---
 
-- **Inline manifests**: Defines the Kubernetes Namespace resource directly in the adapter task config
-- **External file references**: References external YAML files for Job, ServiceAccount, Role, RoleBinding, and Deployment
-- **Preconditions**: Fetches cluster status from the Hyperfleet API before proceeding
-- **Resource discovery**: Finds existing resources using label selectors
-- **Status reporting**: Builds a status payload with CEL expressions and reports back to the Hyperfleet API
-- **Job with sidecar**: Demonstrates a Job pattern with a status-reporter sidecar that monitors job completion and updates job conditions
-- **Simulation modes**: Supports different test scenarios via `SIMULATE_RESULT` environment variable
-- **RBAC configuration**: Demonstrates configuring additional RBAC resources in helm values
+### `kubernetes/` — Direct Kubernetes Resource Management
 
-## Files
+Creates the following resources directly in the local cluster via the Kubernetes transport client:
 
-| File | Description |
-|------|-------------|
-| `values.yaml` | Helm values that configure the adapter, broker, image, environment variables, and RBAC permissions |
-| `adapter-config.yaml` | Adapter deployment config (clients, broker, Kubernetes settings) |
-| `adapter-task-config.yaml` | Task configuration with inline namespace manifest, external file references, params, preconditions, and post-processing |
-| `adapter-task-resource-job.yaml` | Kubernetes Job template with a main container and status-reporter sidecar |
-| `adapter-task-resource-job-serviceaccount.yaml` | ServiceAccount for the Job to use in the cluster namespace |
-| `adapter-task-resource-job-role.yaml` | Role granting permissions for the status-reporter to update job status |
-| `adapter-task-resource-job-rolebinding.yaml` | RoleBinding connecting the ServiceAccount to the Role |
-| `adapter-task-resource-deployment.yaml` | Nginx deployment template created in the adapter's namespace |
+- A Namespace named after the cluster ID from the CloudEvent
+- A ServiceAccount, Role, and RoleBinding in that namespace
+- A Kubernetes Job with a status-reporter sidecar
+- An Nginx Deployment in the adapter's own namespace
 
-## Key Features
+**Key features demonstrated:**
+- Inline manifests and external file references (`ref:`)
+- Preconditions with Hyperfleet API calls and CEL expressions
+- Resource discovery by name and label selectors
+- Job with a status-reporter sidecar pattern
+- Simulation modes via `SIMULATE_RESULT` environment variable
+- Status reporting back to the Hyperfleet API
 
-### Inline vs External Manifests
+See [`kubernetes/README.md`](./kubernetes/README.md) for full details.
 
-This example uses both approaches:
+---
 
-**Inline manifest** for the Namespace:
+### `maestro/` — Maestro Transport (ManifestWork)
 
-```yaml
-resources:
-  - name: "clusterNamespace"
-    manifest:
-      apiVersion: v1
-      kind: Namespace
-      metadata:
-        name: "{{ .clusterId }}"
-```
+Deploys resources to a remote cluster through Maestro (Open Cluster Management) using a ManifestWork:
 
-**External file reference** for complex resources:
+- A ManifestWork delivered to the target cluster via Maestro gRPC transport
+- The ManifestWork contains a Namespace and a ConfigMap on the remote cluster
+- Nested resource discovery within the ManifestWork result
 
-```yaml
-resources:
-  - name: "jobNamespace"
-    manifest:
-      ref: "/etc/adapter/job.yaml"
-```
+**Key features demonstrated:**
+- Maestro transport client configuration (gRPC + HTTP)
+- ManifestWork template with external file reference (`ref:`)
+- Resource discovery by name and by label selectors (`nestedDiscoveries`)
+- Post-processing with CEL expressions on nested ManifestWork status
+- Status reporting back to the Hyperfleet API
 
-### Job with Status-Reporter Sidecar
+See [`maestro/README.md`](./maestro/README.md) for full details.
 
-The Job (`job.yaml`) includes two containers:
+---
 
-1. **Main container**: Runs the workload and writes results to a shared volume
-2. **Status-reporter sidecar**: Monitors the main container, reads results, and updates the Job's status conditions
+### `maestro-kubernetes/` — Hybrid Maestro + Kubernetes
 
-This pattern enables the adapter to track job completion through Kubernetes native conditions.
+Combines both transport clients in a single adapter task:
 
-### Simulation Modes
+- A ManifestWork delivered via Maestro to a remote cluster (Namespace + ConfigMap)
+- A Namespace created directly in the local cluster via the Kubernetes client
 
-The `SIMULATE_RESULT` environment variable controls test scenarios:
+**Key features demonstrated:**
+- Using multiple transport clients (`maestro` and `kubernetes`) within the same task
+- Per-resource transport selection via the `transport.client` field
+- Kubernetes transport as the default fallback when `transport` is omitted
 
-| Value | Behavior |
-|-------|----------|
-| `success` | Writes success result and exits cleanly |
-| `failure` | Writes failure result and exits with error |
-| `hang` | Sleeps indefinitely (tests timeout handling) |
-| `crash` | Exits without writing results |
-| `invalid-json` | Writes malformed JSON |
-| `missing-status` | Writes JSON without required status field |
+---
 
-Configure in `values.yaml`:
+## Common Configuration
 
-```yaml
-env:
-  - name: SIMULATE_RESULT
-    value: success
-```
+All examples share the same broker and image placeholders that must be updated before deployment.
 
-## Configuration
-
-### RBAC Resources
-
-The `values.yaml` configures RBAC permissions needed for resource management.
-In this example is overly permissive since is creating deployments and jobs
-
-```yaml
-rbac:
-  resources:
-    - namespaces
-    - serviceaccounts
-    - configmaps
-    - deployments
-    - roles
-    - rolebindings
-    - jobs
-    - jobs/status
-    - pods
-```
-
-### Broker Configuration
-
-Update the `broker.googlepubsub` section in `values.yaml` with your GCP Pub/Sub settings:
+### Broker
 
 ```yaml
 broker:
@@ -124,9 +81,7 @@ broker:
     deadLetterTopic: CHANGE_ME
 ```
 
-### Image Configuration
-
-Update the image registry in `values.yaml`:
+### Image
 
 ```yaml
 image:
@@ -139,26 +94,11 @@ image:
 ## Usage
 
 ```bash
-helm install <name> ./charts -f charts/examples/values.yaml \
+helm install <name> ./charts -f charts/examples/<example>/values.yaml \
   --namespace <namespace> \
   --set image.registry=quay.io/<developer-registry> \
   --set broker.googlepubsub.projectId=<gcp-project> \
-  --set broker.googlepubsub.subscriptionId=<gcp-subscription? \
+  --set broker.googlepubsub.subscriptionId=<gcp-subscription> \
   --set broker.googlepubsub.topic=<gcp-topic> \
   --set broker.googlepubsub.deadLetterTopic=<gcp-dlq-topic>
 ```
-
-## How It Works
-
-1. The adapter receives a CloudEvent with a cluster ID and generation
-2. **Preconditions**: Fetches cluster status from the Hyperfleet API and captures the cluster name, generation, and ready condition
-3. **Validation**: Checks that the cluster's Ready condition is "False" before proceeding
-4. **Resource creation**: Creates resources in order:
-   - Namespace named with the cluster ID
-   - ServiceAccount in the new namespace
-   - Role and RoleBinding for the status-reporter
-   - Job with main container and status-reporter sidecar
-   - Nginx deployment in the adapter's namespace
-5. **Job execution**: The Job runs, writes results to a shared volume, and the status-reporter updates job conditions
-6. **Post-processing**: Builds a status payload checking Applied, Available, and Health conditions
-7. **Status reporting**: Reports the status back to the Hyperfleet API
