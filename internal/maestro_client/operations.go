@@ -3,6 +3,7 @@ package maestro_client
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/constants"
@@ -60,6 +61,9 @@ func (c *Client) CreateManifestWork(
 	// Create via the work client
 	created, err := c.workClient.ManifestWorks(consumerName).Create(ctx, work, metav1.CreateOptions{})
 	if err != nil {
+		if isConsumerNotFoundError(err) {
+			return nil, apperrors.NotFound("consumer %q is not registered in Maestro", consumerName)
+		}
 		return nil, apperrors.MaestroError("failed to create ManifestWork %s/%s: %v",
 			consumerName, work.Name, err)
 	}
@@ -347,6 +351,16 @@ func (c *Client) DiscoverManifestInWork(
 	discovery manifest.Discovery,
 ) (*unstructured.UnstructuredList, error) {
 	return manifest.DiscoverNestedManifest(work, discovery)
+}
+
+// isConsumerNotFoundError detects when Maestro rejects a ManifestWork create because
+// the consumer (target cluster) is not registered. Maestro surfaces this as a raw
+// PostgreSQL foreign-key constraint violation; we detect and sanitize it.
+func isConsumerNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "fk_resources_consumers")
 }
 
 // workToUnstructured converts a typed *workv1.ManifestWork to *unstructured.Unstructured.
