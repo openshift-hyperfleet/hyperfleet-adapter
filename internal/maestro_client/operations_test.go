@@ -6,6 +6,7 @@
 package maestro_client
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
@@ -13,6 +14,42 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	workv1 "open-cluster-management.io/api/work/v1"
 )
+
+func TestIsConsumerNotFoundError(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{
+			name:     "nil error returns false",
+			err:      nil,
+			expected: false,
+		},
+		{
+			name:     "unrelated error returns false",
+			err:      fmt.Errorf("some other database error"),
+			expected: false,
+		},
+		{
+			name:     "FK constraint error is detected",
+			err:      fmt.Errorf(`pq: insert or update on table "resources" violates foreign key constraint "fk_resources_consumers"`),
+			expected: true,
+		},
+		{
+			name:     "FK constraint wrapped in outer message is detected",
+			err:      fmt.Errorf(`maestro error: %w`, fmt.Errorf(`fk_resources_consumers violation`)),
+			expected: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isConsumerNotFoundError(tt.err); got != tt.expected {
+				t.Errorf("isConsumerNotFoundError() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
 
 func TestGetGenerationFromManifestWork(t *testing.T) {
 	tests := []struct {
