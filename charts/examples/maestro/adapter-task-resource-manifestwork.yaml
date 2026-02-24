@@ -17,7 +17,7 @@ apiVersion: work.open-cluster-management.io/v1
 kind: ManifestWork
 metadata:
   # ManifestWork name - must be unique within consumer namespace
-  name: "hyperfleet-cluster-setup-{{ .clusterId }}"
+  name: "mw-{{ .clusterId }}"
 
   # Labels for identification, filtering, and management
   labels:

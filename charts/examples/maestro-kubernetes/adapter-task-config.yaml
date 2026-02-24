@@ -87,7 +87,7 @@ spec:
       # With this approach, the manifestWork object can be used to get the resources inside the manifestWork.
       # When try to dig  Manifest
       discovery:
-        byName: "{{ .clusterId }}"
+        byName: "mw-{{ .clusterId }}"
 
       # Discover sub-resources within the manifestWork
       # This approach can be used to use the discovery name to parameter level
