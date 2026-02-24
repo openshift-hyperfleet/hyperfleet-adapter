@@ -2,9 +2,9 @@
 apiVersion: hyperfleet.redhat.com/v1alpha1
 kind: AdapterTaskConfig
 metadata:
-  name: example1-namespace
+  name: maestro-example
   labels:
-    hyperfleet.io/adapter-type: example1-namespace
+    hyperfleet.io/adapter-type: maestro-example
     hyperfleet.io/component: adapter
 spec:
   # Parameters with all required variables

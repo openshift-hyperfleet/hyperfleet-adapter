@@ -39,7 +39,7 @@ metadata:
     app.kubernetes.io/version: "v1.0.0"
     app.kubernetes.io/component: "infrastructure"
     app.kubernetes.io/part-of: "hyperfleet"
-    app.kubernetes.io/managed-by: "hyperfleet-adapter"
+    app.kubernetes.io/managed-by: "{{ .adapterName }}"
     app.kubernetes.io/created-by: "{{ .adapterName }}"
 
   # Annotations for metadata and operational information

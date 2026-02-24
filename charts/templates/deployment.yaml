@@ -147,9 +147,6 @@ spec:
             sources:
               - configMap:
                   name: {{ include "hyperfleet-adapter.adapterConfigMapName" . }}
-                  items:
-                    - key: adapter-config.yaml
-                      path: adapter-config.yaml
               - configMap:
                   name: {{ include "hyperfleet-adapter.adapterTaskConfigMapName" . }}
               - configMap:
