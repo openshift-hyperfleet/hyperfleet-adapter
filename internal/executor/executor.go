@@ -76,14 +76,14 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 		}
 	}
 
-	// This is intended to set OwnerReference and ResourceID for the event when it exist
+	// This is intended to set OwnerReferences and ResourceID for the event when it exists
 	// For example, when a NodePool event arrived
 	// the logger will set the cluster_id=owner_id, nodepool_id=resource_id, resource_type=nodepool
 	// but when a resource is cluster type, it will just record cluster_id=resource_id
-	if eventData.OwnedReference != nil {
+	if eventData.OwnerReferences != nil {
 		ctx = logger.WithResourceType(ctx, eventData.Kind)
 		ctx = logger.WithDynamicResourceID(ctx, eventData.Kind, eventData.ID)
-		ctx = logger.WithDynamicResourceID(ctx, eventData.OwnedReference.Kind, eventData.OwnedReference.ID)
+		ctx = logger.WithDynamicResourceID(ctx, eventData.OwnerReferences.Kind, eventData.OwnerReferences.ID)
 	} else {
 		ctx = logger.WithDynamicResourceID(ctx, eventData.Kind, eventData.ID)
 	}
