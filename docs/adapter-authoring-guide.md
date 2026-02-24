@@ -1009,12 +1009,12 @@ NodePool adapters follow the same pattern as cluster adapters with a few differe
 
 ### Event structure
 
-NodePool events include an `owned_reference` pointing to the parent cluster:
+NodePool events include an `owner_references` pointing to the parent cluster:
 
 ```yaml
 params:
   - name: "clusterId"
-    source: "event.owned_reference.id"    # Parent cluster
+    source: "event.owner_references.id"    # Parent cluster
     type: "string"
     required: true
 

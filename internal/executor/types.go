@@ -47,11 +47,11 @@ type ResourceRef struct {
 
 // EventData represents the data payload of a HyperFleet CloudEvent
 type EventData struct {
-	ID             string       `json:"id,omitempty"`
-	Kind           string       `json:"kind,omitempty"`
-	Href           string       `json:"href,omitempty"`
-	Generation     int64        `json:"generation,omitempty"`
-	OwnedReference *ResourceRef `json:"owned_reference,omitempty"`
+	ID              string       `json:"id,omitempty"`
+	Kind            string       `json:"kind,omitempty"`
+	Href            string       `json:"href,omitempty"`
+	Generation      int64        `json:"generation,omitempty"`
+	OwnerReferences *ResourceRef `json:"owner_references,omitempty"`
 }
 
 // ExecutorConfig holds configuration for the executor
