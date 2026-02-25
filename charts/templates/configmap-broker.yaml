@@ -47,7 +47,8 @@ data:
         url: {{ .Values.broker.rabbitmq.url | quote }}
         queue: {{ .Values.broker.rabbitmq.queue | quote }}
         exchange: {{ .Values.broker.rabbitmq.exchange | quote }}
-        routingKey: {{ .Values.broker.rabbitmq.routingKey | quote }}
+        routing_key: {{ .Values.broker.rabbitmq.routingKey | quote }}
+        exchange_type: {{ .Values.broker.rabbitmq.exchangeType | default "topic" | quote }}
   {{- end }}
   {{- end }}
 {{- end }}

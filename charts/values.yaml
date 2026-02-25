@@ -80,6 +80,7 @@ broker:
   # url: ""
   # queue: ""
   # exchange: ""
+  # exchangeType: "topic"
   # routingKey: ""
 
 
