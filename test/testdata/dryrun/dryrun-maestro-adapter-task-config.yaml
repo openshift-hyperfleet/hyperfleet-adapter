@@ -190,9 +190,8 @@ spec:
                 type: "ServerSideApply"
 
       discovery:
-        namespace: "*"
         #byName: "cluster-{{ .clusterId }}-config"
-        #byName: "manifestwork0"
+        #byName: "manifestwork-symbol000"
         bySelectors:
           labelSelector:
             maestro.io/resource-type: manifestwork
@@ -340,6 +339,6 @@ spec:
     postActions:
       - name: "update-status"
         apiCall:
-          method: "PATCH"
+          method: "POST"
           url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}/statuses"
           body: "{{ .statusPayload }}"

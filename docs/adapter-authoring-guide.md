@@ -416,7 +416,7 @@ discovery:
 
 # By label selector
 discovery:
-  namespace: "{{ .clusterId }}"       # omit or "*" for cluster-scoped
+  namespace: "{{ .clusterId }}"       # omit for all namespaces / cluster-scoped
   bySelectors:
     labelSelector:
       hyperfleet.io/cluster-id: "{{ .clusterId }}"

@@ -90,7 +90,6 @@ spec:
           annotations:
             hyperfleet.io/generation: "{{ .generation }}"
       discovery:
-        namespace: "*"  # Cluster-scoped resource (Namespace)
         bySelectors:
           labelSelector:
             hyperfleet.io/cluster-id: "{{ .clusterId }}"
@@ -116,7 +115,6 @@ spec:
       manifest:
         ref: "/etc/adapter/job-role.yaml"
       discovery:
-        namespace: "*"
         bySelectors:
           labelSelector:
             hyperfleet.io/cluster-id: "{{ .clusterId }}"
@@ -128,7 +126,6 @@ spec:
       manifest:
         ref: "/etc/adapter/job-rolebinding.yaml"
       discovery:
-        namespace: "*"
         bySelectors:
           labelSelector:
             hyperfleet.io/cluster-id: "{{ .clusterId }}"
@@ -140,7 +137,6 @@ spec:
       manifest:
         ref: "/etc/adapter/job.yaml"
       discovery:
-        namespace: "*"
         bySelectors:
           labelSelector:
             hyperfleet.io/cluster-id: "{{ .clusterId }}"
@@ -156,7 +152,6 @@ spec:
       manifest:
         ref: "/etc/adapter/deployment.yaml"
       discovery:
-        namespace: "*"
         bySelectors:
           labelSelector:
             hyperfleet.io/resource-type: "deployment"
