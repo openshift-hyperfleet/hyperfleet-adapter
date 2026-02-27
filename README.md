@@ -169,7 +169,7 @@ A  HyperFleet Adapter requires several files for configuration:
 - **Adapter Task config**: Configures the adapter task steps that will create resources
 - **Broker configuration**: Configures the specific broker to use by the adapter framework to receive CloudEvents
 
-To see all configuration options read [configuration.md](configuration.md) file
+To see all configuration options read [configuration.md](docs/configuration.md) file
 
 #### Adapter configuration
 
@@ -178,14 +178,16 @@ settings for the adapter process, such as client connections, retries, and broke
 subscription details. It is loaded with Viper, so values can be overridden by CLI flags
 and environment variables in this priority order: CLI flags > env vars > file > defaults.
 
+Fields use **snake_case** naming.
+
 - **Path**: `HYPERFLEET_ADAPTER_CONFIG` (required)
-- **Common fields**: `spec.adapter.version`, `spec.debugConfig`, `spec.clients.*`
-  (HyperFleet API, Maestro, broker, Kubernetes)
+- **Common fields**: `adapter.name`, `adapter.version`, `debug_config`, `clients.*`
+  (HyperFleet API: `clients.hyperfleet_api`, Maestro: `clients.maestro`, broker: `clients.broker`, Kubernetes: `clients.kubernetes`)
 
 Reference examples:
 
 - `configs/adapter-deployment-config.yaml` (full reference with env/flag notes)
-- `charts/examples/adapter-config.yaml` (minimal deployment example)
+- `charts/examples/kubernetes/adapter-config.yaml` (minimal deployment example)
 
 #### Adapter task configuration
 
@@ -194,12 +196,12 @@ processing events: parameters, preconditions, resources to create, and post-acti
 This file is loaded as **static YAML** (no Viper overrides) and is required at runtime.
 
 - **Path**: `HYPERFLEET_TASK_CONFIG` (required)
-- **Key sections**: `spec.params`, `spec.preconditions`, `spec.resources`, `spec.post`
+- **Key sections**: `params`, `preconditions`, `resources`, `post`
 - **Resource manifests**: inline YAML or external file via `manifest.ref`
 
 Reference examples:
 
-- `charts/examples/adapter-task-config.yaml` (worked example)
+- `charts/examples/kubernetes/adapter-task-config.yaml` (worked example)
 - `configs/adapter-task-config-template.yaml` (complete schema reference)
 
 ### Broker Configuration

@@ -8,7 +8,7 @@
 # Template Variables Available:
 # - .clusterId: Target cluster identifier
 # - .generationId: Resource generation for conflict resolution
-# - .adapterName: Name of the adapter creating this ManifestWork
+# - .adapter.name: Name of the adapter creating this ManifestWork
 # - .placementCluster: Target cluster name (becomes ManifestWork namespace)
 # - .timestamp: Creation timestamp
 # - .manifests: Array of rendered Kubernetes manifests (injected by framework)
@@ -23,13 +23,13 @@ metadata:
   labels:
     # HyperFleet tracking labels
     hyperfleet.io/cluster-id: "{{ .clusterId }}"
-    hyperfleet.io/adapter: "{{ .adapterName }}"
+    hyperfleet.io/adapter: "{{ .adapter.name }}"
     hyperfleet.io/component: "infrastructure"
     hyperfleet.io/generation: "{{ .generationId }}"
     hyperfleet.io/resource-group: "cluster-setup"
 
     # Maestro-specific labels
-    maestro.io/source-id: "{{ .adapterName }}"
+    maestro.io/source-id: "{{ .adapter.name }}"
     maestro.io/resource-type: "manifestwork"
     maestro.io/priority: "normal"
 
@@ -39,21 +39,21 @@ metadata:
     app.kubernetes.io/version: "v1.0.0"
     app.kubernetes.io/component: "infrastructure"
     app.kubernetes.io/part-of: "hyperfleet"
-    app.kubernetes.io/managed-by: "{{ .adapterName }}"
-    app.kubernetes.io/created-by: "{{ .adapterName }}"
+    app.kubernetes.io/managed-by: "{{ .adapter.name }}"
+    app.kubernetes.io/created-by: "{{ .adapter.name }}"
 
   # Annotations for metadata and operational information
   annotations:
     # Tracking and lifecycle
     hyperfleet.io/created-by: "hyperfleet-adapter-framework"
-    hyperfleet.io/managed-by: "{{ .adapterName }}"
+    hyperfleet.io/managed-by: "{{ .adapter.name }}"
     hyperfleet.io/generation: "{{ .generationId }}"
     hyperfleet.io/cluster-name: "{{ .clusterId }}"
     hyperfleet.io/deployment-time: "{{ .timestamp }}"
 
     # Maestro-specific annotations
     maestro.io/applied-time: "{{ .timestamp }}"
-    maestro.io/source-adapter: "{{ .adapterName }}"
+    maestro.io/source-adapter: "{{ .adapter.name }}"
 
     # Operational annotations
     deployment.hyperfleet.io/strategy: "rolling"
@@ -78,7 +78,7 @@ spec:
         name: "{{ .clusterId | lower }}"
         labels:
           hyperfleet.io/cluster-id: "{{ .clusterId }}"
-          hyperfleet.io/managed-by: "{{ .metadata.name }}"
+          hyperfleet.io/managed-by: "{{ .adapter.name }}"
           hyperfleet.io/resource-type: "namespace"
         annotations:
           hyperfleet.io/created-by: "hyperfleet-adapter"

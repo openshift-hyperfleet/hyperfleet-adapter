@@ -19,43 +19,49 @@ const EnvPrefix = "HYPERFLEET"
 // The full env var name is EnvPrefix + "_" + suffix
 // Note: Uses "::" as key delimiter to avoid conflicts with dots in YAML keys
 var viperKeyMappings = map[string]string{
-	"spec::debugConfig":                                   "DEBUG_CONFIG",
-	"spec::clients::maestro::grpcServerAddress":           "MAESTRO_GRPC_SERVER_ADDRESS",
-	"spec::clients::maestro::httpServerAddress":           "MAESTRO_HTTP_SERVER_ADDRESS",
-	"spec::clients::maestro::sourceId":                    "MAESTRO_SOURCE_ID",
-	"spec::clients::maestro::clientId":                    "MAESTRO_CLIENT_ID",
-	"spec::clients::maestro::auth::tlsConfig::caFile":     "MAESTRO_CA_FILE",
-	"spec::clients::maestro::auth::tlsConfig::certFile":   "MAESTRO_CERT_FILE",
-	"spec::clients::maestro::auth::tlsConfig::keyFile":    "MAESTRO_KEY_FILE",
-	"spec::clients::maestro::auth::tlsConfig::httpCaFile": "MAESTRO_HTTP_CA_FILE",
-	"spec::clients::maestro::timeout":                     "MAESTRO_TIMEOUT",
-	"spec::clients::maestro::serverHealthinessTimeout":    "MAESTRO_SERVER_HEALTHINESS_TIMEOUT",
-	"spec::clients::maestro::retryAttempts":               "MAESTRO_RETRY_ATTEMPTS",
-	"spec::clients::maestro::insecure":                    "MAESTRO_INSECURE",
-	"spec::clients::hyperfleetApi::baseUrl":               "API_BASE_URL",
-	"spec::clients::hyperfleetApi::version":               "API_VERSION",
-	"spec::clients::hyperfleetApi::timeout":               "API_TIMEOUT",
-	"spec::clients::hyperfleetApi::retryAttempts":         "API_RETRY_ATTEMPTS",
-	"spec::clients::hyperfleetApi::retryBackoff":          "API_RETRY_BACKOFF",
-	"spec::clients::broker::subscriptionId":               "BROKER_SUBSCRIPTION_ID",
-	"spec::clients::broker::topic":                        "BROKER_TOPIC",
+	"debug_config":                                     "DEBUG_CONFIG",
+	"clients::maestro::grpc_server_address":            "MAESTRO_GRPC_SERVER_ADDRESS",
+	"clients::maestro::http_server_address":            "MAESTRO_HTTP_SERVER_ADDRESS",
+	"clients::maestro::source_id":                      "MAESTRO_SOURCE_ID",
+	"clients::maestro::client_id":                      "MAESTRO_CLIENT_ID",
+	"clients::maestro::auth::tls_config::ca_file":      "MAESTRO_CA_FILE",
+	"clients::maestro::auth::tls_config::cert_file":    "MAESTRO_CERT_FILE",
+	"clients::maestro::auth::tls_config::key_file":     "MAESTRO_KEY_FILE",
+	"clients::maestro::auth::tls_config::http_ca_file": "MAESTRO_HTTP_CA_FILE",
+	"clients::maestro::timeout":                        "MAESTRO_TIMEOUT",
+	"clients::maestro::server_healthiness_timeout":     "MAESTRO_SERVER_HEALTHINESS_TIMEOUT",
+	"clients::maestro::retry_attempts":                 "MAESTRO_RETRY_ATTEMPTS",
+	"clients::maestro::insecure":                       "MAESTRO_INSECURE",
+	"clients::hyperfleet_api::base_url":                "API_BASE_URL",
+	"clients::hyperfleet_api::version":                 "API_VERSION",
+	"clients::hyperfleet_api::timeout":                 "API_TIMEOUT",
+	"clients::hyperfleet_api::retry_attempts":          "API_RETRY_ATTEMPTS",
+	"clients::hyperfleet_api::retry_backoff":           "API_RETRY_BACKOFF",
+	"clients::broker::subscription_id":                 "BROKER_SUBSCRIPTION_ID",
+	"clients::broker::topic":                           "BROKER_TOPIC",
 }
 
 // cliFlags defines mappings from CLI flag names to config paths
 // Note: Uses "::" as key delimiter to avoid conflicts with dots in YAML keys
 var cliFlags = map[string]string{
-	"debug-config":                "spec::debugConfig",
-	"maestro-grpc-server-address": "spec::clients::maestro::grpcServerAddress",
-	"maestro-http-server-address": "spec::clients::maestro::httpServerAddress",
-	"maestro-source-id":           "spec::clients::maestro::sourceId",
-	"maestro-client-id":           "spec::clients::maestro::clientId",
-	"maestro-ca-file":             "spec::clients::maestro::auth::tlsConfig::caFile",
-	"maestro-cert-file":           "spec::clients::maestro::auth::tlsConfig::certFile",
-	"maestro-key-file":            "spec::clients::maestro::auth::tlsConfig::keyFile",
-	"maestro-timeout":             "spec::clients::maestro::timeout",
-	"maestro-insecure":            "spec::clients::maestro::insecure",
-	"hyperfleet-api-timeout":      "spec::clients::hyperfleetApi::timeout",
-	"hyperfleet-api-retry":        "spec::clients::hyperfleetApi::retryAttempts",
+	"debug-config":                "debug_config",
+	"maestro-grpc-server-address": "clients::maestro::grpc_server_address",
+	"maestro-http-server-address": "clients::maestro::http_server_address",
+	"maestro-source-id":           "clients::maestro::source_id",
+	"maestro-client-id":           "clients::maestro::client_id",
+	"maestro-ca-file":             "clients::maestro::auth::tls_config::ca_file",
+	"maestro-cert-file":           "clients::maestro::auth::tls_config::cert_file",
+	"maestro-key-file":            "clients::maestro::auth::tls_config::key_file",
+	"maestro-timeout":             "clients::maestro::timeout",
+	"maestro-insecure":            "clients::maestro::insecure",
+	"hyperfleet-api-timeout":      "clients::hyperfleet_api::timeout",
+	"hyperfleet-api-retry":        "clients::hyperfleet_api::retry_attempts",
+}
+
+// standardConfigPaths are tried when no explicit config path is provided
+var standardConfigPaths = []string{
+	"/etc/hyperfleet/config.yaml", // production
+	"./configs/config.yaml",       // development
 }
 
 // loadAdapterConfigWithViper loads the deployment configuration from a YAML file
@@ -69,6 +75,16 @@ func loadAdapterConfigWithViper(filePath string, flags *pflag.FlagSet) (*Adapter
 	// Set config file path
 	if filePath == "" {
 		filePath = os.Getenv(EnvAdapterConfig)
+	}
+
+	// Try standard paths if no path configured
+	if filePath == "" {
+		for _, p := range standardConfigPaths {
+			if _, err := os.Stat(p); err == nil {
+				filePath = p
+				break
+			}
+		}
 	}
 
 	if filePath == "" {
@@ -117,12 +133,12 @@ func loadAdapterConfigWithViper(filePath string, flags *pflag.FlagSet) (*Adapter
 	// Legacy broker env vars without HYPERFLEET_ prefix (kept for compatibility)
 	if os.Getenv(EnvPrefix+"_BROKER_SUBSCRIPTION_ID") == "" {
 		if val := os.Getenv("BROKER_SUBSCRIPTION_ID"); val != "" {
-			v.Set("spec::clients::broker::subscriptionId", val)
+			v.Set("clients::broker::subscription_id", val)
 		}
 	}
 	if os.Getenv(EnvPrefix+"_BROKER_TOPIC") == "" {
 		if val := os.Getenv("BROKER_TOPIC"); val != "" {
-			v.Set("spec::clients::broker::topic", val)
+			v.Set("clients::broker::topic", val)
 		}
 	}
 

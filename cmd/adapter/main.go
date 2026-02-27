@@ -269,9 +269,9 @@ func createAPIClient(apiConfig config_loader.HyperfleetAPIConfig, log logger.Log
 
 // createTransportClient creates the appropriate transport client based on config.
 func createTransportClient(ctx context.Context, config *config_loader.Config, log logger.Logger) (transport_client.TransportClient, error) {
-	if config.Spec.Clients.Maestro != nil {
+	if config.Clients.Maestro != nil {
 		log.Info(ctx, "Creating Maestro transport client...")
-		client, err := createMaestroClient(ctx, config.Spec.Clients.Maestro, log)
+		client, err := createMaestroClient(ctx, config.Clients.Maestro, log)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create Maestro client: %w", err)
 		}
@@ -280,7 +280,7 @@ func createTransportClient(ctx context.Context, config *config_loader.Config, lo
 	}
 
 	log.Info(ctx, "Creating Kubernetes transport client...")
-	client, err := createK8sClient(ctx, config.Spec.Clients.Kubernetes, log)
+	client, err := createK8sClient(ctx, config.Clients.Kubernetes, log)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Kubernetes client: %w", err)
 	}
@@ -368,17 +368,17 @@ func runServe() error {
 	}
 
 	// Recreate logger with component name from config
-	log, err = logger.NewLogger(buildLoggerConfig(config.Metadata.Name))
+	log, err = logger.NewLogger(buildLoggerConfig(config.Adapter.Name))
 	if err != nil {
 		return fmt.Errorf("failed to create logger with adapter config: %w", err)
 	}
 
 	log.Infof(ctx, "Adapter configuration loaded successfully: name=%s ",
-		config.Metadata.Name)
-	log.Infof(ctx, "HyperFleet API client configured: timeout=%s retryAttempts=%d",
-		config.Spec.Clients.HyperfleetAPI.Timeout.String(),
-		config.Spec.Clients.HyperfleetAPI.RetryAttempts)
-	if config.Spec.DebugConfig {
+		config.Adapter.Name)
+	log.Infof(ctx, "HyperFleet API client configured: timeout=%s retry_attempts=%d",
+		config.Clients.HyperfleetAPI.Timeout.String(),
+		config.Clients.HyperfleetAPI.RetryAttempts)
+	if config.DebugConfig {
 		configBytes, err := yaml.Marshal(config)
 		if err != nil {
 			errCtx := logger.WithErrorField(ctx, err)
@@ -390,7 +390,7 @@ func runServe() error {
 
 	// Initialize OpenTelemetry
 	sampleRatio := otel.GetTraceSampleRatio(log, ctx)
-	tp, err := otel.InitTracer(config.Metadata.Name, version.Version, sampleRatio)
+	tp, err := otel.InitTracer(config.Adapter.Name, version.Version, sampleRatio)
 	if err != nil {
 		errCtx := logger.WithErrorField(ctx, err)
 		log.Errorf(errCtx, "Failed to initialize OpenTelemetry")
@@ -406,7 +406,7 @@ func runServe() error {
 	}()
 
 	// Start health server
-	healthServer := health.NewServer(log, HealthServerPort, config.Metadata.Name)
+	healthServer := health.NewServer(log, HealthServerPort, config.Adapter.Name)
 	if err := healthServer.Start(ctx); err != nil {
 		errCtx := logger.WithErrorField(ctx, err)
 		log.Errorf(errCtx, "Failed to start health server")
@@ -424,7 +424,7 @@ func runServe() error {
 
 	// Start metrics server
 	metricsServer := health.NewMetricsServer(log, MetricsServerPort, health.MetricsConfig{
-		Component: config.Metadata.Name,
+		Component: config.Adapter.Name,
 		Version:   version.Version,
 		Commit:    version.Commit,
 	})
@@ -444,7 +444,7 @@ func runServe() error {
 
 	// Create real clients
 	log.Info(ctx, "Creating HyperFleet API client...")
-	apiClient, err := createAPIClient(config.Spec.Clients.HyperfleetAPI, log)
+	apiClient, err := createAPIClient(config.Clients.HyperfleetAPI, log)
 	if err != nil {
 		errCtx := logger.WithErrorField(ctx, err)
 		log.Errorf(errCtx, "Failed to create HyperFleet API client")
@@ -487,24 +487,24 @@ func runServe() error {
 	}()
 
 	// Get broker config
-	subscriptionID := config.Spec.Clients.Broker.SubscriptionID
+	subscriptionID := config.Clients.Broker.SubscriptionID
 	if subscriptionID == "" {
-		err := fmt.Errorf("spec.clients.broker.subscriptionId is required")
+		err := fmt.Errorf("clients.broker.subscription_id is required")
 		errCtx := logger.WithErrorField(ctx, err)
 		log.Errorf(errCtx, "Missing required broker configuration")
 		return err
 	}
 
-	topic := config.Spec.Clients.Broker.Topic
+	topic := config.Clients.Broker.Topic
 	if topic == "" {
-		err := fmt.Errorf("spec.clients.broker.topic is required")
+		err := fmt.Errorf("clients.broker.topic is required")
 		errCtx := logger.WithErrorField(ctx, err)
 		log.Errorf(errCtx, "Missing required broker configuration")
 		return err
 	}
 
 	// Create broker metrics recorder
-	brokerMetrics := broker.NewMetricsRecorder(config.Metadata.Name, version.Version, nil)
+	brokerMetrics := broker.NewMetricsRecorder(config.Adapter.Name, version.Version, nil)
 
 	// Create broker subscriber and subscribe
 	log.Info(ctx, "Creating broker subscriber...")

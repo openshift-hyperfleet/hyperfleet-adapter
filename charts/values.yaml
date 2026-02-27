@@ -15,17 +15,18 @@ adapterConfig:
 
   # option2: AdapterConfig YAML (creates adapter-config.yaml key in ConfigMap)
   # yaml:
-  #  apiVersion: hyperfleet.redhat.com/v1alpha1
-  #  kind: AdapterConfig
+  #  adapter:
+  #    name: my-adapter
+  #    version: "0.1.0"
 
   # option3: AdapterConfig YAML files packaged with the chart
   # files:
     # adapter-config.yaml: examples/adapter-config.yaml
 
   # HyperFleet API env vars used by task params
-  hyperfleetApi:
+  hyperfleet_api:
     # Base URL for HyperFleet API (HYPERFLEET_API_BASE_URL)
-    baseUrl: http://hyperfleet-api:8000
+    base_url: http://hyperfleet-api:8000
     # API version (HYPERFLEET_API_VERSION), default: v1
     version: "v1"
 
@@ -44,8 +45,8 @@ adapterTaskConfig:
 
   # option2: AdapterTaskConfig YAML (creates task-config.yaml key in ConfigMap)
   # yaml:
-  #  apiVersion: hyperfleet.redhat.com/v1alpha1
-  #  kind: AdapterTaskConfig
+  #  params: []
+  #  resources: []
 
   # option3: AdapterTaskConfig YAML files packaged with the chart
   # files:
@@ -67,21 +68,20 @@ broker:
   # option3: Broker type identifier (googlepubsub, rabbitmq, etc.) - used as label
   # Subscription/topic are used to set adapter broker config overrides
   googlepubsub:
-    projectId: ""
-    subscriptionId: ""
+    project_id: ""
+    subscription_id: ""
     topic: ""
-    deadLetterTopic: ""
+    dead_letter_topic: ""
     # Auto-creation flags (default: false - infrastructure must pre-exist)
     # Set to true for development/testing; use false in production with pre-provisioned resources
-    createTopicIfMissing: false
-    createSubscriptionIfMissing: false
+    create_topic_if_missing: false
+    create_subscription_if_missing: false
   # option3: for rabbitmq
   #rabbitmq:
   # url: ""
   # queue: ""
   # exchange: ""
-  # exchangeType: "topic"
-  # routingKey: ""
+  # routing_key: ""
 
 
 
