@@ -779,3 +779,70 @@ func TestSequentialExecution_SkipReasonCapture(t *testing.T) {
 		})
 	}
 }
+
+func TestCreateHandler_OnResultCallback(t *testing.T) {
+	exec, err := NewBuilder().
+		WithConfig(&config_loader.Config{
+			Metadata: config_loader.Metadata{Name: "test-adapter"},
+			Spec: config_loader.ConfigSpec{
+				Params: []config_loader.Parameter{
+					{Name: "clusterId", Source: "event.id", Required: true},
+				},
+			},
+		}).
+		WithAPIClient(newMockAPIClient()).
+		WithTransportClient(k8s_client.NewMockK8sClient()).
+		WithLogger(logger.NewTestLogger()).
+		Build()
+	require.NoError(t, err)
+
+	t.Run("callback receives success result", func(t *testing.T) {
+		var captured *ExecutionResult
+		handler := exec.CreateHandler(func(r *ExecutionResult) {
+			captured = r
+		})
+
+		evt := event.New()
+		evt.SetID("evt-1")
+		evt.SetType("test.type")
+		evt.SetSource("test-source")
+		_ = evt.SetData(event.ApplicationJSON, map[string]interface{}{"id": "cluster-1"})
+
+		err := handler(context.Background(), &evt)
+		assert.NoError(t, err, "handler should always ACK")
+		require.NotNil(t, captured, "callback should have been invoked")
+		assert.Equal(t, StatusSuccess, captured.Status)
+	})
+
+	t.Run("callback receives failure result", func(t *testing.T) {
+		var captured *ExecutionResult
+		handler := exec.CreateHandler(func(r *ExecutionResult) {
+			captured = r
+		})
+
+		evt := event.New()
+		evt.SetID("evt-2")
+		evt.SetType("test.type")
+		evt.SetSource("test-source")
+		// Missing required "id" field triggers param extraction failure
+		_ = evt.SetData(event.ApplicationJSON, map[string]interface{}{"other": "data"})
+
+		err := handler(context.Background(), &evt)
+		assert.NoError(t, err, "handler should always ACK even on failure")
+		require.NotNil(t, captured, "callback should have been invoked")
+		assert.Equal(t, StatusFailed, captured.Status)
+	})
+
+	t.Run("no callback is fine", func(t *testing.T) {
+		handler := exec.CreateHandler()
+
+		evt := event.New()
+		evt.SetID("evt-3")
+		evt.SetType("test.type")
+		evt.SetSource("test-source")
+		_ = evt.SetData(event.ApplicationJSON, map[string]interface{}{"id": "cluster-3"})
+
+		err := handler(context.Background(), &evt)
+		assert.NoError(t, err)
+	})
+}

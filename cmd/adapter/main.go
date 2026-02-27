@@ -451,8 +451,15 @@ func runServe() error {
 		return fmt.Errorf("failed to create executor: %w", err)
 	}
 
-	// Create the event handler and subscribe to broker
-	handler := exec.CreateHandler()
+	// Create the event handler with a post-process callback for metrics.
+	handler := exec.CreateHandler(func(result *executor.ExecutionResult) {
+		metricsServer.RecordMessageProcessed()
+		if result.Status == executor.StatusSuccess {
+			metricsServer.RecordMessageSuccess()
+		} else {
+			metricsServer.RecordMessageFailure()
+		}
+	})
 
 	// Handle signals for graceful shutdown
 	sigCh := make(chan os.Signal, 1)

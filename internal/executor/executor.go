@@ -236,13 +236,17 @@ func (e *Executor) startTracedExecution(ctx context.Context) (context.Context, t
 	return ctx, span
 }
 
-// CreateHandler creates an event handler function that can be used with the broker subscriber
-// This is a convenience method for integrating with the broker_consumer package
+// CreateHandler creates an event handler function that can be used with the broker subscriber.
+// This is a convenience method for integrating with the broker_consumer package.
+//
+// An optional onResult callback can be provided to observe the ExecutionResult after each
+// event is processed (e.g., for recording metrics). The callback receives the result but
+// cannot influence the handler's return value.
 //
 // Error handling strategy:
 // - All failures are logged but the message is ACKed (return nil)
 // - This prevents infinite retry loops for non-recoverable errors (e.g., 400 Bad Request, invalid data)
-func (e *Executor) CreateHandler() func(ctx context.Context, evt *event.Event) error {
+func (e *Executor) CreateHandler(onResult ...func(*ExecutionResult)) func(ctx context.Context, evt *event.Event) error {
 	return func(ctx context.Context, evt *event.Event) error {
 		// Add event ID to context for logging correlation
 		ctx = logger.WithEventID(ctx, evt.ID())
@@ -256,7 +260,11 @@ func (e *Executor) CreateHandler() func(ctx context.Context, evt *event.Event) e
 		e.log.Infof(ctx, "Event received: id=%s type=%s source=%s time=%s",
 			evt.ID(), evt.Type(), evt.Source(), evt.Time())
 
-		_ = e.Execute(ctx, evt.Data())
+		result := e.Execute(ctx, evt.Data())
+
+		for _, fn := range onResult {
+			fn(result)
+		}
 
 		e.log.Infof(ctx, "Event processed: type=%s source=%s time=%s",
 			evt.Type(), evt.Source(), evt.Time())
