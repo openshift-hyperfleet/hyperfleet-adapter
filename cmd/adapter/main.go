@@ -307,11 +307,27 @@ func createMaestroClient(ctx context.Context, maestroConfig *config_loader.Maest
 		Insecure:          maestroConfig.Insecure,
 	}
 
-	// Set TLS config if present
+	if maestroConfig.Timeout != "" {
+		d, err := time.ParseDuration(maestroConfig.Timeout)
+		if err != nil {
+			return nil, fmt.Errorf("invalid maestro timeout %q: %w", maestroConfig.Timeout, err)
+		}
+		config.HTTPTimeout = d
+	}
+
+	if maestroConfig.ServerHealthinessTimeout != "" {
+		d, err := time.ParseDuration(maestroConfig.ServerHealthinessTimeout)
+		if err != nil {
+			return nil, fmt.Errorf("invalid maestro serverHealthinessTimeout %q: %w", maestroConfig.ServerHealthinessTimeout, err)
+		}
+		config.ServerHealthinessTimeout = d
+	}
+
 	if maestroConfig.Auth.TLSConfig != nil {
 		config.CAFile = maestroConfig.Auth.TLSConfig.CAFile
 		config.ClientCertFile = maestroConfig.Auth.TLSConfig.CertFile
 		config.ClientKeyFile = maestroConfig.Auth.TLSConfig.KeyFile
+		config.HTTPCAFile = maestroConfig.Auth.TLSConfig.HTTPCAFile
 	}
 
 	return maestro_client.NewMaestroClient(ctx, config, log)

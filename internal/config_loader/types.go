@@ -447,15 +447,16 @@ type ClientsConfig struct {
 
 // MaestroClientConfig contains Maestro client configuration
 type MaestroClientConfig struct {
-	GRPCServerAddress string            `yaml:"grpcServerAddress" mapstructure:"grpcServerAddress"`
-	HTTPServerAddress string            `yaml:"httpServerAddress" mapstructure:"httpServerAddress"`
-	SourceID          string            `yaml:"sourceId" mapstructure:"sourceId"`
-	ClientID          string            `yaml:"clientId" mapstructure:"clientId"`
-	Auth              MaestroAuthConfig `yaml:"auth" mapstructure:"auth"`
-	Timeout           string            `yaml:"timeout" mapstructure:"timeout"`
-	RetryAttempts     int               `yaml:"retryAttempts" mapstructure:"retryAttempts"`
-	Keepalive         *KeepaliveConfig  `yaml:"keepalive,omitempty" mapstructure:"keepalive"`
-	Insecure          bool              `yaml:"insecure,omitempty" mapstructure:"insecure"`
+	GRPCServerAddress        string            `yaml:"grpcServerAddress" mapstructure:"grpcServerAddress"`
+	HTTPServerAddress        string            `yaml:"httpServerAddress" mapstructure:"httpServerAddress"`
+	SourceID                 string            `yaml:"sourceId" mapstructure:"sourceId"`
+	ClientID                 string            `yaml:"clientId" mapstructure:"clientId"`
+	Auth                     MaestroAuthConfig `yaml:"auth" mapstructure:"auth"`
+	Timeout                  string            `yaml:"timeout" mapstructure:"timeout"`
+	ServerHealthinessTimeout string            `yaml:"serverHealthinessTimeout,omitempty" mapstructure:"serverHealthinessTimeout"`
+	RetryAttempts            int               `yaml:"retryAttempts" mapstructure:"retryAttempts"`
+	Keepalive                *KeepaliveConfig  `yaml:"keepalive,omitempty" mapstructure:"keepalive"`
+	Insecure                 bool              `yaml:"insecure,omitempty" mapstructure:"insecure"`
 }
 
 // MaestroAuthConfig contains authentication configuration for Maestro
@@ -466,9 +467,10 @@ type MaestroAuthConfig struct {
 
 // TLSConfig contains TLS certificate configuration
 type TLSConfig struct {
-	CAFile   string `yaml:"caFile" mapstructure:"caFile"`
-	CertFile string `yaml:"certFile" mapstructure:"certFile"`
-	KeyFile  string `yaml:"keyFile" mapstructure:"keyFile"`
+	CAFile     string `yaml:"caFile" mapstructure:"caFile"`
+	CertFile   string `yaml:"certFile" mapstructure:"certFile"`
+	KeyFile    string `yaml:"keyFile" mapstructure:"keyFile"`
+	HTTPCAFile string `yaml:"httpCaFile,omitempty" mapstructure:"httpCaFile"`
 }
 
 // KeepaliveConfig contains gRPC keepalive configuration

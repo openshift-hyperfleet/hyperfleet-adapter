@@ -2,9 +2,11 @@ package maestro_client_integration
 
 import (
 	"context"
+	crypto_tls "crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"time"
 
 	"github.com/docker/go-connections/nat"
@@ -282,6 +284,17 @@ func cleanupMaestroTestEnv(env *MaestroTestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
+	if env.TLSMaestroContainer != nil {
+		println("   Stopping TLS Maestro server...")
+		if err := env.TLSMaestroContainer.Terminate(ctx); err != nil {
+			println(fmt.Sprintf("   ⚠️  Warning: Failed to terminate TLS Maestro: %v", err))
+		}
+	}
+
+	if env.TLSCerts != nil {
+		env.TLSCerts.Cleanup()
+	}
+
 	if env.MaestroContainer != nil {
 		println("   Stopping Maestro server...")
 		if err := env.MaestroContainer.Terminate(ctx); err != nil {
@@ -297,6 +310,185 @@ func cleanupMaestroTestEnv(env *MaestroTestEnv) {
 	}
 
 	println("   ✅ Cleanup complete")
+}
+
+// setupTLSMaestroEnv generates TLS certs and starts a TLS-enabled Maestro server
+// that shares the same PostgreSQL database as the insecure instance.
+func setupTLSMaestroEnv(env *MaestroTestEnv) error {
+	ctx := context.Background()
+
+	// Generate test certificates
+	certs, err := generateTestCerts()
+	if err != nil {
+		return fmt.Errorf("failed to generate test certs: %w", err)
+	}
+	if err := certs.WriteToTempDir(); err != nil {
+		return fmt.Errorf("failed to write certs to temp dir: %w", err)
+	}
+	env.TLSCerts = certs
+
+	// Start TLS Maestro container
+	container, err := startTLSMaestroServer(ctx, env)
+	if err != nil {
+		certs.Cleanup()
+		return fmt.Errorf("failed to start TLS Maestro: %w", err)
+	}
+	env.TLSMaestroContainer = container
+
+	host, err := container.Host(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get TLS Maestro host: %w", err)
+	}
+
+	httpPort, err := container.MappedPort(ctx, nat.Port(MaestroHTTPPort))
+	if err != nil {
+		return fmt.Errorf("failed to get TLS Maestro HTTP port: %w", err)
+	}
+	env.TLSMaestroHTTPPort = httpPort.Port()
+
+	grpcPort, err := container.MappedPort(ctx, nat.Port(MaestroGRPCPort))
+	if err != nil {
+		return fmt.Errorf("failed to get TLS Maestro gRPC port: %w", err)
+	}
+	env.TLSMaestroGRPCPort = grpcPort.Port()
+
+	_ = host
+	env.TLSMaestroServerAddr = fmt.Sprintf("https://127.0.0.1:%s", env.TLSMaestroHTTPPort)
+	env.TLSMaestroGRPCAddr = fmt.Sprintf("127.0.0.1:%s", env.TLSMaestroGRPCPort)
+
+	// Wait for API readiness via HTTPS (skip verify for health check only)
+	if err := waitForTLSMaestroAPI(ctx, env); err != nil {
+		return fmt.Errorf("TLS Maestro health check failed: %w", err)
+	}
+
+	return nil
+}
+
+// startTLSMaestroServer starts a Maestro server with TLS enabled for both HTTP and gRPC.
+// Uses --grpc-authn-type=mock so client certs are accepted but not required,
+// allowing us to test both CA-only and mTLS client configurations.
+func startTLSMaestroServer(ctx context.Context, env *MaestroTestEnv) (testcontainers.Container, error) {
+	pgIP, err := getPostgresIP(ctx, env.PostgresContainer)
+	if err != nil {
+		return nil, err
+	}
+
+	setupScript := fmt.Sprintf(`#!/bin/sh
+mkdir -p /secrets /certs
+echo -n '%s' > /secrets/db.host
+echo -n '5432' > /secrets/db.port
+echo -n '%s' > /secrets/db.user
+echo -n '%s' > /secrets/db.password
+echo -n '%s' > /secrets/db.name
+exec /usr/local/bin/maestro server \
+  --db-host-file=/secrets/db.host \
+  --db-port-file=/secrets/db.port \
+  --db-user-file=/secrets/db.user \
+  --db-password-file=/secrets/db.password \
+  --db-name-file=/secrets/db.name \
+  --db-sslmode=disable \
+  --server-hostname=0.0.0.0 \
+  --enable-grpc-server=true \
+  --grpc-server-bindport=8090 \
+  --http-server-bindport=8000 \
+  --health-check-server-bindport=8083 \
+  --message-broker-type=grpc \
+  --enable-https=true \
+  --https-cert-file=/certs/server.crt \
+  --https-key-file=/certs/server.key \
+  --grpc-tls-cert-file=/certs/server.crt \
+  --grpc-tls-key-file=/certs/server.key \
+  --grpc-authn-type=mock \
+  --alsologtostderr \
+  -v=2
+`, pgIP, dbUser, dbPassword, dbName)
+
+	certsDir := env.TLSCerts.TempDir
+
+	req := testcontainers.ContainerRequest{
+		Image:        MaestroImage,
+		ExposedPorts: []string{MaestroHTTPPort, MaestroGRPCPort, MaestroHealthPort},
+		Entrypoint:   []string{"/bin/sh", "-c", setupScript},
+		Files: []testcontainers.ContainerFile{
+			{
+				HostFilePath:      filepath.Join(certsDir, "ca.crt"),
+				ContainerFilePath: "/certs/ca.crt",
+				FileMode:          0o644,
+			},
+			{
+				HostFilePath:      filepath.Join(certsDir, "server.crt"),
+				ContainerFilePath: "/certs/server.crt",
+				FileMode:          0o644,
+			},
+			{
+				HostFilePath:      filepath.Join(certsDir, "server.key"),
+				ContainerFilePath: "/certs/server.key",
+				FileMode:          0o600,
+			},
+		},
+		WaitingFor: wait.ForAll(
+			wait.ForListeningPort(nat.Port(MaestroHTTPPort)).WithStartupTimeout(120*time.Second),
+			wait.ForListeningPort(nat.Port(MaestroGRPCPort)).WithStartupTimeout(120*time.Second),
+		),
+	}
+
+	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return container, nil
+}
+
+// waitForTLSMaestroAPI waits for the TLS Maestro API to respond.
+// Uses InsecureSkipVerify only for the health probe; actual tests use proper CA verification.
+func waitForTLSMaestroAPI(ctx context.Context, env *MaestroTestEnv) error {
+	httpClient := &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &crypto_tls.Config{
+				InsecureSkipVerify: true, //nolint:gosec // health probe only
+			},
+		},
+	}
+
+	apiURL := fmt.Sprintf("%s/api/maestro/v1/consumers", env.TLSMaestroServerAddr)
+	println(fmt.Sprintf("      TLS API URL: %s", apiURL))
+
+	maxRetries := 20
+	var lastErr error
+	for i := 0; i < maxRetries; i++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+		if err != nil {
+			return fmt.Errorf("failed to create request: %w", err)
+		}
+
+		resp, err := httpClient.Do(req)
+		if err == nil {
+			_ = resp.Body.Close()
+			if resp.StatusCode < 500 {
+				println(fmt.Sprintf("      TLS API check succeeded on attempt %d (HTTP %d)", i+1, resp.StatusCode))
+				return nil
+			}
+			lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)
+		} else {
+			lastErr = err
+			if i < 3 || i%5 == 0 {
+				println(fmt.Sprintf("      TLS API check attempt %d: %v", i+1, err))
+			}
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(1 * time.Second):
+		}
+	}
+
+	return fmt.Errorf("TLS Maestro API check failed after %d retries, last error: %v", maxRetries, lastErr)
 }
 
 // testConsumerNames lists all consumer names used by integration tests

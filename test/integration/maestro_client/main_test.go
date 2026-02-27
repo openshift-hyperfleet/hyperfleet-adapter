@@ -36,16 +36,24 @@ type MaestroTestEnv struct {
 	PostgresHost      string
 	PostgresPort      string
 
-	// Maestro
+	// Maestro (insecure / plaintext)
 	MaestroContainer  testcontainers.Container
 	MaestroHost       string
 	MaestroHTTPPort   string
 	MaestroGRPCPort   string
 	MaestroHealthPort string
 
-	// Connection strings
+	// Insecure connection strings
 	MaestroServerAddr string // HTTP API address (e.g., "http://localhost:32000")
 	MaestroGRPCAddr   string // gRPC address (e.g., "localhost:32001")
+
+	// TLS-enabled Maestro (separate container, same DB)
+	TLSCerts             *TLSTestCerts
+	TLSMaestroContainer  testcontainers.Container
+	TLSMaestroHTTPPort   string
+	TLSMaestroGRPCPort   string
+	TLSMaestroServerAddr string // HTTPS API address (e.g., "https://localhost:32100")
+	TLSMaestroGRPCAddr   string // gRPC+TLS address (e.g., "localhost:32101")
 }
 
 // sharedEnv holds the shared test environment for all integration tests
@@ -119,6 +127,18 @@ func TestMain(m *testing.M) {
 				println("✅ Maestro test environment ready!")
 				println(fmt.Sprintf("   HTTP API: %s", env.MaestroServerAddr))
 				println(fmt.Sprintf("   gRPC:     %s", env.MaestroGRPCAddr))
+
+				// Set up TLS-enabled Maestro (shares the same PostgreSQL)
+				println("🔒 Setting up TLS Maestro server...")
+				if err := setupTLSMaestroEnv(env); err != nil {
+					setupErr = fmt.Errorf("TLS setup failed: %w", err)
+					println("❌ Failed to set up TLS Maestro:", err.Error())
+					println("   Tests will FAIL")
+				} else {
+					println("✅ TLS Maestro ready!")
+					println(fmt.Sprintf("   HTTPS API: %s", env.TLSMaestroServerAddr))
+					println(fmt.Sprintf("   gRPC+TLS:  %s", env.TLSMaestroGRPCAddr))
+				}
 			}
 		}
 	}
