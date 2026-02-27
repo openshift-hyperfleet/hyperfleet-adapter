@@ -12,8 +12,6 @@ spec:
 
   # Log the full merged configuration after load (default: false)
   debugConfig: true
-  log:
-    level: debug
 
   clients:
     hyperfleetApi:
@@ -42,13 +40,20 @@ spec:
       # Environment variable: HYPERFLEET_MAESTRO_CLIENT_ID
       clientId: "hyperfleet-adapter-client"
       insecure: true
+
+      # HTTP timeout (default: 10s)
+      # Environment variable: HYPERFLEET_MAESTRO_TIMEOUT
+      timeout: "30s"
+
+      # gRPC server healthiness check timeout (default: 20s)
+      # Environment variable: HYPERFLEET_MAESTRO_SERVER_HEALTHINESS_TIMEOUT
+      serverHealthinessTimeout: "20s"
       
       # Authentication configuration
       #auth:
       #  type: "tls"  # TLS certificate-based mTLS
       #  
       #  tlsConfig:
-      #    # gRPC TLS configuration
       #    # Certificate paths (mounted from Kubernetes secrets)
       #    # Environment variable: HYPERFLEET_MAESTRO_CA_FILE
       #    caFile: "/etc/maestro/certs/grpc/ca.crt"
@@ -59,12 +64,8 @@ spec:
       #    # Environment variable: HYPERFLEET_MAESTRO_KEY_FILE
       #    keyFile: "/etc/maestro/certs/grpc/client.key"
       #    
-      #    # Server name for TLS verification
-      #    # Environment variable: HYPERFLEET_MAESTRO_SERVER_NAME
-      #    serverName: "maestro-grpc.maestro.svc.cluster.local"
-      #    
-      #    # HTTP API TLS configuration (may use different CA than gRPC)
-      #    # If not set, falls back to caFile for backwards compatibility
+      #    # HTTP API CA certificate (if HTTPS uses a different CA than gRPC)
+      #    # Falls back to caFile when not set
       #    # Environment variable: HYPERFLEET_MAESTRO_HTTP_CA_FILE
       #    httpCaFile: "/etc/maestro/certs/https/ca.crt"
 
