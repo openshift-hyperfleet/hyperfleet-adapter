@@ -1,57 +1,17 @@
-# Git files
-.git
-.gitignore
-.github
-
 # Build artifacts
 bin/
-*.exe
-*.dll
-*.so
-*.dylib
-
-# Test and coverage files
-coverage/
-*.out
-*.test
-*.prof
+coverage.out
+coverage.html
 
 # IDE and editor files
-.vscode/
 .idea/
+.vscode/
 *.swp
 *.swo
-*~
-.DS_Store
 
-# Documentation (not needed for tests)
-*.md
-!README.md
-docs/
+# Git
+.git/
+.gitignore
 
-# Kubernetes and deployment files (not needed for tests)
-chart/
-charts/
-
-# Temporary files
-tmp/
-temp/
-*.tmp
-
-# Log files
-*.log
-
-# Environment files
-.env
-.env.*
-
-# CI/CD files (not needed in container)
-.gitlab-ci.yml
-.travis.yml
-Jenkinsfile
-
-# License and owners
-LICENSE
-OWNERS
-CONTRIBUTING.md
-
+# Local config files
+*.local.yaml
