@@ -34,7 +34,7 @@ cd hyperfleet-adapter
 ### Install Dependencies
 
 ```bash
-make mod-tidy
+make tidy
 ```
 
 ### Build
@@ -128,9 +128,9 @@ hyperfleet-adapter/
 | `make image-push` | Build and push container image to registry |
 | `make image-dev` | Build and push to personal Quay registry (requires QUAY_USER) |
 | `make fmt` | Format code |
-| `make mod-tidy` | Tidy Go module dependencies |
+| `make tidy` | Tidy Go module dependencies |
 | `make clean` | Clean build artifacts |
-| `make verify` | Run lint and test |
+| `make verify` | Run format check and go vet |
 
 💡 **Tip:** Use `make help` to see all available targets with descriptions
 
