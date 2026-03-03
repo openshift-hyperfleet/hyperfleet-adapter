@@ -112,6 +112,10 @@ spec:
 - `subscriptionId` (string): Broker subscription ID (required at runtime).
 - `topic` (string): Broker topic (required at runtime).
 
+#### Broker Metrics
+
+See [Observability](docs/observability.md) for the full list of broker metrics exposed on the `/metrics` endpoint.
+
 ### Kubernetes (`spec.clients.kubernetes`)
 
 - `apiVersion` (string): Kubernetes API version.

@@ -1169,6 +1169,8 @@ spec:
 
 More information about deployment can be found in [Architecture repository - HyperFleet Adapter Framework - Deployment Guide](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/components/adapter/framework/adapter-deployment.md)
 
+5. **Verify broker metrics** — the adapter automatically exposes broker metrics on the `/metrics` endpoint (port 9090). No additional configuration is needed. See [Observability](observability.md) for the full list of available metrics.
+
 ---
 
 ## Appendix A: CEL Quick Reference
