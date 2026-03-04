@@ -49,7 +49,7 @@ This project follows the [Contributor Covenant Code of Conduct](https://www.cont
 
 1. **Install Go dependencies**:
    ```bash
-   make mod-tidy
+   make tidy
    ```
 
 2. **Install golangci-lint** (if not already installed):
@@ -203,7 +203,7 @@ Fixes #123
 
 2. **Run all checks**:
    ```bash
-   make verify  # Runs lint and test
+   make verify  # Runs fmt-check and vet
    ```
 
 3. **Ensure all tests pass**:

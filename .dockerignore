@@ -1,7 +1,6 @@
-# Git files
-.git
-.gitignore
-.github
+# Ignore generated OpenAPI client - it's regenerated fresh during build
+# from the hyperfleet-api repository
+pkg/api/openapi/
 
 # Build artifacts
 bin/
@@ -10,28 +9,40 @@ bin/
 *.so
 *.dylib
 
-# Test and coverage files
-coverage/
-*.out
-*.test
-*.prof
-
 # IDE and editor files
-.vscode/
 .idea/
+.vscode/
 *.swp
 *.swo
 *~
 .DS_Store
 
-# Documentation (not needed for tests)
-*.md
-!README.md
-docs/
+# Git
+.git/
+.gitignore
+.github/
 
-# Kubernetes and deployment files (not needed for tests)
+# Environment files
+.env
+.env.*
+
+# Local config files
+*.local.yaml
+
+# CI/CD files (not needed in container)
+.gitlab-ci.yml
+.travis.yml
+Jenkinsfile
+
+# Kubernetes and deployment files
 chart/
 charts/
+deployments/
+
+# License and owners
+LICENSE
+OWNERS
+CONTRIBUTING.md
 
 # Temporary files
 tmp/
@@ -41,17 +52,25 @@ temp/
 # Log files
 *.log
 
-# Environment files
-.env
-.env.*
+# Test and coverage files
+coverage/
+*.out
+*.test
+*.prof
 
-# CI/CD files (not needed in container)
-.gitlab-ci.yml
-.travis.yml
-Jenkinsfile
+# Config examples and runtime configs (not needed for build)
+configs/
+broker.yaml
 
-# License and owners
-LICENSE
-OWNERS
-CONTRIBUTING.md
+# Linter config (not needed for build)
+.golangci.yml
 
+# AI assistant config
+.claude/
+
+# Dockerfile itself
+Dockerfile
+
+# Documentation (not needed in container)
+*.md
+docs/
