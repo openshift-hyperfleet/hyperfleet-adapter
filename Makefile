@@ -14,7 +14,7 @@ BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 GIT_SHA ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 GIT_DIRTY ?= $(shell [ -z "$$(git status --porcelain 2>/dev/null)" ] || echo "-modified")
 GIT_TAG ?= $(shell git describe --tags --exact-match 2>/dev/null || echo "")
-VERSION ?= $(GIT_SHA)$(GIT_DIRTY)
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
 
 # Go build flags
 GOFLAGS ?= -trimpath
@@ -210,7 +210,7 @@ image: check-container-tool ## Build container image
 		--build-arg GIT_SHA=$(GIT_SHA) \
 		--build-arg GIT_DIRTY=$(GIT_DIRTY) \
 		--build-arg BUILD_DATE=$(BUILD_DATE) \
-		--build-arg VERSION=$(VERSION) \
+		--build-arg APP_VERSION=$(VERSION) \
 		-t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) .
 	@echo "Image built: $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)"
 
@@ -237,7 +237,7 @@ endif
 		--build-arg GIT_SHA=$(GIT_SHA) \
 		--build-arg GIT_DIRTY=$(GIT_DIRTY) \
 		--build-arg BUILD_DATE=$(BUILD_DATE) \
-		--build-arg VERSION=$(VERSION) \
+		--build-arg APP_VERSION=$(VERSION) \
 		-t quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG) .
 	@echo "Pushing dev image..."
 	$(CONTAINER_TOOL) push quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)

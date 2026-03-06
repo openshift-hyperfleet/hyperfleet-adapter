@@ -636,8 +636,17 @@ func IsSupportedAPIVersion(apiVersion string) bool {
 // with the expected adapter version. Only major and minor versions are compared;
 // patch version differences are allowed (patch releases are bug fixes only).
 // For example, config "1.2.0" is compatible with adapter "1.2.3".
+//
+// Dev builds (git-describe output like "v0.1.0-34-gabc1234" or the "0.0.0-dev"
+// fallback) are recognised by the presence of a "-g" segment or the literal
+// "0.0.0-dev" string and skip validation entirely — dev builds should not be
+// gated by config version matching.
 func ValidateAdapterVersion(config *AdapterConfig, expectedVersion string) error {
 	if expectedVersion == "" {
+		return nil
+	}
+
+	if isDevVersion(expectedVersion) {
 		return nil
 	}
 
@@ -660,4 +669,11 @@ func ValidateAdapterVersion(config *AdapterConfig, expectedVersion string) error
 	}
 
 	return nil
+}
+
+// isDevVersion returns true when the version string looks like an untagged
+// git-describe output (contains "-g", e.g. "v0.1.0-5-gabc1234") or the
+// no-tags fallback "0.0.0-dev".
+func isDevVersion(v string) bool {
+	return strings.Contains(v, "-g") || v == "0.0.0-dev"
 }

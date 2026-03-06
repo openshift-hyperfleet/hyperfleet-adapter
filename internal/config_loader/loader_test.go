@@ -738,6 +738,17 @@ func TestValidateAdapterVersion(t *testing.T) {
 	err = ValidateAdapterVersion(config, "not-a-version")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid expected adapter version")
+
+	// Dev builds (git describe output) skip validation regardless of config version
+	err = ValidateAdapterVersion(config, "v0.1.0-34-gabc1234")
+	assert.NoError(t, err)
+
+	err = ValidateAdapterVersion(config, "v2.5.0-1-g1234567-dirty")
+	assert.NoError(t, err)
+
+	// No-tags fallback skips validation
+	err = ValidateAdapterVersion(config, "0.0.0-dev")
+	assert.NoError(t, err)
 }
 
 func TestIsSupportedAPIVersion(t *testing.T) {
