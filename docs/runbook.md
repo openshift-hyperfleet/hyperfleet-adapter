@@ -1,6 +1,6 @@
 # HyperFleet Adapter Runbook
 
-Operational runbook for on-call engineers managing the hyperfleet-adapter service.
+> **Audience:** On-call engineers managing the hyperfleet-adapter service.
 
 ---
 

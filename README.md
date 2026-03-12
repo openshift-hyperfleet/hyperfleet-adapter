@@ -531,10 +531,16 @@ For access issues, contact a repository administrator or organization owner.
 
 This project is licensed under the Apache License 2.0 - see the [LICENSE](./LICENSE) file for details.
 
-## Related Documentation
+## Documentation
 
-- [Helm Chart Documentation](./charts/README.md)
-- [Contributing Guidelines](./CONTRIBUTING.md)
+- [Architecture](https://github.com/openshift-hyperfleet/architecture) - System architecture and API documentation
+- [Metrics](docs/metrics.md) - Prometheus metric definitions and PromQL examples
+- [Alerts](docs/alerts.md) - Recommended alert rules and monitoring queries
+- [Runbook](docs/runbook.md) - Operational runbook for on-call engineers
+- [Configuration](docs/configuration.md) - Configuration reference
+- [Adapter Authoring Guide](docs/adapter-authoring-guide.md) - Guide to creating adapter task configurations
+- [Helm Chart](./charts/README.md) - Helm chart documentation
+- [Contributing Guidelines](./CONTRIBUTING.md) - Development and contribution guidelines
 
 ## Support
 

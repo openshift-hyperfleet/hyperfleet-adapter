@@ -1,6 +1,6 @@
 # HyperFleet Adapter Authoring Guide
 
-> A practical guide for writing adapter configurations that extend the HyperFleet cluster lifecycle platform.
+> **Audience:** Developers building adapter configurations for HyperFleet cluster lifecycle tasks.
 
 ---
 
@@ -1155,7 +1155,7 @@ clients:
 
 More information about deployment can be found in [Architecture repository - HyperFleet Adapter Framework - Deployment Guide](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/components/adapter/framework/adapter-deployment.md)
 
-1. **Verify broker metrics** — the adapter automatically exposes broker metrics on the `/metrics` endpoint (port 9090). No additional configuration is needed. See [Observability](observability.md) for the full list of available metrics.
+1. **Verify broker metrics** — the adapter automatically exposes broker metrics on the `/metrics` endpoint (port 9090). No additional configuration is needed. See [Metrics](metrics.md) for the full list of available metrics.
 
 ---
 

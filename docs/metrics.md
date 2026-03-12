@@ -1,173 +1,101 @@
-# HyperFleet Adapter Metrics — Alerting and Monitoring
+# HyperFleet Adapter Metrics
 
-This document provides recommended alerting rules and monitoring queries for the hyperfleet-adapter.
+> **Audience:** Developers integrating with adapter metrics and SREs building dashboards.
 
-For the canonical list of all metrics, labels, and descriptions, see [observability.md](observability.md). Metrics are served on port **9090** at `/metrics`.
+All metrics are exposed on the `/metrics` endpoint (port 9090) in Prometheus format. No additional configuration is needed.
 
----
+The Helm chart includes a **ServiceMonitor** template for automatic discovery by the [Prometheus Operator](https://github.com/prometheus-operator/prometheus-operator). It is enabled by default (`serviceMonitor.enabled: true`) and scrapes the `/metrics` endpoint every 30s with `honorLabels: true` to preserve the adapter's `component` and `version` labels. The template is only rendered when the Prometheus Operator CRDs (`monitoring.coreos.com/v1/ServiceMonitor`) are available on the cluster; otherwise it is silently skipped. See the Helm `values.yaml` for configuration options (interval, scrapeTimeout, labels, namespaceSelector).
 
-## Health Endpoints
+## Adapter Metrics
 
-Health checks are served on port **8080** (separate from metrics).
+The adapter exposes Prometheus metrics following the [HyperFleet Metrics Standard](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/metrics.md) with the `hyperfleet_adapter_` prefix.
 
-| Endpoint | Purpose | Healthy Response |
-|----------|---------|-----------------|
-| `/healthz` | Liveness probe | Always `200 OK` |
-| `/readyz` | Readiness probe | `200 OK` when config is loaded and broker is connected |
+All adapter metrics include `component` and `version` as constant labels.
 
-Readiness returns `503 Service Unavailable` when:
-- The adapter is shutting down
-- Config has not been loaded yet (`config` check)
-- Broker is not connected (`broker` check)
+### Baseline Metrics
 
----
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `hyperfleet_adapter_build_info` | Gauge | `component`, `version`, `commit` | Build information (always 1) |
+| `hyperfleet_adapter_up` | Gauge | `component`, `version` | Whether the adapter is up and running (1=up, 0=shutting down) |
 
-## Recommended Alerts
+### Event Processing Metrics
 
-### Adapter Down
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `hyperfleet_adapter_events_processed_total` | Counter | `component`, `version`, `status` | Total CloudEvents processed. Status: `success`, `failed`, `skipped` |
+| `hyperfleet_adapter_event_processing_duration_seconds` | Histogram | `component`, `version` | End-to-end event processing duration |
+| `hyperfleet_adapter_errors_total` | Counter | `component`, `version`, `error_type` | Total errors by execution phase |
 
-```yaml
-alert: HyperFleetAdapterDown
-expr: >
-  hyperfleet_adapter_up == 0
-  or
-  absent(hyperfleet_adapter_up{component="hyperfleet-adapter"})
-for: 1m
-labels:
-  severity: critical
-annotations:
-  summary: "HyperFleet Adapter is down"
-  description: "Adapter {{ $labels.component }} has been down for more than 1 minute."
+#### Status Values
+
+| Status | Description |
+|--------|-------------|
+| `success` | Event processed successfully with resources applied |
+| `skipped` | Event processed successfully but resources skipped (preconditions not met) |
+| `failed` | Event processing failed due to an error |
+
+#### Error Types
+
+The `error_type` label on `hyperfleet_adapter_errors_total` corresponds to the execution phase where the error occurred:
+
+| Error Type | Description |
+|------------|-------------|
+| `param_extraction` | Failed to extract parameters from the event |
+| `preconditions` | Precondition evaluation error (not the same as precondition not met) |
+| `resources` | Failed to apply Kubernetes resources |
+| `post_actions` | Failed to execute post-actions (e.g., status reporting) |
+
+#### Histogram Buckets
+
+The `event_processing_duration_seconds` histogram uses the following buckets (in seconds), as recommended by the [adapter metrics standard](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/components/adapter/framework/adapter-metrics.md):
+
+```text
+0.1, 0.5, 1, 2, 5, 10, 30, 60, 120
 ```
 
-> **Note:** `hyperfleet_adapter_up` is explicitly set to 0 only during graceful shutdown. On crash (OOM, panic, node failure), the metric goes stale rather than becoming 0. The `absent()` clause covers this case. It will also fire if the metric has never been scraped (e.g., fresh Prometheus deployment) — expect initial noise until the adapter registers.
+### Example PromQL Queries
 
-### High Event Failure Rate
+Event processing success rate:
 
-```yaml
-alert: HyperFleetAdapterHighFailureRate
-expr: |
-  sum by (component, version) (rate(hyperfleet_adapter_events_processed_total{status="failed"}[5m]))
+```promql
+(
+  sum(rate(hyperfleet_adapter_events_processed_total{status="success"}[5m]))
   /
-  sum by (component, version) (rate(hyperfleet_adapter_events_processed_total[5m]))
-  > 0.1
-for: 5m
-labels:
-  severity: warning
-annotations:
-  summary: "High event failure rate"
-  description: "More than 10% of events are failing for {{ $labels.component }}."
+  sum(rate(hyperfleet_adapter_events_processed_total[5m]))
+) * 100
 ```
 
-### No Events Processed (Dead Man's Switch)
+p95 event processing duration:
 
-```yaml
-alert: HyperFleetAdapterNoEventsProcessed
-expr: |
-  (
-    sum by (component, version) (rate(hyperfleet_adapter_events_processed_total[15m])) == 0
-    or
-    absent(hyperfleet_adapter_events_processed_total) == 1
+```promql
+histogram_quantile(0.95,
+  sum by (component, version, le) (
+    rate(hyperfleet_adapter_event_processing_duration_seconds_bucket[5m])
   )
-  and on(component, version)
-  hyperfleet_adapter_up == 1
-for: 5m
-labels:
-  severity: warning
-annotations:
-  summary: "No events processed"
-  description: "Adapter {{ $labels.component }} has not processed any events in ~20 minutes."
+)
 ```
 
-> **Timing:** `rate(...[15m])` takes ~15 minutes to reach zero after the last event, plus the `for: 5m` pending period. Total delay before firing is ~20 minutes. The `absent()` clause handles fresh deployments where the counter has never been incremented.
-
-### Slow Event Processing
-
-```yaml
-alert: HyperFleetAdapterSlowProcessing
-expr: |
-  histogram_quantile(0.95,
-    sum by (component, version, le) (
-      rate(hyperfleet_adapter_event_processing_duration_seconds_bucket[5m])
-    )
-  ) > 60
-for: 5m
-labels:
-  severity: warning
-annotations:
-  summary: "Slow event processing"
-  description: "P95 event processing time exceeds 60 seconds for {{ $labels.component }}."
-```
-
-> **Note:** The `sum by (component, version, le)` aggregation merges histogram buckets across replicas before computing the quantile, giving a correct cluster-wide P95. Without this, each replica's P95 would be computed independently.
-
-### Broker Errors
-
-```yaml
-alert: HyperFleetBrokerErrors
-expr: rate(hyperfleet_broker_errors_total[5m]) > 0
-for: 5m
-labels:
-  severity: warning
-annotations:
-  summary: "Broker errors detected"
-  description: "Broker errors occurring for {{ $labels.component }}: {{ $labels.error_type }}."
-```
-
-### Rising Error Count by Type
-
-```yaml
-alert: HyperFleetAdapterErrorsRising
-expr: rate(hyperfleet_adapter_errors_total[5m]) > 0.5
-for: 5m
-labels:
-  severity: warning
-annotations:
-  summary: "Adapter errors rising"
-  description: "Error rate for {{ $labels.error_type }} exceeds 0.5/s on {{ $labels.component }}."
-```
-
----
-
-## Example PromQL Queries
-
-### Event throughput
-
-```promql
-rate(hyperfleet_adapter_events_processed_total[5m])
-```
-
-### Event success rate (percentage)
-
-```promql
-sum by (component, version) (rate(hyperfleet_adapter_events_processed_total{status="success"}[5m]))
-/
-sum by (component, version) (rate(hyperfleet_adapter_events_processed_total[5m]))
-* 100
-```
-
-### P50 / P95 / P99 event processing latency
-
-```promql
-histogram_quantile(0.50, rate(hyperfleet_adapter_event_processing_duration_seconds_bucket[5m]))
-histogram_quantile(0.95, rate(hyperfleet_adapter_event_processing_duration_seconds_bucket[5m]))
-histogram_quantile(0.99, rate(hyperfleet_adapter_event_processing_duration_seconds_bucket[5m]))
-```
-
-### Errors by type
+Error rate by phase:
 
 ```promql
 sum by (error_type) (rate(hyperfleet_adapter_errors_total[5m]))
 ```
 
-### Broker message consumption rate
+## Broker Metrics
 
-```promql
-rate(hyperfleet_broker_messages_consumed_total[5m])
-```
+The adapter automatically registers Prometheus metrics from the [hyperfleet-broker](https://github.com/openshift-hyperfleet/hyperfleet-broker) library.
 
-### Currently running adapter version
+### Available Metrics
 
-```promql
-hyperfleet_adapter_build_info
-```
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `hyperfleet_broker_messages_consumed_total` | Counter | `topic`, `component`, `version` | Total messages consumed from the broker |
+| `hyperfleet_broker_errors_total` | Counter | `topic`, `error_type`, `component`, `version` | Total message processing errors |
+| `hyperfleet_broker_message_duration_seconds` | Histogram | `topic`, `component`, `version` | Message processing duration |
+
+These metrics use the `hyperfleet_broker_` prefix and include the adapter's `component` and `version` labels.
+
+## Alerting and Monitoring
+
+For recommended alerting rules, thresholds, and operational PromQL queries, see [alerts.md](alerts.md).

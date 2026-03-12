@@ -1,5 +1,7 @@
 # Adapter Configuration Reference
 
+> **Audience:** Operators deploying and configuring the hyperfleet-adapter service.
+
 This document describes the deployment-level `AdapterConfig` options and how to set them
 in three formats: YAML, command-line flags, and environment variables.
 
