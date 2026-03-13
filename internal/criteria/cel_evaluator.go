@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
@@ -122,6 +123,16 @@ func customCELFunctions() []cel.EnvOption {
 						return types.NullValue
 					}
 					return types.DefaultTypeAdapter.NativeToValue(found)
+				}),
+			),
+		),
+		cel.Function("now",
+			cel.Overload(
+				"now_string",
+				[]*cel.Type{},
+				cel.StringType,
+				cel.FunctionBinding(func(args ...ref.Val) ref.Val {
+					return types.String(time.Now().Format(time.RFC3339))
 				}),
 			),
 		),

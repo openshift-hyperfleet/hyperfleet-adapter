@@ -3,6 +3,7 @@ package criteria
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	"github.com/stretchr/testify/assert"
@@ -337,6 +338,29 @@ func TestCELEvaluatorCustomFunctions(t *testing.T) {
 
 	t.Run("dig returns null for missing path", func(t *testing.T) {
 		result, err := evaluator.EvaluateSafe(`dig(resources, "managedCluster.status.missing") == null`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+		assert.Equal(t, true, result.Value)
+		assert.True(t, result.Matched)
+	})
+
+	t.Run("now returns RFC3339 timestamp", func(t *testing.T) {
+		result, err := evaluator.EvaluateSafe(`now()`)
+		require.NoError(t, err)
+		require.False(t, result.HasError())
+
+		timestamp, ok := result.Value.(string)
+		require.True(t, ok, "now() should return a string")
+		assert.NotEmpty(t, timestamp)
+
+		// Verify it's a valid RFC3339 timestamp by parsing it
+		_, parseErr := time.Parse(time.RFC3339, timestamp)
+		assert.NoError(t, parseErr, "now() should return a valid RFC3339 timestamp")
+	})
+
+	t.Run("now can be used with timestamp() for time calculations", func(t *testing.T) {
+		// Test that now() can be converted to timestamp type and used in calculations
+		result, err := evaluator.EvaluateSafe(`timestamp(now()).getFullYear() >= 2024`)
 		require.NoError(t, err)
 		require.False(t, result.HasError())
 		assert.Equal(t, true, result.Value)

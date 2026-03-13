@@ -580,6 +580,65 @@ func TestSequentialExecution_Preconditions(t *testing.T) {
 	}
 }
 
+// TestPrecondition_CustomCELFunctions tests that custom CEL functions (like now()) are available in precondition expressions
+func TestPrecondition_CustomCELFunctions(t *testing.T) {
+	tests := []struct {
+		name        string
+		expression  string
+		shouldMatch bool
+	}{
+		{
+			name:        "now() returns valid timestamp",
+			expression:  `timestamp(now()).getFullYear() >= 2024`,
+			shouldMatch: true,
+		},
+		{
+			name:        "now() can be used in time comparisons",
+			expression:  `(timestamp(now()) - timestamp("2020-01-01T00:00:00Z")).getSeconds() > 0`,
+			shouldMatch: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := &config_loader.Config{
+				Adapter: config_loader.AdapterInfo{
+					Name:    "test-adapter",
+					Version: "1.0.0",
+				},
+				Preconditions: []config_loader.Precondition{
+					{ActionBase: config_loader.ActionBase{Name: "test-custom-function"}, Expression: tt.expression},
+				},
+			}
+
+			exec, err := NewBuilder().
+				WithConfig(config).
+				WithAPIClient(newMockAPIClient()).
+				WithTransportClient(k8s_client.NewMockK8sClient()).
+				WithLogger(logger.NewTestLogger()).
+				Build()
+			require.NoError(t, err, "failed to create executor")
+
+			ctx := logger.WithEventID(context.Background(), "test-custom-cel")
+			result := exec.Execute(ctx, map[string]interface{}{})
+
+			// Verify precondition executed
+			require.Len(t, result.PreconditionResults, 1, "expected one precondition result")
+			precondResult := result.PreconditionResults[0]
+
+			// Verify the expression evaluated correctly
+			assert.Equal(t, tt.shouldMatch, precondResult.Matched, "unexpected match result")
+			assert.Equal(t, StatusSuccess, precondResult.Status, "expected precondition status to be success")
+
+			if tt.shouldMatch {
+				// If precondition matched, resources should have been attempted
+				assert.Equal(t, StatusSuccess, result.Status, "expected overall status success")
+				assert.False(t, result.ResourcesSkipped, "resources should not be skipped")
+			}
+		})
+	}
+}
+
 // TestSequentialExecution_Resources tests that resources stop on first failure
 func TestSequentialExecution_Resources(t *testing.T) {
 	// Note: This test uses dry-run mode and focuses on the sequential logic
