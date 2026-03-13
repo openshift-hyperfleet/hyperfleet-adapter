@@ -331,6 +331,92 @@ preconditions:
 
 When a condition is **not met**, the adapter skips the resources phase but still runs post-actions. The `adapter.resourcesSkipped` flag is set to `true` and `adapter.skipReason` describes why.
 
+### Time-based stability preconditions
+
+#### Why use time-based preconditions?
+
+Adapter preconditions typically need to handle two scenarios:
+
+1. **Initial deployment** — Deploy resources when the cluster is NOT Ready
+2. **Self-healing** — Detect and recreate accidentally deleted resources when the cluster IS Ready
+
+A condition-only precondition (e.g., "only run when cluster is NOT Ready") handles scenario 1 but breaks scenario 2:
+
+```yaml
+# Condition-only pattern - INCOMPLETE
+preconditions:
+  - name: "getCluster"
+    api_call:
+      url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}"
+    capture:
+      - name: "readyStatus"
+        expression: |
+          status.conditions.filter(c, c.type == "Ready").size() > 0
+            ? status.conditions.filter(c, c.type == "Ready")[0].status
+            : "False"
+    conditions:
+      - field: "readyStatus"
+        operator: "equals"
+        value: "False"   # Only runs resource phase when NOT Ready
+```
+
+**Problem:** If a resource is accidentally deleted while the cluster is Ready, the adapter skips the resource operation phase because the precondition is `False`. The adapter still runs and reports status, but it cannot detect or recreate the deleted resource because it never executes the resource phase.
+
+**Solution:** Add a time-based stability check to enable both scenarios:
+
+- Run resource phase when cluster is **NOT Ready**
+- Run resource phase when cluster is **Ready AND stable for >5 minutes** (periodic self-healing)
+
+#### Understanding `last_transition_time` vs `last_updated_time`
+
+To implement time-based stability checks, you need to know how long a cluster has been in its current state. Each condition provides two timestamp fields:
+
+| Field | Updates when | Use for |
+|-------|-------------|---------|
+| **`last_transition_time`** | Condition status **changes** (True→False or False→True) | **Stability windows** — "cluster has been Ready for N minutes" |
+| **`last_updated_time`** | Adapter **reports status** (every POST, even if unchanged) | **Liveness checks** — "adapter reported recently" |
+
+**Critical:** For stability windows, always use `last_transition_time`. The `last_updated_time` field has special aggregation behavior that makes it unsuitable for measuring state duration.
+
+#### Correct pattern: Time-based stability precondition
+
+```yaml
+preconditions:
+  - name: "checkClusterState"
+    api_call:
+      url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}"
+    capture:
+      - name: "clusterNotReady"
+        expression: |
+          status.conditions.filter(c, c.type == "Ready").size() > 0
+            ? status.conditions.filter(c, c.type == "Ready")[0].status != "True"
+            : true
+      - name: "clusterReadyTTL"
+        expression: |
+          (timestamp(now()) - timestamp(
+            status.conditions.filter(c, c.type == "Ready").size() > 0
+              ? status.conditions.filter(c, c.type == "Ready")[0].last_transition_time
+              : now()
+          )).getSeconds() >= 300
+
+  - name: "validationCheck"
+    # Precondition passes if cluster is NOT Ready OR if cluster is Ready and stable for >300 seconds since last transition (enables self-healing)
+    expression: |
+      clusterNotReady || clusterReadyTTL
+```
+
+**What this does:**
+
+- `clusterNotReady` → Captures whether the cluster is NOT Ready (true when Ready condition is missing or not "True")
+- `clusterReadyTTL` → Captures whether the cluster has been Ready for ≥5 minutes (300 seconds) since the last status transition
+- `validationCheck` → Evaluates both conditions: run resource phase when cluster is NOT Ready OR when cluster has been Ready and stable for ≥5 minutes (self-healing)
+
+**Important notes:**
+
+- The `now()` function returns the current time in RFC3339 format as a string.
+- Use `timestamp()` to convert RFC3339 strings to timestamp types for arithmetic operations.
+- This pattern enables both initial deployment and periodic self-healing checks.
+
 ---
 
 ## 6. Resources
