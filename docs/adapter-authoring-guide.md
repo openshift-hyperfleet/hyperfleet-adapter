@@ -397,7 +397,7 @@ preconditions:
             status.conditions.filter(c, c.type == "Ready").size() > 0
               ? status.conditions.filter(c, c.type == "Ready")[0].last_transition_time
               : now()
-          )).getSeconds() >= 300
+          )).getSeconds() > 300
 
   - name: "validationCheck"
     # Precondition passes if cluster is NOT Ready OR if cluster is Ready and stable for >300 seconds since last transition (enables self-healing)
@@ -408,8 +408,8 @@ preconditions:
 **What this does:**
 
 - `clusterNotReady` → Captures whether the cluster is NOT Ready (true when Ready condition is missing or not "True")
-- `clusterReadyTTL` → Captures whether the cluster has been Ready for ≥5 minutes (300 seconds) since the last status transition
-- `validationCheck` → Evaluates both conditions: run resource phase when cluster is NOT Ready OR when cluster has been Ready and stable for ≥5 minutes (self-healing)
+- `clusterReadyTTL` → Captures whether the cluster has been Ready for >5 minutes (300 seconds) since the last status transition
+- `validationCheck` → Evaluates both conditions: run resource phase when cluster is NOT Ready OR when cluster has been Ready and stable for >5 minutes (self-healing)
 
 **Important notes:**
 
