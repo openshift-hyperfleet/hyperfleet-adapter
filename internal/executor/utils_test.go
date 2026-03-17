@@ -89,9 +89,9 @@ func TestValidateAPIResponse_WithError_NonAPIError(t *testing.T) {
 func TestValidateAPIResponse_NonSuccessStatusCodes(t *testing.T) {
 	tests := []struct {
 		name        string
-		statusCode  int
 		status      string
 		body        []byte
+		statusCode  int
 		expectError bool
 		expectBody  bool
 	}{
@@ -206,8 +206,8 @@ func TestValidateAPIResponse_NonSuccessStatusCodes(t *testing.T) {
 func TestValidateAPIResponse_SuccessStatusCodes(t *testing.T) {
 	tests := []struct {
 		name       string
-		statusCode int
 		status     string
+		statusCode int
 	}{
 		{
 			name:       "200 OK",
@@ -437,8 +437,8 @@ func TestValidateAPIResponse_ResponseBodyString(t *testing.T) {
 func TestToConditionDefs(t *testing.T) {
 	tests := []struct {
 		name       string
-		conditions []config_loader.Condition
 		expected   []criteria.ConditionDef
+		conditions []config_loader.Condition
 	}{
 		{
 			name:       "empty conditions",
@@ -505,9 +505,9 @@ func TestToConditionDefs(t *testing.T) {
 // TestRenderTemplateBytes tests template rendering to bytes
 func TestRenderTemplateBytes(t *testing.T) {
 	tests := []struct {
+		data        map[string]interface{}
 		name        string
 		template    string
-		data        map[string]interface{}
 		expected    []byte
 		expectError bool
 	}{
@@ -555,9 +555,9 @@ func TestRenderTemplateBytes(t *testing.T) {
 // TestExecutionErrorToMap tests conversion of ExecutionError to map
 func TestExecutionErrorToMap(t *testing.T) {
 	tests := []struct {
-		name     string
-		execErr  *ExecutionError
 		expected interface{}
+		execErr  *ExecutionError
+		name     string
 	}{
 		{
 			name:     "nil error",
@@ -613,9 +613,9 @@ func TestExecutionErrorToMap(t *testing.T) {
 // TestAdapterMetadataToMap tests conversion of AdapterMetadata to map
 func TestAdapterMetadataToMap(t *testing.T) {
 	tests := []struct {
-		name     string
-		adapter  *AdapterMetadata
 		expected map[string]interface{}
+		adapter  *AdapterMetadata
+		name     string
 	}{
 		{
 			name:     "nil adapter",
@@ -715,9 +715,9 @@ func TestAdapterMetadataToMap(t *testing.T) {
 // TestExecuteLogAction tests log action execution
 func TestExecuteLogAction(t *testing.T) {
 	tests := []struct {
-		name       string
 		logAction  *config_loader.LogAction
 		params     map[string]interface{}
+		name       string
 		expectCall bool
 	}{
 		{
@@ -786,9 +786,9 @@ func TestExecuteLogAction(t *testing.T) {
 // TestConvertToStringKeyMap tests map key conversion
 func TestConvertToStringKeyMap(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    map[interface{}]interface{}
 		expected map[string]interface{}
+		input    map[interface{}]interface{}
+		name     string
 	}{
 		{
 			name:     "empty map",
@@ -870,8 +870,8 @@ func TestConvertToStringKeyMap(t *testing.T) {
 func TestConvertSlice(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    []interface{}
 		expected []interface{}
+		input    []interface{}
 	}{
 		{
 			name:     "empty slice",
@@ -938,9 +938,9 @@ func TestConvertSlice(t *testing.T) {
 // TestBuildResourcesMap tests building resources map for CEL
 func TestBuildResourcesMap(t *testing.T) {
 	tests := []struct {
-		name      string
-		resources map[string]*unstructured.Unstructured
 		expected  map[string]interface{}
+		resources map[string]*unstructured.Unstructured
+		name      string
 	}{
 		{
 			name:      "nil resources",
@@ -1028,9 +1028,9 @@ func TestBuildResourcesMap(t *testing.T) {
 // TestGetResourceAsMap tests resource to map conversion
 func TestGetResourceAsMap(t *testing.T) {
 	tests := []struct {
-		name     string
-		resource *unstructured.Unstructured
 		expected map[string]interface{}
+		resource *unstructured.Unstructured
+		name     string
 	}{
 		{
 			name:     "nil resource",
@@ -1095,10 +1095,10 @@ func TestGetResourceAsMap(t *testing.T) {
 
 func TestBuildHyperfleetAPICallURL(t *testing.T) {
 	tests := []struct {
-		name     string
-		url      string
 		execCtx  *ExecutionContext
+		name     string
 		expected string
+		url      string
 	}{
 		{
 			name:     "empty URL returns empty",

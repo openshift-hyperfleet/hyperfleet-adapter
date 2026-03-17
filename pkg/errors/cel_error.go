@@ -20,14 +20,14 @@ const (
 
 // CELError represents an error during CEL expression processing
 type CELError struct {
-	// Type is the error type (parse, program, evaluation)
-	Type CELErrorType
 	// Expression is the CEL expression that caused the error
 	Expression string
 	// Reason provides a human-readable error description
 	Reason string
 	// Err is the underlying error
 	Err error
+	// Type is the error type (parse, program, evaluation)
+	Type CELErrorType
 }
 
 // Error implements the error interface
@@ -106,8 +106,8 @@ func (e *CELError) IsEval() bool {
 
 // CELEnvError represents an error when creating a CEL environment
 type CELEnvError struct {
-	Reason string
 	Err    error
+	Reason string
 }
 
 // Error implements the error interface
@@ -137,6 +137,8 @@ func NewCELEnvError(reason string, err error) *CELEnvError {
 
 // CELConversionError represents an error during condition to CEL conversion
 type CELConversionError struct {
+	// Err is the underlying error
+	Err error
 	// Field is the field being converted (for condition errors)
 	Field string
 	// Operator is the operator being used
@@ -147,8 +149,6 @@ type CELConversionError struct {
 	Reason string
 	// Index is the condition index (for multiple conditions)
 	Index int
-	// Err is the underlying error
-	Err error
 }
 
 // Error implements the error interface

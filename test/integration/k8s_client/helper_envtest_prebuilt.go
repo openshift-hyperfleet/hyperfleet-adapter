@@ -139,9 +139,9 @@ func setupSharedTestEnv() (*TestEnvPrebuilt, error) {
 
 	// Wait for API server to be fully ready with auth
 	println("   Waiting for API server to be fully ready...")
-	if err := waitForAPIServerReady(kubeAPIServer, 30*time.Second); err != nil {
+	if waitErr := waitForAPIServerReady(kubeAPIServer, 30*time.Second); waitErr != nil {
 		sharedContainer.Cleanup()
-		return nil, fmt.Errorf("API server failed to become ready: %w", err)
+		return nil, fmt.Errorf("API server failed to become ready: %w", waitErr)
 	}
 	println("   ✅ API server is ready!")
 

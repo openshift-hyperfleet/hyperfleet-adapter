@@ -6,7 +6,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-func TestGVKFromKindAndApiVersion(t *testing.T) {
+func TestGVKFromKindAndAPIVersion(t *testing.T) {
 	tests := []struct {
 		name       string
 		kind       string
@@ -95,20 +95,20 @@ func TestGVKFromKindAndApiVersion(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := GVKFromKindAndApiVersion(tt.kind, tt.apiVersion)
+			got, err := GVKFromKindAndAPIVersion(tt.kind, tt.apiVersion)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("GVKFromKindAndApiVersion() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("GVKFromKindAndAPIVersion() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if !tt.wantErr {
 				if got.Group != tt.want.Group {
-					t.Errorf("GVKFromKindAndApiVersion() Group = %v, want %v", got.Group, tt.want.Group)
+					t.Errorf("GVKFromKindAndAPIVersion() Group = %v, want %v", got.Group, tt.want.Group)
 				}
 				if got.Version != tt.want.Version {
-					t.Errorf("GVKFromKindAndApiVersion() Version = %v, want %v", got.Version, tt.want.Version)
+					t.Errorf("GVKFromKindAndAPIVersion() Version = %v, want %v", got.Version, tt.want.Version)
 				}
 				if got.Kind != tt.want.Kind {
-					t.Errorf("GVKFromKindAndApiVersion() Kind = %v, want %v", got.Kind, tt.want.Kind)
+					t.Errorf("GVKFromKindAndAPIVersion() Kind = %v, want %v", got.Kind, tt.want.Kind)
 				}
 			}
 		})

@@ -14,6 +14,8 @@ import (
 // K8sOperationError represents a structured Kubernetes operation error with detailed context.
 // This allows callers to handle K8s errors with full information about what failed.
 type K8sOperationError struct {
+	// Err is the underlying error
+	Err error
 	// Operation is the operation that failed: "create", "update", "delete", "get", "patch", "list"
 	Operation string
 	// Resource is the resource name
@@ -24,8 +26,6 @@ type K8sOperationError struct {
 	Namespace string
 	// Message is the error message
 	Message string
-	// Err is the underlying error
-	Err error
 }
 
 // Error implements the error interface
@@ -103,12 +103,18 @@ func NewK8sInvalidPathError(resourceType, path, expectedFormat string) *K8sInval
 
 // K8sResourceDataError represents an error when accessing or parsing resource data
 type K8sResourceDataError struct {
-	ResourceType string // "Secret" or "ConfigMap"
-	Namespace    string
+	// Err is the underlying error
+	Err error
+	// ResourceType is "Secret" or "ConfigMap"
+	ResourceType string
+	// ResourceName is the resource name
 	ResourceName string
-	Field        string // e.g., "data", or specific key name
-	Reason       string // What went wrong
-	Err          error  // Underlying error
+	// Namespace is the resource namespace
+	Namespace string
+	// Field is the field name (e.g., "data", or specific key name)
+	Field string
+	// Reason explains what went wrong
+	Reason string
 }
 
 // Error implements the error interface

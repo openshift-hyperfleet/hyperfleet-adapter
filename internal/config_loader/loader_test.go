@@ -137,8 +137,8 @@ func TestAdapterConfigValidation(t *testing.T) {
 	tests := []struct {
 		name      string
 		yaml      string
-		wantError bool
 		errorMsg  string
+		wantError bool
 	}{
 		{
 			name: "valid minimal adapter config",
@@ -204,8 +204,8 @@ func TestTaskConfigValidation(t *testing.T) {
 	tests := []struct {
 		name      string
 		yaml      string
-		wantError bool
 		errorMsg  string
+		wantError bool
 	}{
 		{
 			name:      "valid minimal task config",
@@ -268,8 +268,8 @@ func TestValidatePreconditionsInTaskConfig(t *testing.T) {
 	tests := []struct {
 		name      string
 		yaml      string
-		wantError bool
 		errorMsg  string
+		wantError bool
 	}{
 		{
 			name: "valid precondition with API call",
@@ -352,8 +352,8 @@ func TestValidateResourcesInTaskConfig(t *testing.T) {
 	tests := []struct {
 		name      string
 		yaml      string
-		wantError bool
 		errorMsg  string
+		wantError bool
 	}{
 		{
 			name: "valid resource with manifest",
@@ -591,9 +591,9 @@ func TestValidateFileReferencesInTaskConfig(t *testing.T) {
 	tests := []struct {
 		name    string
 		config  *AdapterTaskConfig
+		errMsg  string
 		baseDir string
 		wantErr bool
-		errMsg  string
 	}{
 		{
 			name: "valid payload buildRef",
@@ -903,9 +903,9 @@ func TestValidateResourceDiscoveryInTaskConfig(t *testing.T) {
 
 	tests := []struct {
 		name      string
+		errMsg    string
 		resources []Resource
 		wantErr   bool
-		errMsg    string
 	}{
 		{
 			name: "valid - manifest.ref with discovery bySelectors",
@@ -1047,8 +1047,8 @@ func TestConditionValuesAlias(t *testing.T) {
 	// Test that both "value" and "values" YAML keys are supported
 	tests := []struct {
 		name     string
-		yaml     string
 		expected interface{}
+		yaml     string
 	}{
 		{
 			name: "value with single item",
@@ -1116,10 +1116,10 @@ func TestTransportConfigYAMLParsing(t *testing.T) {
 	tests := []struct {
 		name           string
 		yaml           string
-		wantError      bool
 		wantClient     string
 		wantTarget     string
 		wantMaestroNil bool
+		wantError      bool
 	}{
 		{
 			name: "resource with kubernetes transport",
@@ -1231,8 +1231,8 @@ resources:
 func TestGetTransportClient(t *testing.T) {
 	tests := []struct {
 		name     string
-		resource Resource
 		want     string
+		resource Resource
 	}{
 		{
 			name:     "nil transport defaults to kubernetes",

@@ -74,9 +74,9 @@ func TestLoggerWith(t *testing.T) {
 	}
 
 	tests := []struct {
+		value interface{}
 		name  string
 		key   string
-		value interface{}
 	}{
 		{
 			name:  "add_string_field",
@@ -275,8 +275,8 @@ func TestLoggerChaining(t *testing.T) {
 		}()
 
 		err := &testError{msg: "test error"}
-		ctx := WithErrorField(ctx, err)
-		log.With("extra", "info").Error(ctx, "Error with context")
+		ctxWithErr := WithErrorField(ctx, err)
+		log.With("extra", "info").Error(ctxWithErr, "Error with context")
 	})
 }
 
@@ -331,16 +331,16 @@ func TestContextHelpers(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("WithEventID", func(t *testing.T) {
-		ctx := WithEventID(ctx, "evt-123")
-		fields := GetLogFields(ctx)
+		ctxWithEvent := WithEventID(ctx, "evt-123")
+		fields := GetLogFields(ctxWithEvent)
 		if fields["event_id"] != "evt-123" {
 			t.Errorf("Expected evt-123, got %v", fields["event_id"])
 		}
 	})
 
 	t.Run("WithTraceID", func(t *testing.T) {
-		ctx := WithTraceID(ctx, "trace-789")
-		fields := GetLogFields(ctx)
+		ctxWithTrace := WithTraceID(ctx, "trace-789")
+		fields := GetLogFields(ctxWithTrace)
 		if fields["trace_id"] != "trace-789" {
 			t.Errorf("Expected trace-789, got %v", fields["trace_id"])
 		}

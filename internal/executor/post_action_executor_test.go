@@ -28,10 +28,10 @@ func TestBuildPayload(t *testing.T) {
 	pae := testPAE()
 
 	tests := []struct {
-		name        string
+		expected    interface{}
 		build       interface{}
 		params      map[string]interface{}
-		expected    interface{}
+		name        string
 		expectError bool
 	}{
 		{
@@ -117,10 +117,10 @@ func TestBuildMapPayload(t *testing.T) {
 	pae := testPAE()
 
 	tests := []struct {
-		name        string
+		expected    map[string]interface{}
 		input       map[string]interface{}
 		params      map[string]interface{}
-		expected    map[string]interface{}
+		name        string
 		expectError bool
 	}{
 		{
@@ -196,11 +196,11 @@ func TestProcessValue(t *testing.T) {
 	pae := testPAE()
 
 	tests := []struct {
-		name        string
+		expected    interface{}
 		value       interface{}
 		params      map[string]interface{}
 		evalCtxData map[string]interface{}
-		expected    interface{}
+		name        string
 		expectError bool
 	}{
 		{
@@ -304,9 +304,9 @@ func TestProcessValue(t *testing.T) {
 
 func TestPostActionExecutor_ExecuteAll(t *testing.T) {
 	tests := []struct {
-		name            string
 		postConfig      *config_loader.PostConfig
 		mockResponse    *hyperfleet_api.Response
+		name            string
 		expectedResults int
 		expectError     bool
 	}{
@@ -406,14 +406,14 @@ func TestPostActionExecutor_ExecuteAll(t *testing.T) {
 
 func TestExecuteAPICall(t *testing.T) {
 	tests := []struct {
-		name         string
+		mockError    error
 		apiCall      *config_loader.APICall
 		params       map[string]interface{}
 		mockResponse *hyperfleet_api.Response
-		mockError    error
-		expectError  bool
+		name         string
 		expectedURL  string
 		expectedBody string // optional: for POST/PUT/PATCH, assert last request body (rendered payload)
+		expectError  bool
 	}{
 		{
 			name:        "nil api call",

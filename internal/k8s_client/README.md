@@ -112,7 +112,7 @@ client, err := NewClient(ctx, config, log)
 
 ```go
 // ✅ CORRECT: Extract from adapter config
-gvk, err := GVKFromKindAndApiVersion("Deployment", "apps/v1")
+gvk, err := GVKFromKindAndAPIVersion("Deployment", "apps/v1")
 if err != nil {
     return fmt.Errorf("invalid GVK: %w", err)
 }
@@ -149,7 +149,7 @@ cm := &unstructured.Unstructured{
         },
     },
 }
-gvk, _ := GVKFromKindAndApiVersion("ConfigMap", "v1")
+gvk, _ := GVKFromKindAndAPIVersion("ConfigMap", "v1")
 cm.SetGroupVersionKind(gvk)
 
 created, err := client.CreateResource(ctx, cm)
@@ -159,7 +159,7 @@ created, err := client.CreateResource(ctx, cm)
 
 ```go
 // Get a custom resource
-gvk, _ := GVKFromKindAndApiVersion("MyResource", "example.com/v1")
+gvk, _ := GVKFromKindAndAPIVersion("MyResource", "example.com/v1")
 resource, err := client.GetResource(ctx, gvk, "default", "my-resource")
 
 if err != nil {
@@ -186,7 +186,7 @@ if found {
 The `DiscoverResources` method provides flexible resource discovery:
 
 ```go
-gvk, _ := GVKFromKindAndApiVersion("Pod", "v1")
+gvk, _ := GVKFromKindAndAPIVersion("Pod", "v1")
 
 // List by label selector
 discovery := &k8s_client.DiscoveryConfig{
@@ -216,7 +216,7 @@ list, err := client.DiscoverResources(ctx, gvk, discovery)
 For simple listing without the Discovery interface:
 
 ```go
-gvk, _ := GVKFromKindAndApiVersion("Pod", "v1")
+gvk, _ := GVKFromKindAndAPIVersion("Pod", "v1")
 
 // List by label selector
 list, err := client.ListResources(ctx, gvk, "default", "app=myapp,env=prod")
@@ -312,7 +312,7 @@ See `test/integration/k8s_client/` for integration test examples and setup guide
 
 ## Best Practices
 
-1. **Always extract GVK from config** using `GVKFromKindAndApiVersion()`
+1. **Always extract GVK from config** using `GVKFromKindAndAPIVersion()`
 2. **Use in-cluster auth for production** (empty `KubeConfigPath`)
 3. **Set appropriate rate limits** to avoid overwhelming the API server
 4. **Handle errors gracefully** - check for `IsNotFound`, `IsAlreadyExists`, etc.

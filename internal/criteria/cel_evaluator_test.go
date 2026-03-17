@@ -31,10 +31,10 @@ func TestCELEvaluatorEvaluate(t *testing.T) {
 	require.NoError(t, err)
 
 	tests := []struct {
+		wantValue  interface{}
 		name       string
 		expression string
 		wantMatch  bool
-		wantValue  interface{}
 		wantErr    bool
 	}{
 		{
@@ -386,9 +386,9 @@ func TestEvaluateSafeErrorHandling(t *testing.T) {
 	tests := []struct {
 		name        string
 		expression  string
+		wantReason  string // substring to match in Error
 		wantSuccess bool
 		wantMatched bool
-		wantReason  string // substring to match in Error
 	}{
 		{
 			name:        "existing nested field",

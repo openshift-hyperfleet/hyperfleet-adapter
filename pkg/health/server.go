@@ -29,26 +29,24 @@ type HealthResponse struct {
 
 // ReadyResponse represents the JSON response for /readyz endpoint per HyperFleet standard.
 type ReadyResponse struct {
+	Checks  map[string]CheckStatus `json:"checks,omitempty"`
 	Status  string                 `json:"status"`
 	Message string                 `json:"message,omitempty"`
-	Checks  map[string]CheckStatus `json:"checks,omitempty"`
 }
 
 // Server provides HTTP health check endpoints.
 type Server struct {
-	server    *http.Server
-	log       logger.Logger
-	port      string
-	component string
-
+	log        logger.Logger
+	server     *http.Server
+	checks     map[string]CheckStatus
+	port       string
+	component  string
+	configYAML []byte // set only when debug_config is true
+	mu         sync.RWMutex
 	// shuttingDown is an atomic flag that indicates the server is shutting down.
 	// When true, /readyz immediately returns 503 regardless of other checks.
 	// This follows the HyperFleet Graceful Shutdown Standard.
 	shuttingDown atomic.Bool
-
-	mu         sync.RWMutex
-	checks     map[string]CheckStatus
-	configYAML []byte // set only when debug_config is true
 }
 
 // NewServer creates a new health check server.

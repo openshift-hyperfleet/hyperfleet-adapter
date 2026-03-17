@@ -17,8 +17,8 @@ import (
 
 func TestIsConsumerNotFoundError(t *testing.T) {
 	tests := []struct {
-		name     string
 		err      error
+		name     string
 		expected bool
 	}{
 		{
@@ -53,8 +53,8 @@ func TestIsConsumerNotFoundError(t *testing.T) {
 
 func TestGetGenerationFromManifestWork(t *testing.T) {
 	tests := []struct {
-		name     string
 		work     *workv1.ManifestWork
+		name     string
 		expected int64
 	}{
 		{
@@ -162,10 +162,10 @@ func TestBuildManifestWorkName(t *testing.T) {
 func TestGenerationComparison(t *testing.T) {
 	tests := []struct {
 		name               string
+		description        string
 		existingGeneration int64
 		newGeneration      int64
 		shouldUpdate       bool
-		description        string
 	}{
 		{
 			name:               "same generation - no update",

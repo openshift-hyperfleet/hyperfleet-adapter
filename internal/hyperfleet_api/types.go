@@ -36,23 +36,23 @@ const (
 
 // ClientConfig holds the configuration for the HTTP client
 type ClientConfig struct {
+	// DefaultHeaders are headers added to all requests
+	DefaultHeaders map[string]string `yaml:"default_headers,omitempty" mapstructure:"default_headers"`
 	// BaseURL is the base URL for all API requests (must be set by caller)
 	// Relative URLs in requests will be prefixed with this
 	BaseURL string `yaml:"base_url,omitempty" mapstructure:"base_url"`
 	// Version is the HyperFleet API version (e.g., "v1")
 	Version string `yaml:"version,omitempty" mapstructure:"version"`
-	// Timeout is the HTTP client timeout for requests
-	Timeout time.Duration `yaml:"timeout,omitempty" mapstructure:"timeout"`
-	// RetryAttempts is the number of retry attempts for failed requests
-	RetryAttempts int `yaml:"retry_attempts,omitempty" mapstructure:"retry_attempts"`
 	// RetryBackoff is the backoff strategy for retries
 	RetryBackoff BackoffStrategy `yaml:"retry_backoff,omitempty" mapstructure:"retry_backoff"`
+	// Timeout is the HTTP client timeout for requests
+	Timeout time.Duration `yaml:"timeout,omitempty" mapstructure:"timeout"`
 	// BaseDelay is the initial delay for retry backoff
 	BaseDelay time.Duration `yaml:"base_delay,omitempty" mapstructure:"base_delay"`
 	// MaxDelay is the maximum delay for retry backoff
 	MaxDelay time.Duration `yaml:"max_delay,omitempty" mapstructure:"max_delay"`
-	// DefaultHeaders are headers added to all requests
-	DefaultHeaders map[string]string `yaml:"default_headers,omitempty" mapstructure:"default_headers"`
+	// RetryAttempts is the number of retry attempts for failed requests
+	RetryAttempts int `yaml:"retry_attempts,omitempty" mapstructure:"retry_attempts"`
 }
 
 // DefaultClientConfig returns a ClientConfig with default values
@@ -74,20 +74,20 @@ func DefaultClientConfig() *ClientConfig {
 
 // Request represents an HTTP request to the HyperFleet API
 type Request struct {
+	// Headers are the HTTP headers for the request
+	Headers map[string]string
+	// RetryBackoff overrides the client retry backoff for this request
+	RetryBackoff *BackoffStrategy
+	// RetryAttempts overrides the client retry attempts for this request
+	RetryAttempts *int
 	// Method is the HTTP method (GET, POST, PUT, PATCH, DELETE)
 	Method string
 	// URL is the full URL for the request
 	URL string
-	// Headers are the HTTP headers for the request
-	Headers map[string]string
 	// Body is the request body (for POST, PUT, PATCH)
 	Body []byte
 	// Timeout overrides the client timeout for this request
 	Timeout time.Duration
-	// RetryAttempts overrides the client retry attempts for this request
-	RetryAttempts *int
-	// RetryBackoff overrides the client retry backoff for this request
-	RetryBackoff *BackoffStrategy
 }
 
 // RequestOption is a functional option for configuring a request
@@ -160,16 +160,16 @@ func WithRequestRetryBackoff(backoff BackoffStrategy) RequestOption {
 
 // Response represents an HTTP response from the HyperFleet API
 type Response struct {
-	// StatusCode is the HTTP status code
-	StatusCode int
-	// Status is the HTTP status string (e.g., "200 OK")
-	Status string
 	// Headers are the response headers
 	Headers map[string][]string
+	// Status is the HTTP status string (e.g., "200 OK")
+	Status string
 	// Body is the response body
 	Body []byte
 	// Duration is how long the request took
 	Duration time.Duration
+	// StatusCode is the HTTP status code
+	StatusCode int
 	// Attempts is how many attempts were made (including retries)
 	Attempts int
 }

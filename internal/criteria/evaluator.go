@@ -12,28 +12,28 @@ import (
 
 // EvaluationResult contains the result of evaluating a condition
 type EvaluationResult struct {
-	// Matched indicates if the condition was satisfied
-	Matched bool
 	// FieldValue is the actual value of the field that was evaluated
 	FieldValue interface{}
+	// ExpectedValue is the value the condition was compared against
+	ExpectedValue interface{}
 	// Field is the field path that was evaluated
 	Field string
 	// Operator is the operator used
 	Operator Operator
-	// ExpectedValue is the value the condition was compared against
-	ExpectedValue interface{}
+	// Matched indicates if the condition was satisfied
+	Matched bool
 }
 
 // ConditionsResult contains the result of evaluating multiple conditions
 type ConditionsResult struct {
-	// Matched indicates if all conditions were satisfied
-	Matched bool
+	// ExtractedFields maps field paths to their values
+	ExtractedFields map[string]interface{}
 	// Results contains individual results for each condition
 	Results []EvaluationResult
 	// FailedCondition is the index of the first failed condition (-1 if all passed)
 	FailedCondition int
-	// ExtractedFields maps field paths to their values
-	ExtractedFields map[string]interface{}
+	// Matched indicates if all conditions were satisfied
+	Matched bool
 }
 
 // Evaluator evaluates criteria against an evaluation context
@@ -171,8 +171,8 @@ func (e *Evaluator) EvaluateConditions(conditions []ConditionDef) (*ConditionsRe
 // ExtractValueResult contains the result of value extraction
 type ExtractValueResult struct {
 	Value  interface{} // Extracted value
-	Source string      // The field path or expression used
 	Error  error       // Error if extraction failed
+	Source string      // The field path or expression used
 }
 
 // ExtractValue extracts a value from the context using either field (JSONPath) or expression (CEL).
@@ -251,16 +251,16 @@ func (e *Evaluator) EvaluateCEL(expression string) (*CELResult, error) {
 
 // ConditionDef defines a condition to evaluate
 type ConditionDef struct {
+	Value    interface{}
 	Field    string
 	Operator Operator
-	Value    interface{}
 }
 
 // ConditionDefJSON is used for JSON/YAML unmarshaling with string operator
 type ConditionDefJSON struct {
+	Value    interface{} `json:"value" yaml:"value"`
 	Field    string      `json:"field" yaml:"field"`
 	Operator string      `json:"operator" yaml:"operator"`
-	Value    interface{} `json:"value" yaml:"value"`
 }
 
 // ToConditionDef converts ConditionDefJSON to ConditionDef with typed Operator

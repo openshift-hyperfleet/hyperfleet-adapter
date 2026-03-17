@@ -51,8 +51,8 @@ func TestEvaluationContextGetField(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		path    string
 		want    interface{}
+		path    string
 		wantNil bool // field not found returns nil value
 	}{
 		{
@@ -160,11 +160,11 @@ func TestEvaluationContextMergeConcurrent(t *testing.T) {
 
 func TestEvaluateEquals(t *testing.T) {
 	tests := []struct {
-		name      string
 		field     interface{}
 		value     interface{}
-		want      bool
+		name      string
 		wantError bool
+		want      bool
 	}{
 		{
 			name:  "equal strings",
@@ -219,11 +219,11 @@ func TestEvaluateEquals(t *testing.T) {
 
 func TestEvaluateIn(t *testing.T) {
 	tests := []struct {
-		name      string
 		field     interface{}
 		list      interface{}
-		want      bool
+		name      string
 		wantError bool
+		want      bool
 	}{
 		{
 			name:  "value in string list",
@@ -266,11 +266,11 @@ func TestEvaluateIn(t *testing.T) {
 
 func TestEvaluateContains(t *testing.T) {
 	tests := []struct {
-		name      string
 		field     interface{}
 		needle    interface{}
-		want      bool
+		name      string
 		wantError bool
+		want      bool
 	}{
 		{
 			name:   "string contains substring",
@@ -319,11 +319,11 @@ func TestEvaluateContains(t *testing.T) {
 
 func TestEvaluateGreaterThan(t *testing.T) {
 	tests := []struct {
-		name      string
 		field     interface{}
 		threshold interface{}
-		want      bool
+		name      string
 		wantError bool
+		want      bool
 	}{
 		{
 			name:      "int greater than",
@@ -390,11 +390,11 @@ func TestEvaluateGreaterThan(t *testing.T) {
 
 func TestEvaluateLessThan(t *testing.T) {
 	tests := []struct {
-		name      string
 		field     interface{}
 		threshold interface{}
-		want      bool
+		name      string
 		wantError bool
+		want      bool
 	}{
 		{
 			name:      "int less than",
@@ -461,8 +461,8 @@ func TestEvaluateLessThan(t *testing.T) {
 
 func TestEvaluateExists(t *testing.T) {
 	tests := []struct {
-		name  string
 		field interface{}
+		name  string
 		want  bool
 	}{
 		{
@@ -530,10 +530,10 @@ func TestEvaluatorEvaluateCondition(t *testing.T) {
 	tests := []struct {
 		name      string
 		field     string
-		operator  Operator
 		value     interface{}
-		want      bool
+		operator  Operator
 		wantError bool
+		want      bool
 	}{
 		{
 			name:     "equals operator",
@@ -618,8 +618,8 @@ func TestEvaluatorEvaluateConditions(t *testing.T) {
 	tests := []struct {
 		name       string
 		conditions []ConditionDef
-		want       bool
 		wantError  bool
+		want       bool
 	}{
 		{
 			name: "all conditions pass",
@@ -671,8 +671,8 @@ func TestExtractField(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		path      string
 		want      interface{}
+		path      string
 		wantError bool
 	}{
 		{
@@ -759,8 +759,8 @@ func TestExtractFieldJSONPath(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		path      string
 		want      interface{}
+		path      string
 		wantError bool
 	}{
 		{
@@ -847,8 +847,8 @@ func TestExtractFieldFunction(t *testing.T) {
 
 func TestToFloat64(t *testing.T) {
 	tests := []struct {
-		name      string
 		value     interface{}
+		name      string
 		want      float64
 		wantError bool
 	}{

@@ -155,9 +155,9 @@ func NewMaestroClient(ctx context.Context, config *Config, log logger.Logger) (*
 	}).Info(ctx, "Creating Maestro client")
 
 	// Create HTTP client with appropriate TLS configuration
-	httpTransport, err := createHTTPTransport(config)
-	if err != nil {
-		return nil, apperrors.ConfigurationError("failed to create HTTP transport: %v", err)
+	httpTransport, transportErr := createHTTPTransport(config)
+	if transportErr != nil {
+		return nil, apperrors.ConfigurationError("failed to create HTTP transport: %v", transportErr)
 	}
 
 	// Create Maestro HTTP API client (OpenAPI)
@@ -186,8 +186,8 @@ func NewMaestroClient(ctx context.Context, config *Config, log logger.Logger) (*
 	grpcOptions.Dialer.URL = config.GRPCServerAddr
 
 	// Configure TLS if certificates are provided
-	if err := configureTLS(config, grpcOptions); err != nil {
-		return nil, apperrors.ConfigurationError("failed to configure TLS: %v", err)
+	if tlsErr := configureTLS(config, grpcOptions); tlsErr != nil {
+		return nil, apperrors.ConfigurationError("failed to configure TLS: %v", tlsErr)
 	}
 
 	// Create the Maestro gRPC work client using the official pattern
@@ -307,34 +307,34 @@ func configureTLS(config *Config, grpcOptions *grpcopts.GRPCOptions) error {
 
 	// Option 2: Token-based authentication with CA
 	if config.CAFile != "" && config.TokenFile != "" {
-		token, err := readTokenFile(config.TokenFile)
-		if err != nil {
-			return err
+		token, tokenErr := readTokenFile(config.TokenFile)
+		if tokenErr != nil {
+			return tokenErr
 		}
 		grpcOptions.Dialer.Token = token
 
 		certConfig := cert.CertConfig{
 			CAFile: config.CAFile,
 		}
-		if err := certConfig.EmbedCerts(); err != nil {
-			return err
+		if embedErr := certConfig.EmbedCerts(); embedErr != nil {
+			return embedErr
 		}
 
-		tlsConfig, err := cert.AutoLoadTLSConfig(
+		tlsConfig, tlsErr := cert.AutoLoadTLSConfig(
 			certConfig,
 			func() (*cert.CertConfig, error) {
 				c := cert.CertConfig{
 					CAFile: config.CAFile,
 				}
-				if err := c.EmbedCerts(); err != nil {
-					return nil, err
+				if embedErr := c.EmbedCerts(); embedErr != nil {
+					return nil, embedErr
 				}
 				return &c, nil
 			},
 			grpcOptions.Dialer,
 		)
-		if err != nil {
-			return err
+		if tlsErr != nil {
+			return tlsErr
 		}
 		grpcOptions.Dialer.TLSConfig = tlsConfig
 		return nil

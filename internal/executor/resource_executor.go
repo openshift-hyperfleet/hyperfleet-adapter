@@ -78,7 +78,7 @@ func (re *ResourceExecutor) executeResource(ctx context.Context, resource config
 
 	// Step 2: Extract resource identity from rendered manifest for result reporting
 	var obj unstructured.Unstructured
-	if err := json.Unmarshal(renderedBytes, &obj.Object); err == nil {
+	if unmarshalErr := json.Unmarshal(renderedBytes, &obj.Object); unmarshalErr == nil {
 		result.Kind = obj.GetKind()
 		result.Namespace = obj.GetNamespace()
 		result.ResourceName = obj.GetName()
@@ -441,21 +441,21 @@ func deepCopyMap(ctx context.Context, m map[string]interface{}, log logger.Logge
 	if err != nil {
 		// Fallback to shallow copy if deep copy fails
 		log.Warnf(ctx, "Failed to deep copy map: %v. Falling back to shallow copy.", err)
-		result := make(map[string]interface{})
+		fallback := make(map[string]interface{})
 		for k, v := range m {
-			result[k] = v
+			fallback[k] = v
 		}
-		return result
+		return fallback
 	}
 
 	result, ok := copied.(map[string]interface{})
 	if !ok {
 		// Should not happen, but handle gracefully
-		result := make(map[string]interface{})
+		fallback := make(map[string]interface{})
 		for k, v := range m {
-			result[k] = v
+			fallback[k] = v
 		}
-		return result
+		return fallback
 	}
 
 	return result

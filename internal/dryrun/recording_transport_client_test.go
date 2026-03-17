@@ -179,8 +179,8 @@ func unstructuredNestedString(obj map[string]interface{}, fields ...string) (str
 			return "", false, nil
 		}
 		if i == len(fields)-1 {
-			s, ok := val.(string)
-			return s, ok, nil
+			s, strOk := val.(string)
+			return s, strOk, nil
 		}
 		m, ok := val.(map[string]interface{})
 		if !ok {

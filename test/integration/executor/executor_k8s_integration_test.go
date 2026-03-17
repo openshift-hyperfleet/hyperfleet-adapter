@@ -25,10 +25,10 @@ import (
 // k8sTestAPIServer creates a mock API server for K8s integration tests
 type k8sTestAPIServer struct {
 	server          *httptest.Server
-	mu              sync.Mutex
 	requests        []k8sTestRequest
 	clusterResponse map[string]interface{}
 	statusResponses []map[string]interface{}
+	mu              sync.Mutex
 }
 
 type k8sTestRequest struct {

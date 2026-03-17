@@ -26,8 +26,8 @@ func newMockAPIClient() *hyperfleet_api.MockClient {
 // TestNewExecutor tests the NewExecutor function
 func TestNewExecutor(t *testing.T) {
 	tests := []struct {
-		name        string
 		config      *ExecutorConfig
+		name        string
 		expectError bool
 	}{
 		{
@@ -302,10 +302,10 @@ func TestParamExtractor(t *testing.T) {
 	_ = evt.SetData(event.ApplicationJSON, eventData)
 
 	tests := []struct {
-		name        string
-		params      []config_loader.Parameter
-		expectKey   string
 		expectValue interface{}
+		name        string
+		expectKey   string
+		params      []config_loader.Parameter
 		expectError bool
 	}{
 		{
@@ -473,11 +473,11 @@ func TestRenderTemplate(t *testing.T) {
 func TestSequentialExecution_Preconditions(t *testing.T) {
 	tests := []struct {
 		name             string
+		expectedLastName string
 		preconditions    []config_loader.Precondition
 		expectedResults  int // number of results before stopping
 		expectError      bool
 		expectNotMet     bool
-		expectedLastName string
 	}{
 		{
 			name: "all pass - all executed",
@@ -728,10 +728,10 @@ func TestSequentialExecution_Resources(t *testing.T) {
 // TestSequentialExecution_PostActions tests that post actions stop on first failure
 func TestSequentialExecution_PostActions(t *testing.T) {
 	tests := []struct {
+		mockError       error
+		mockResponse    *hyperfleet_api.Response
 		name            string
 		postActions     []config_loader.PostAction
-		mockResponse    *hyperfleet_api.Response
-		mockError       error
 		expectedResults int
 		expectError     bool
 	}{
@@ -799,8 +799,8 @@ func TestSequentialExecution_PostActions(t *testing.T) {
 func TestSequentialExecution_SkipReasonCapture(t *testing.T) {
 	tests := []struct {
 		name           string
-		preconditions  []config_loader.Precondition
 		expectedStatus ExecutionStatus
+		preconditions  []config_loader.Precondition
 		expectSkipped  bool
 	}{
 		{

@@ -15,9 +15,9 @@ import (
 
 // mockNetError implements net.Error for testing
 type mockNetError struct {
+	msg       string
 	timeout   bool
 	temporary bool
-	msg       string
 }
 
 func (e *mockNetError) Error() string   { return e.msg }
@@ -30,8 +30,8 @@ func TestIsNetworkError_Nil(t *testing.T) {
 
 func TestIsNetworkError_SyscallErrors(t *testing.T) {
 	tests := []struct {
-		name     string
 		err      error
+		name     string
 		expected bool
 	}{
 		{
@@ -91,8 +91,8 @@ func TestIsNetworkError_SyscallErrors(t *testing.T) {
 
 func TestIsNetworkError_WrappedSyscallErrors(t *testing.T) {
 	tests := []struct {
-		name     string
 		err      error
+		name     string
 		expected bool
 	}{
 		{
@@ -122,8 +122,8 @@ func TestIsNetworkError_WrappedSyscallErrors(t *testing.T) {
 
 func TestIsNetworkError_NetOpError(t *testing.T) {
 	tests := []struct {
-		name     string
 		err      error
+		name     string
 		expected bool
 	}{
 		{
@@ -165,8 +165,8 @@ func TestIsNetworkError_NetOpError(t *testing.T) {
 
 func TestIsNetworkError_URLError(t *testing.T) {
 	tests := []struct {
-		name     string
 		err      error
+		name     string
 		expected bool
 	}{
 		{
@@ -203,8 +203,8 @@ func TestIsNetworkError_URLError(t *testing.T) {
 
 func TestIsNetworkError_TimeoutErrors(t *testing.T) {
 	tests := []struct {
-		name     string
 		err      error
+		name     string
 		expected bool
 	}{
 		{
@@ -229,8 +229,8 @@ func TestIsNetworkError_TimeoutErrors(t *testing.T) {
 
 func TestIsNetworkError_EOFErrors(t *testing.T) {
 	tests := []struct {
-		name     string
 		err      error
+		name     string
 		expected bool
 	}{
 		{
@@ -262,8 +262,8 @@ func TestIsNetworkError_EOFErrors(t *testing.T) {
 
 func TestIsNetworkError_NonNetworkErrors(t *testing.T) {
 	tests := []struct {
-		name string
 		err  error
+		name string
 	}{
 		{
 			name: "simple error",

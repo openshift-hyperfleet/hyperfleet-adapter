@@ -18,48 +18,37 @@ import (
 
 // ContainerConfig holds configuration for starting a container
 type ContainerConfig struct {
-	// Image is the container image to use (required)
-	Image string
-
-	// ExposedPorts is a list of ports to expose (e.g., "8080/tcp")
-	ExposedPorts []string
-
-	// Cmd is the command to run in the container
-	Cmd []string
-
-	// Env is a map of environment variables to set
-	Env map[string]string
-
 	// WaitStrategy is the strategy to wait for container readiness
 	WaitStrategy wait.Strategy
-
+	// Env is a map of environment variables to set
+	Env map[string]string
+	// Image is the container image to use (required)
+	Image string
+	// Name is a human-readable name for logging purposes
+	Name string
+	// ExposedPorts is a list of ports to expose (e.g., "8080/tcp")
+	ExposedPorts []string
+	// Cmd is the command to run in the container
+	Cmd []string
 	// StartupTimeout is the maximum time to wait for container to start (default: 180s)
 	StartupTimeout time.Duration
-
 	// CleanupTimeout is the maximum time to wait for container cleanup (default: 60s)
 	// Note: The cleanup path enforces a minimum of 60s to ensure containers have time to stop gracefully.
 	CleanupTimeout time.Duration
-
-	// MaxRetries is the number of times to retry container creation (default: 1, no retries)
-	MaxRetries int
-
 	// RetryDelay is the base delay between retries (default: 1s, increases with attempt number)
 	RetryDelay time.Duration
-
-	// Name is a human-readable name for logging purposes
-	Name string
+	// MaxRetries is the number of times to retry container creation (default: 1, no retries)
+	MaxRetries int
 }
 
 // ContainerResult holds the result of starting a container
 type ContainerResult struct {
 	// Container is the testcontainers container instance
 	Container testcontainers.Container
-
-	// Host is the container host
-	Host string
-
 	// Ports maps exposed port specs (e.g., "8080/tcp") to their mapped ports
 	Ports map[string]string
+	// Host is the container host
+	Host string
 }
 
 // GetEndpoint returns the host:port endpoint for the given port spec
@@ -158,8 +147,8 @@ func StartContainer(t *testing.T, config ContainerConfig) (*ContainerResult, err
 		// ensure we terminate it before retrying to avoid leaks
 		if container != nil {
 			t.Logf("Attempt %d failed but container was created. Terminating...", attempt)
-			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-			if termErr := container.Terminate(ctx); termErr != nil {
+			terminateCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			if termErr := container.Terminate(terminateCtx); termErr != nil {
 				t.Logf("Warning: Failed to terminate failed container from attempt %d: %v", attempt, termErr)
 				// Try force cleanup
 				if cid := container.GetContainerID(); cid != "" {

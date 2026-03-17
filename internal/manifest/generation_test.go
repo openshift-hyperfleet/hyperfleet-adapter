@@ -13,11 +13,11 @@ import (
 func TestCompareGenerations(t *testing.T) {
 	tests := []struct {
 		name              string
+		expectedReason    string
+		expectedOperation Operation
 		newGen            int64
 		existingGen       int64
 		exists            bool
-		expectedOperation Operation
-		expectedReason    string
 	}{
 		{
 			name:              "resource does not exist - create",
@@ -156,8 +156,8 @@ func TestGetGeneration(t *testing.T) {
 
 func TestGetGenerationFromUnstructured(t *testing.T) {
 	tests := []struct {
-		name     string
 		obj      *unstructured.Unstructured
+		name     string
 		expected int64
 	}{
 		{
@@ -319,8 +319,8 @@ func TestValidateGeneration(t *testing.T) {
 
 func TestValidateGenerationFromUnstructured(t *testing.T) {
 	tests := []struct {
-		name        string
 		obj         *unstructured.Unstructured
+		name        string
 		expectError bool
 	}{
 		{
@@ -477,8 +477,8 @@ func TestValidateManifestWorkGeneration(t *testing.T) {
 	}
 
 	tests := []struct {
-		name        string
 		work        *workv1.ManifestWork
+		name        string
 		expectError bool
 	}{
 		{
@@ -601,9 +601,9 @@ func TestValidateManifestWorkGeneration(t *testing.T) {
 
 func TestEnrichWithResourceStatus(t *testing.T) {
 	tests := []struct {
-		name                 string
 		parent               *unstructured.Unstructured
 		nested               *unstructured.Unstructured
+		name                 string
 		expectStatusFeedback bool
 		expectConditions     bool
 	}{

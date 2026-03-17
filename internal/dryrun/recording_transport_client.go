@@ -12,25 +12,31 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
+const (
+	operationApply    = "apply"
+	operationGet      = "get"
+	operationDiscover = "discover"
+)
+
 // TransportRecord stores details of a transport client operation.
 type TransportRecord struct {
-	Operation string // "apply", "get", "discover"
-	GVK       schema.GroupVersionKind
+	Error     error
+	Result    *transport_client.ApplyResult
 	Namespace string
 	Name      string
+	GVK       schema.GroupVersionKind
+	Operation string // operationApply, operationGet, operationDiscover
 	Manifest  []byte
-	Result    *transport_client.ApplyResult
-	Error     error
 }
 
 // DryrunTransportClient implements transport_client.TransportClient by recording
 // all operations in-memory without executing real Kubernetes calls.
 // Applied resources are stored for subsequent discovery/get operations.
 type DryrunTransportClient struct {
-	mu                 sync.Mutex
 	resources          map[string]*unstructured.Unstructured // key: "namespace/name/gvk"
-	Records            []TransportRecord
 	discoveryOverrides DiscoveryOverrides
+	Records            []TransportRecord
+	mu                 sync.Mutex
 }
 
 // NewDryrunTransportClient creates a new DryrunTransportClient.
@@ -66,7 +72,7 @@ func (c *DryrunTransportClient) ApplyResource(ctx context.Context, manifestBytes
 	obj := &unstructured.Unstructured{}
 	if err := json.Unmarshal(manifestBytes, &obj.Object); err != nil {
 		record := TransportRecord{
-			Operation: "apply",
+			Operation: operationApply,
 			Manifest:  manifestBytes,
 			Error:     fmt.Errorf("failed to parse manifest: %w", err),
 		}
@@ -109,7 +115,7 @@ func (c *DryrunTransportClient) ApplyResource(ctx context.Context, manifestBytes
 	}
 
 	c.Records = append(c.Records, TransportRecord{
-		Operation: "apply",
+		Operation: operationApply,
 		GVK:       gvk,
 		Namespace: namespace,
 		Name:      name,
@@ -129,7 +135,7 @@ func (c *DryrunTransportClient) GetResource(ctx context.Context, gvk schema.Grou
 	obj, exists := c.resources[key]
 
 	c.Records = append(c.Records, TransportRecord{
-		Operation: "get",
+		Operation: operationGet,
 		GVK:       gvk,
 		Namespace: namespace,
 		Name:      name,
@@ -148,7 +154,7 @@ func (c *DryrunTransportClient) DiscoverResources(ctx context.Context, gvk schem
 	defer c.mu.Unlock()
 
 	c.Records = append(c.Records, TransportRecord{
-		Operation: "discover",
+		Operation: operationDiscover,
 		GVK:       gvk,
 		Namespace: discovery.GetNamespace(),
 		Name:      discovery.GetName(),

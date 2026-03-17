@@ -197,9 +197,9 @@ func (c *EvaluationContext) Data() map[string]interface{} {
 
 // EvaluationError represents an error during criteria evaluation
 type EvaluationError struct {
+	Err     error
 	Field   string
 	Message string
-	Err     error
 }
 
 func (e *EvaluationError) Error() string {

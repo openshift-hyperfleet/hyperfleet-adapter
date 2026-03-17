@@ -755,8 +755,8 @@ func TestExecutor_MissingRequiredParam(t *testing.T) {
 	}
 
 	// Unset the env var after executor creation
-	if err := os.Unsetenv("HYPERFLEET_API_BASE_URL"); err != nil {
-		t.Fatalf("Failed to unset env var: %v", err)
+	if unsetErr := os.Unsetenv("HYPERFLEET_API_BASE_URL"); unsetErr != nil {
+		t.Fatalf("Failed to unset env var: %v", unsetErr)
 	}
 
 	evt := createTestEvent("cluster-missing-param")

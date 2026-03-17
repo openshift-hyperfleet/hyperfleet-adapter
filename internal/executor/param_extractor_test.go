@@ -10,9 +10,9 @@ import (
 func TestConvertParamType(t *testing.T) {
 	tests := []struct {
 		name       string
+		want       interface{}
 		value      interface{}
 		targetType string
-		want       interface{}
 		wantErr    bool
 	}{
 		// String conversions
@@ -95,8 +95,8 @@ func TestConvertToString(t *testing.T) {
 
 func TestConvertToInt64(t *testing.T) {
 	tests := []struct {
-		name    string
 		value   interface{}
+		name    string
 		want    int64
 		wantErr bool
 	}{
@@ -127,8 +127,8 @@ func TestConvertToInt64(t *testing.T) {
 
 func TestConvertToFloat64(t *testing.T) {
 	tests := []struct {
-		name    string
 		value   interface{}
+		name    string
 		want    float64
 		wantErr bool
 	}{
@@ -159,10 +159,10 @@ func TestConvertToFloat64(t *testing.T) {
 
 func TestConvertToBool(t *testing.T) {
 	tests := []struct {
-		name    string
 		value   interface{}
-		want    bool
+		name    string
 		wantErr bool
+		want    bool
 	}{
 		{name: "bool true", value: true, want: true},
 		{name: "bool false", value: false, want: false},

@@ -404,9 +404,9 @@ func TestBuiltinVariables(t *testing.T) {
 func TestPayloadValidate(t *testing.T) {
 	tests := []struct {
 		name      string
+		errorMsg  string
 		payload   Payload
 		wantError bool
-		errorMsg  string
 	}{
 		{
 			name: "valid payload with Build only",
@@ -826,8 +826,8 @@ func TestValidateFileReferencesManifestRef(t *testing.T) {
 	tests := []struct {
 		name    string
 		config  *AdapterTaskConfig
-		wantErr bool
 		errMsg  string
+		wantErr bool
 	}{
 		{
 			name: "valid manifest ref for maestro transport",

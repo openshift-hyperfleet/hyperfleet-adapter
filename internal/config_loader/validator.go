@@ -23,8 +23,8 @@ var templateVarRegex = regexp.MustCompile(`\{\{\s*\.([a-zA-Z_][a-zA-Z0-9_\.]*)\s
 // AdapterConfigValidator validates AdapterConfig (deployment configuration)
 type AdapterConfigValidator struct {
 	config  *AdapterConfig
-	baseDir string
 	errors  *ValidationErrors
+	baseDir string
 }
 
 // NewAdapterConfigValidator creates a validator for AdapterConfig
@@ -53,10 +53,10 @@ func (v *AdapterConfigValidator) ValidateStructure() error {
 // TaskConfigValidator validates AdapterTaskConfig (task configuration)
 type TaskConfigValidator struct {
 	config      *AdapterTaskConfig
-	baseDir     string
 	errors      *ValidationErrors
 	definedVars map[string]bool
 	celEnv      *cel.Env
+	baseDir     string
 }
 
 // NewTaskConfigValidator creates a validator for AdapterTaskConfig

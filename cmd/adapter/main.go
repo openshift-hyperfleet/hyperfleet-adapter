@@ -408,7 +408,9 @@ func runServe(flags *pflag.FlagSet) error {
 		config.Clients.HyperfleetAPI.RetryAttempts)
 	var redactedConfigBytes []byte
 	if config.DebugConfig {
-		if data, err := yaml.Marshal(config.Redacted()); err != nil {
+		var data []byte
+		data, err = yaml.Marshal(config.Redacted())
+		if err != nil {
 			errCtx := logger.WithErrorField(ctx, err)
 			log.Warnf(errCtx, "Failed to marshal adapter configuration for logging")
 		} else {
@@ -428,15 +430,16 @@ func runServe(flags *pflag.FlagSet) error {
 	defer func() {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), OTelShutdownTimeout)
 		defer shutdownCancel()
-		if err := tp.Shutdown(shutdownCtx); err != nil {
-			errCtx := logger.WithErrorField(shutdownCtx, err)
+		if shutdownErr := tp.Shutdown(shutdownCtx); shutdownErr != nil {
+			errCtx := logger.WithErrorField(shutdownCtx, shutdownErr)
 			log.Warnf(errCtx, "Failed to shutdown TracerProvider")
 		}
 	}()
 
 	// Start health server
 	healthServer := health.NewServer(log, HealthServerPort, config.Adapter.Name)
-	if err := healthServer.Start(ctx); err != nil {
+	err = healthServer.Start(ctx)
+	if err != nil {
 		errCtx := logger.WithErrorField(ctx, err)
 		log.Errorf(errCtx, "Failed to start health server")
 		return fmt.Errorf("failed to start health server: %w", err)
@@ -448,8 +451,8 @@ func runServe(flags *pflag.FlagSet) error {
 	defer func() {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), HealthServerShutdownTimeout)
 		defer shutdownCancel()
-		if err := healthServer.Shutdown(shutdownCtx); err != nil {
-			errCtx := logger.WithErrorField(shutdownCtx, err)
+		if shutdownErr := healthServer.Shutdown(shutdownCtx); shutdownErr != nil {
+			errCtx := logger.WithErrorField(shutdownCtx, shutdownErr)
 			log.Warnf(errCtx, "Failed to shutdown health server")
 		}
 	}()
@@ -460,7 +463,8 @@ func runServe(flags *pflag.FlagSet) error {
 		Version:   version.Version,
 		Commit:    version.Commit,
 	})
-	if err := metricsServer.Start(ctx); err != nil {
+	err = metricsServer.Start(ctx)
+	if err != nil {
 		errCtx := logger.WithErrorField(ctx, err)
 		log.Errorf(errCtx, "Failed to start metrics server")
 		return fmt.Errorf("failed to start metrics server: %w", err)
@@ -468,8 +472,8 @@ func runServe(flags *pflag.FlagSet) error {
 	defer func() {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), HealthServerShutdownTimeout)
 		defer shutdownCancel()
-		if err := metricsServer.Shutdown(shutdownCtx); err != nil {
-			errCtx := logger.WithErrorField(shutdownCtx, err)
+		if shutdownErr := metricsServer.Shutdown(shutdownCtx); shutdownErr != nil {
+			errCtx := logger.WithErrorField(shutdownCtx, shutdownErr)
 			log.Warnf(errCtx, "Failed to shutdown metrics server")
 		}
 	}()
@@ -524,7 +528,7 @@ func runServe(flags *pflag.FlagSet) error {
 	// Get broker config
 	subscriptionID := config.Clients.Broker.SubscriptionID
 	if subscriptionID == "" {
-		err := fmt.Errorf("clients.broker.subscription_id is required")
+		err = fmt.Errorf("clients.broker.subscription_id is required")
 		errCtx := logger.WithErrorField(ctx, err)
 		log.Errorf(errCtx, "Missing required broker configuration")
 		return err
@@ -532,7 +536,7 @@ func runServe(flags *pflag.FlagSet) error {
 
 	topic := config.Clients.Broker.Topic
 	if topic == "" {
-		err := fmt.Errorf("clients.broker.topic is required")
+		err = fmt.Errorf("clients.broker.topic is required")
 		errCtx := logger.WithErrorField(ctx, err)
 		log.Errorf(errCtx, "Missing required broker configuration")
 		return err
@@ -669,7 +673,8 @@ func runDryRun(flags *pflag.FlagSet) error {
 	// Create recording transport client
 	var dryrunClient *dryrun.DryrunTransportClient
 	if dryRunDiscovery != "" {
-		overrides, err := dryrun.LoadDiscoveryOverrides(dryRunDiscovery)
+		var overrides dryrun.DiscoveryOverrides
+		overrides, err = dryrun.LoadDiscoveryOverrides(dryRunDiscovery)
 		if err != nil {
 			return fmt.Errorf("failed to load discovery overrides: %w", err)
 		}

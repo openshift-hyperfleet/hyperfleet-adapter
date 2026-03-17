@@ -25,9 +25,9 @@ type DryrunMatch struct {
 
 // DryrunResponse defines a single dryrun HTTP response.
 type DryrunResponse struct {
-	StatusCode int               `json:"statusCode"`
 	Headers    map[string]string `json:"headers,omitempty"`
 	Body       interface{}       `json:"body,omitempty"`
+	StatusCode int               `json:"statusCode"`
 }
 
 // LoadDryrunResponses reads and parses a dryrun API responses JSON file.

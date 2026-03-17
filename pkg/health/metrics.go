@@ -14,9 +14,9 @@ import (
 type MetricsServer struct {
 	server    *http.Server
 	log       logger.Logger
-	port      string
-	upGauge   prometheus.Gauge
 	buildInfo *prometheus.GaugeVec
+	upGauge   prometheus.Gauge
+	port      string
 }
 
 // MetricsConfig holds configuration for metrics registration.

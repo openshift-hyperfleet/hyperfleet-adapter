@@ -24,8 +24,8 @@ func TestIsRetryableDiscoveryError_Nil(t *testing.T) {
 
 func TestIsRetryableDiscoveryError_RetryableK8sErrors(t *testing.T) {
 	tests := []struct {
-		name string
 		err  error
+		name string
 	}{
 		{
 			name: "Timeout error",
@@ -74,8 +74,8 @@ func TestIsRetryableDiscoveryError_RetryableK8sErrors(t *testing.T) {
 
 func TestIsRetryableDiscoveryError_NonRetryableK8sErrors(t *testing.T) {
 	tests := []struct {
-		name string
 		err  error
+		name string
 	}{
 		{
 			name: "Forbidden error",
@@ -138,8 +138,8 @@ func TestIsRetryableDiscoveryError_NonRetryableK8sErrors(t *testing.T) {
 
 func TestIsRetryableDiscoveryError_NetworkErrors(t *testing.T) {
 	tests := []struct {
-		name string
 		err  error
+		name string
 	}{
 		{
 			name: "Connection refused",
@@ -181,8 +181,8 @@ func TestIsRetryableDiscoveryError_NetworkErrors(t *testing.T) {
 
 func TestIsRetryableDiscoveryError_UnknownErrors(t *testing.T) {
 	tests := []struct {
-		name string
 		err  error
+		name string
 	}{
 		{
 			name: "Generic error",
@@ -223,8 +223,8 @@ func TestIsRetryableDiscoveryError_NotFoundError(t *testing.T) {
 
 func TestIsRetryableDiscoveryError_WrappedK8sErrors(t *testing.T) {
 	tests := []struct {
-		name     string
 		err      error
+		name     string
 		expected bool
 	}{
 		{
@@ -258,10 +258,10 @@ func TestIsRetryableDiscoveryError_RetryBehaviorMatrix(t *testing.T) {
 	// It serves as documentation for operators and developers
 
 	type testCase struct {
-		name           string
 		err            error
-		shouldRetry    bool
+		name           string
 		expectedAction string
+		shouldRetry    bool
 	}
 
 	tests := []testCase{

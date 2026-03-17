@@ -16,13 +16,13 @@ import (
 
 // TLSTestCerts holds all PEM-encoded certificates and keys for TLS integration tests.
 type TLSTestCerts struct {
+	TempDir    string
 	CACert     []byte
 	CAKey      []byte
 	ServerCert []byte
 	ServerKey  []byte
 	ClientCert []byte
 	ClientKey  []byte
-	TempDir    string
 }
 
 // generateTestCerts creates a self-signed CA, server cert (with localhost SANs),

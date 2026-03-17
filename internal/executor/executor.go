@@ -105,13 +105,15 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 
 	// Phase 1: Parameter Extraction
 	e.log.Infof(ctx, "Phase %s: RUNNING", result.CurrentPhase)
-	if err := e.executeParamExtraction(execCtx); err != nil {
+	if paramErr := e.executeParamExtraction(execCtx); paramErr != nil {
 		result.Status = StatusFailed
-		result.Errors[PhaseParamExtraction] = err
-		execCtx.SetError("ParameterExtractionFailed", err.Error())
-		resErr := fmt.Errorf("resource execution failed: %w", err)
+		result.Errors[PhaseParamExtraction] = paramErr
+		execCtx.SetError("ParameterExtractionFailed", paramErr.Error())
+		resErr := fmt.Errorf("parameter extraction failed: %w", paramErr)
 		errCtx := logger.WithErrorField(ctx, resErr)
-		e.log.Errorf(errCtx, "Phase %s: FAILED", result.CurrentPhase)
+		e.log.Errorf(errCtx, "Phase %s: FAILED", PhaseParamExtraction)
+		result.ExecutionContext = execCtx
+		result.Params = execCtx.Params
 		return result
 	}
 	result.Params = execCtx.Params
@@ -152,15 +154,15 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 	resources := e.config.Config.Resources
 	e.log.Infof(ctx, "Phase %s: RUNNING - %d configured", result.CurrentPhase, len(resources))
 	if !result.ResourcesSkipped {
-		resourceResults, err := e.resourceExecutor.ExecuteAll(ctx, resources, execCtx)
+		resourceResults, resourceErr := e.resourceExecutor.ExecuteAll(ctx, resources, execCtx)
 		result.ResourceResults = resourceResults
 
-		if err != nil {
+		if resourceErr != nil {
 			result.Status = StatusFailed
-			resErr := fmt.Errorf("resource execution failed: %w", err)
+			resErr := fmt.Errorf("resource execution failed: %w", resourceErr)
 			result.Errors[result.CurrentPhase] = resErr
-			execCtx.SetError("ResourceFailed", err.Error())
-			errCtx := logger.WithErrorField(ctx, err)
+			execCtx.SetError("ResourceFailed", resourceErr.Error())
+			errCtx := logger.WithErrorField(ctx, resourceErr)
 			e.log.Errorf(errCtx, "Phase %s: FAILED", result.CurrentPhase)
 			// Continue to post actions for error reporting
 		} else {

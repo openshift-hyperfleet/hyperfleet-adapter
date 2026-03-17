@@ -27,13 +27,13 @@ type MockRequest struct {
 // TODO: Replace with testcontainers using hyperfleet-api image when available.
 type MockAPIServer struct {
 	server           *httptest.Server
-	mu               sync.Mutex
-	requests         []MockRequest
+	t                *testing.T
 	clusterResponse  map[string]interface{}
+	requests         []MockRequest
 	statusResponses  []map[string]interface{}
+	mu               sync.Mutex
 	failPrecondition bool
 	failPostAction   bool // If true, POST to /status endpoint returns 500
-	t                *testing.T
 }
 
 // NewMockAPIServer creates a new MockAPIServer for testing.

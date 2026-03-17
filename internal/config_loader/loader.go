@@ -99,13 +99,13 @@ func LoadConfig(opts ...LoadOption) (*Config, error) {
 
 	// Validate AdapterConfig structure
 	adapterValidator := NewAdapterConfigValidator(adapterCfg, adapterBaseDir)
-	if err := adapterValidator.ValidateStructure(); err != nil {
+	if err = adapterValidator.ValidateStructure(); err != nil {
 		return nil, fmt.Errorf("adapter config validation failed: %w", err)
 	}
 
 	// Validate adapter version if specified
 	if o.adapterVersion != "" {
-		if err := ValidateAdapterVersion(adapterCfg, o.adapterVersion); err != nil {
+		if err = ValidateAdapterVersion(adapterCfg, o.adapterVersion); err != nil {
 			return nil, fmt.Errorf("adapter version validation failed: %w", err)
 		}
 	}

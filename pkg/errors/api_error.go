@@ -14,22 +14,22 @@ import (
 // APIError represents an error from an HTTP API call with detailed context.
 // This allows the adapter runtime to capture and handle request errors properly.
 type APIError struct {
+	// Err is the underlying error
+	Err error
 	// Method is the HTTP method used (GET, POST, PUT, PATCH, DELETE)
 	Method string
 	// URL is the request URL
 	URL string
-	// StatusCode is the HTTP status code (0 if request failed before getting response)
-	StatusCode int
 	// Status is the HTTP status string (e.g., "503 Service Unavailable")
 	Status string
 	// ResponseBody is the response body (may contain error details from the API)
 	ResponseBody []byte
-	// Attempts is how many attempts were made (including retries)
-	Attempts int
 	// Duration is the total duration including retries
 	Duration time.Duration
-	// Err is the underlying error
-	Err error
+	// StatusCode is the HTTP status code (0 if request failed before getting response)
+	StatusCode int
+	// Attempts is how many attempts were made (including retries)
+	Attempts int
 }
 
 // Error implements the error interface.

@@ -78,8 +78,8 @@ func TestWithErrorField(t *testing.T) {
 
 func TestShouldCaptureStackTrace_ContextErrors(t *testing.T) {
 	tests := []struct {
-		name          string
 		err           error
+		name          string
 		expectCapture bool
 	}{
 		{
@@ -116,8 +116,8 @@ func TestShouldCaptureStackTrace_ContextErrors(t *testing.T) {
 
 func TestShouldCaptureStackTrace_K8sAPIErrors(t *testing.T) {
 	tests := []struct {
-		name          string
 		err           error
+		name          string
 		expectCapture bool
 	}{
 		{
@@ -179,8 +179,8 @@ func TestShouldCaptureStackTrace_K8sAPIErrors(t *testing.T) {
 
 func TestShouldCaptureStackTrace_K8sResourceDataErrors(t *testing.T) {
 	tests := []struct {
-		name          string
 		err           error
+		name          string
 		expectCapture bool
 	}{
 		{
@@ -212,8 +212,8 @@ func TestShouldCaptureStackTrace_K8sResourceDataErrors(t *testing.T) {
 
 func TestShouldCaptureStackTrace_APIErrors(t *testing.T) {
 	tests := []struct {
-		name          string
 		err           error
+		name          string
 		expectCapture bool
 	}{
 		{
@@ -270,8 +270,8 @@ func TestShouldCaptureStackTrace_APIErrors(t *testing.T) {
 
 func TestShouldCaptureStackTrace_UnexpectedErrors(t *testing.T) {
 	tests := []struct {
-		name          string
 		err           error
+		name          string
 		expectCapture bool
 	}{
 		{

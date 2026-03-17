@@ -689,8 +689,8 @@ func TestIntegration_DifferentResourceTypes(t *testing.T) {
 			}
 			pod.SetGroupVersionKind(gvk.Pod)
 
-			_, err := env.GetClient().CreateResource(env.GetContext(), pod)
-			require.NoError(t, err)
+			_, createErr := env.GetClient().CreateResource(env.GetContext(), pod)
+			require.NoError(t, createErr)
 		}
 
 		// List pods with label selector

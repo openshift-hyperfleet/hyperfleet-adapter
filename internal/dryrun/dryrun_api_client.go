@@ -13,12 +13,12 @@ import (
 
 // RequestRecord stores details of an API request made through the dryrun client.
 type RequestRecord struct {
-	Method     string
-	URL        string
 	Headers    map[string]string
+	URL        string
+	Method     string
 	Body       []byte
-	StatusCode int
 	Response   []byte
+	StatusCode int
 }
 
 // DryrunAPIClient implements hyperfleet_api.Client backed by file-defined dryrun responses.
@@ -26,13 +26,13 @@ type RequestRecord struct {
 // sequentially from a configured array per endpoint. All requests are recorded.
 type DryrunAPIClient struct {
 	endpoints []compiledEndpoint
-	mu        sync.Mutex
 	Requests  []RequestRecord
+	mu        sync.Mutex
 }
 
 type compiledEndpoint struct {
-	method  string
 	pattern *regexp.Regexp
+	method  string
 	resps   []DryrunResponse
 	callIdx int
 }

@@ -140,9 +140,9 @@ func setupSharedK8sEnvtestEnv() (*K8sTestEnv, error) {
 
 	// Wait for API server to be ready
 	println("   Waiting for API server to be fully ready...")
-	if err := waitForAPIServerReady(restConfig, 30*time.Second); err != nil {
+	if waitErr := waitForAPIServerReady(restConfig, 30*time.Second); waitErr != nil {
 		sharedContainer.Cleanup()
-		return nil, fmt.Errorf("API server failed to become ready: %w", err)
+		return nil, fmt.Errorf("API server failed to become ready: %w", waitErr)
 	}
 	println("   ✅ API server is ready!")
 

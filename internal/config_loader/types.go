@@ -11,14 +11,14 @@ import (
 // Config is the unified configuration passed throughout the application.
 // Created by merging AdapterConfig (deployment) and AdapterTaskConfig (task).
 type Config struct {
-	Adapter       AdapterInfo    `yaml:"adapter"`
-	Clients       ClientsConfig  `yaml:"clients"`
-	DebugConfig   bool           `yaml:"debug_config,omitempty"`
+	Post          *PostConfig    `yaml:"post,omitempty"`
 	Log           LogConfig      `yaml:"log,omitempty"`
+	Adapter       AdapterInfo    `yaml:"adapter"`
 	Params        []Parameter    `yaml:"params,omitempty"`
 	Preconditions []Precondition `yaml:"preconditions,omitempty"`
 	Resources     []Resource     `yaml:"resources,omitempty"`
-	Post          *PostConfig    `yaml:"post,omitempty"`
+	Clients       ClientsConfig  `yaml:"clients"`
+	DebugConfig   bool           `yaml:"debug_config,omitempty"`
 }
 
 // Merge combines AdapterConfig (deployment) and AdapterTaskConfig (task) into a unified Config.
@@ -104,8 +104,9 @@ type FieldExpressionDef struct {
 //	  expression: "adapter.?errorMessage.orValue(\"\")"
 //	  default: "success"
 type ValueDef struct {
+	// Default value if extraction fails or returns nil
+	Default            any `yaml:"default"`
 	FieldExpressionDef `yaml:",inline"`
-	Default            any `yaml:"default"` // Default value if extraction fails or returns nil
 }
 
 // ParseValueDef attempts to parse a value as a ValueDef.
@@ -174,12 +175,12 @@ type KubernetesConfig struct {
 // Parameter represents a parameter extraction configuration.
 // Parameters are extracted from external sources (event data, env vars) using Source.
 type Parameter struct {
+	Default     interface{} `yaml:"default,omitempty"`
 	Name        string      `yaml:"name" validate:"required"`
 	Source      string      `yaml:"source,omitempty" validate:"required"`
 	Type        string      `yaml:"type,omitempty"`
 	Description string      `yaml:"description,omitempty"`
 	Required    bool        `yaml:"required,omitempty"`
-	Default     interface{} `yaml:"default,omitempty"`
 }
 
 // Payload represents a dynamically built payload for post-processing.
@@ -190,16 +191,16 @@ type Parameter struct {
 // - Use Build for inline payload definitions directly in the config
 // - Use BuildRef to reference an external YAML file containing the build definition
 type Payload struct {
-	Name string `yaml:"name" validate:"required"`
 	// Build contains a structure that will be evaluated and converted to JSON at runtime.
 	// The structure is kept as raw interface{} to allow flexible schema definitions.
 	// Mutually exclusive with BuildRef.
 	Build interface{} `yaml:"build,omitempty" validate:"required_without=BuildRef,excluded_with=BuildRef"`
+	// BuildRefContent holds the loaded content from BuildRef file (populated by loader)
+	BuildRefContent map[string]interface{} `yaml:"-"`
+	Name            string                 `yaml:"name" validate:"required"`
 	// BuildRef references an external YAML file containing the build definition.
 	// Mutually exclusive with Build.
 	BuildRef string `yaml:"build_ref,omitempty" validate:"required_without=Build,excluded_with=Build"`
-	// BuildRefContent holds the loaded content from BuildRef file (populated by loader)
-	BuildRefContent map[string]interface{} `yaml:"-"`
 }
 
 // Validate checks that exactly one of Build or BuildRef is set.
@@ -219,18 +220,18 @@ func (p *Payload) Validate() error {
 // ActionBase contains common fields for action-like configurations.
 // Used by Precondition and PostAction to reduce duplication.
 type ActionBase struct {
-	Name    string     `yaml:"name" validate:"required"`
 	APICall *APICall   `yaml:"api_call,omitempty" validate:"omitempty"`
 	Log     *LogAction `yaml:"log,omitempty"`
+	Name    string     `yaml:"name" validate:"required"`
 }
 
 // Precondition represents a precondition check.
 // Must have at least one of: APICall (from ActionBase), Expression, or Conditions.
 type Precondition struct {
 	ActionBase `yaml:",inline"`
+	Expression string         `yaml:"expression,omitempty" validate:"required_without_all=ActionBase.APICall Conditions"`
 	Capture    []CaptureField `yaml:"capture,omitempty" validate:"dive"`
 	Conditions []Condition    `yaml:"conditions,omitempty" validate:"dive,required_without_all=ActionBase.APICall Expression"`
-	Expression string         `yaml:"expression,omitempty" validate:"required_without_all=ActionBase.APICall Conditions"`
 }
 
 // APICall represents an API call configuration
@@ -238,10 +239,10 @@ type APICall struct {
 	Method        string   `yaml:"method" validate:"required,oneof=GET POST PUT PATCH DELETE"`
 	URL           string   `yaml:"url" validate:"required"`
 	Timeout       string   `yaml:"timeout,omitempty"`
-	RetryAttempts int      `yaml:"retry_attempts,omitempty"`
 	RetryBackoff  string   `yaml:"retry_backoff,omitempty"`
-	Headers       []Header `yaml:"headers,omitempty"`
 	Body          string   `yaml:"body,omitempty"`
+	Headers       []Header `yaml:"headers,omitempty"`
+	RetryAttempts int      `yaml:"retry_attempts,omitempty"`
 }
 
 // Header represents an HTTP header
@@ -262,17 +263,19 @@ type CaptureField struct {
 
 // Condition represents a structured condition
 type Condition struct {
+	// Populated by UnmarshalYAML from "value" or "values"
+	Value    interface{} `yaml:"-"`
 	Field    string      `yaml:"field"`
 	Operator string      `yaml:"operator" validate:"required,validoperator"`
-	Value    interface{} `yaml:"-"` // Populated by UnmarshalYAML from "value" or "values"
 }
 
 // conditionRaw is used for custom unmarshaling to support both "value" and "values" keys
 type conditionRaw struct {
+	Value interface{} `yaml:"value"`
+	// Alias for Value
+	Values   interface{} `yaml:"values"`
 	Field    string      `yaml:"field"`
 	Operator string      `yaml:"operator"`
-	Value    interface{} `yaml:"value"`
-	Values   interface{} `yaml:"values"` // Alias for Value
 }
 
 // UnmarshalYAML implements custom unmarshaling to support both "value" and "values" keys
@@ -302,10 +305,10 @@ func (c *Condition) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 // TransportConfig specifies which transport client to use for a resource
 type TransportConfig struct {
-	// Client is the transport client type: "kubernetes" or "maestro"
-	Client string `yaml:"client" validate:"required,oneof=kubernetes maestro"`
 	// Maestro contains maestro-specific transport settings (required when Client is "maestro")
 	Maestro *MaestroTransportConfig `yaml:"maestro,omitempty"`
+	// Client is the transport client type: "kubernetes" or "maestro"
+	Client string `yaml:"client" validate:"required,oneof=kubernetes maestro"`
 }
 
 // MaestroTransportConfig contains maestro-specific transport settings
@@ -319,27 +322,27 @@ type MaestroTransportConfig struct {
 // or a ManifestWork (for maestro transport). The transport client determines
 // how to parse and apply it.
 type Resource struct {
-	Name             string           `yaml:"name" validate:"required,resourcename"`
-	Transport        *TransportConfig `yaml:"transport,omitempty"`
-	Manifest         interface{}      `yaml:"manifest,omitempty"`
-	RecreateOnChange bool             `yaml:"recreate_on_change,omitempty"`
-	Discovery        *DiscoveryConfig `yaml:"discovery,omitempty" validate:"required"`
+	Name      string           `yaml:"name" validate:"required,resourcename"`
+	Transport *TransportConfig `yaml:"transport,omitempty"`
+	Manifest  interface{}      `yaml:"manifest,omitempty"`
+	Discovery *DiscoveryConfig `yaml:"discovery,omitempty" validate:"required"`
 	// NestedDiscoveries defines how to discover individual sub-resources within the applied manifest.
 	// For example, discovering resources inside a ManifestWork's workload.
 	NestedDiscoveries []NestedDiscovery `yaml:"nested_discoveries,omitempty" validate:"dive"`
+	RecreateOnChange  bool              `yaml:"recreate_on_change,omitempty"`
 }
 
 // NestedDiscovery defines a named discovery for a sub-resource within the parent manifest.
 type NestedDiscovery struct {
-	Name      string           `yaml:"name" validate:"required,resourcename"`
 	Discovery *DiscoveryConfig `yaml:"discovery" validate:"required"`
+	Name      string           `yaml:"name" validate:"required,resourcename"`
 }
 
 // DiscoveryConfig represents resource discovery configuration
 type DiscoveryConfig struct {
+	BySelectors *SelectorConfig `yaml:"by_selectors,omitempty" validate:"required_without=ByName,excluded_with=ByName,omitempty"`
 	Namespace   string          `yaml:"namespace,omitempty"`
-	ByName      string          `yaml:"by_name,omitempty" validate:"required_without=BySelectors"`
-	BySelectors *SelectorConfig `yaml:"by_selectors,omitempty" validate:"required_without=ByName,omitempty"`
+	ByName      string          `yaml:"by_name,omitempty" validate:"required_without=BySelectors,excluded_with=BySelectors"`
 }
 
 // SelectorConfig represents label selector configuration
@@ -432,17 +435,17 @@ func (ve *ValidationErrors) HasErrors() bool {
 // and CLI flags using Viper.
 type AdapterConfig struct {
 	Adapter     AdapterInfo   `yaml:"adapter" mapstructure:"adapter"`
+	Log         LogConfig     `yaml:"log,omitempty" mapstructure:"log"`
 	Clients     ClientsConfig `yaml:"clients" mapstructure:"clients"`
 	DebugConfig bool          `yaml:"debug_config,omitempty" mapstructure:"debug_config"`
-	Log         LogConfig     `yaml:"log,omitempty" mapstructure:"log"`
 }
 
 // ClientsConfig contains configuration for all external clients
 type ClientsConfig struct {
 	Maestro       *MaestroClientConfig `yaml:"maestro,omitempty" mapstructure:"maestro"`
-	HyperfleetAPI HyperfleetAPIConfig  `yaml:"hyperfleet_api" mapstructure:"hyperfleet_api"`
 	Broker        BrokerConfig         `yaml:"broker,omitempty" mapstructure:"broker"`
 	Kubernetes    KubernetesConfig     `yaml:"kubernetes" mapstructure:"kubernetes"`
+	HyperfleetAPI HyperfleetAPIConfig  `yaml:"hyperfleet_api" mapstructure:"hyperfleet_api"`
 }
 
 // MaestroClientConfig contains Maestro client configuration
@@ -451,18 +454,19 @@ type MaestroClientConfig struct {
 	HTTPServerAddress        string            `yaml:"http_server_address" mapstructure:"http_server_address"`
 	SourceID                 string            `yaml:"source_id" mapstructure:"source_id"`
 	ClientID                 string            `yaml:"client_id" mapstructure:"client_id"`
-	Auth                     MaestroAuthConfig `yaml:"auth" mapstructure:"auth"`
 	Timeout                  string            `yaml:"timeout" mapstructure:"timeout"`
 	ServerHealthinessTimeout string            `yaml:"server_healthiness_timeout,omitempty" mapstructure:"server_healthiness_timeout"`
-	RetryAttempts            int               `yaml:"retry_attempts" mapstructure:"retry_attempts"`
 	Keepalive                *KeepaliveConfig  `yaml:"keepalive,omitempty" mapstructure:"keepalive"`
+	Auth                     MaestroAuthConfig `yaml:"auth" mapstructure:"auth"`
+	RetryAttempts            int               `yaml:"retry_attempts" mapstructure:"retry_attempts"`
 	Insecure                 bool              `yaml:"insecure,omitempty" mapstructure:"insecure"`
 }
 
 // MaestroAuthConfig contains authentication configuration for Maestro
 type MaestroAuthConfig struct {
-	Type      string     `yaml:"type" mapstructure:"type"` // "tls" or "none"
 	TLSConfig *TLSConfig `yaml:"tls_config,omitempty" mapstructure:"tls_config"`
+	// "tls" or "none"
+	Type string `yaml:"type" mapstructure:"type"`
 }
 
 // TLSConfig contains TLS certificate configuration
@@ -483,8 +487,8 @@ type KeepaliveConfig struct {
 // Contains params, preconditions, resources, and post-processing actions.
 // This config is loaded from YAML without environment variable overrides.
 type AdapterTaskConfig struct {
+	Post          *PostConfig    `yaml:"post,omitempty" validate:"omitempty"`
 	Params        []Parameter    `yaml:"params,omitempty" validate:"dive"`
 	Preconditions []Precondition `yaml:"preconditions,omitempty" validate:"dive"`
 	Resources     []Resource     `yaml:"resources,omitempty" validate:"unique=Name,dive"`
-	Post          *PostConfig    `yaml:"post,omitempty" validate:"omitempty"`
 }

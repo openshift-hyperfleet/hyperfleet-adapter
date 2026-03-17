@@ -82,33 +82,33 @@ func Find(code ServiceErrorCode) (bool, *ServiceError) {
 
 func Errors() ServiceErrors {
 	return ServiceErrors{
-		ServiceError{ErrorNotFound, "Resource not found", http.StatusNotFound},
-		ServiceError{ErrorValidation, "General validation failure", http.StatusBadRequest},
-		ServiceError{ErrorConflict, "An entity with the specified unique values already exists", http.StatusConflict},
-		ServiceError{ErrorForbidden, "Forbidden to perform this action", http.StatusForbidden},
-		ServiceError{ErrorUnauthorized, "Account is unauthorized to perform this action", http.StatusForbidden},
-		ServiceError{ErrorUnauthenticated, "Account authentication could not be verified", http.StatusUnauthorized},
-		ServiceError{ErrorBadRequest, "Bad request", http.StatusBadRequest},
-		ServiceError{ErrorMalformedRequest, "Unable to read request body", http.StatusBadRequest},
-		ServiceError{ErrorNotImplemented, "HTTP Method not implemented for this endpoint", http.StatusMethodNotAllowed},
-		ServiceError{ErrorGeneral, "Unspecified error", http.StatusInternalServerError},
-		ServiceError{ErrorAdapterConfigNotFound, "Adapter configuration not found", http.StatusNotFound},
-		ServiceError{ErrorBrokerConnectionError, "Failed to connect to message broker", http.StatusInternalServerError},
-		ServiceError{ErrorKubernetesError, "Kubernetes API error", http.StatusInternalServerError},
-		ServiceError{ErrorHyperFleetAPIError, "HyperFleet API error", http.StatusInternalServerError},
-		ServiceError{ErrorInvalidCloudEvent, "Invalid CloudEvent", http.StatusBadRequest},
-		ServiceError{ErrorMaestroError, "Maestro API error", http.StatusInternalServerError},
-		ServiceError{ErrorConfigurationError, "Configuration error", http.StatusInternalServerError},
+		ServiceError{Code: ErrorNotFound, Reason: "Resource not found", HTTPCode: http.StatusNotFound},
+		ServiceError{Code: ErrorValidation, Reason: "General validation failure", HTTPCode: http.StatusBadRequest},
+		ServiceError{Code: ErrorConflict, Reason: "An entity with the specified unique values already exists", HTTPCode: http.StatusConflict},
+		ServiceError{Code: ErrorForbidden, Reason: "Forbidden to perform this action", HTTPCode: http.StatusForbidden},
+		ServiceError{Code: ErrorUnauthorized, Reason: "Account is unauthorized to perform this action", HTTPCode: http.StatusForbidden},
+		ServiceError{Code: ErrorUnauthenticated, Reason: "Account authentication could not be verified", HTTPCode: http.StatusUnauthorized},
+		ServiceError{Code: ErrorBadRequest, Reason: "Bad request", HTTPCode: http.StatusBadRequest},
+		ServiceError{Code: ErrorMalformedRequest, Reason: "Unable to read request body", HTTPCode: http.StatusBadRequest},
+		ServiceError{Code: ErrorNotImplemented, Reason: "HTTP Method not implemented for this endpoint", HTTPCode: http.StatusMethodNotAllowed},
+		ServiceError{Code: ErrorGeneral, Reason: "Unspecified error", HTTPCode: http.StatusInternalServerError},
+		ServiceError{Code: ErrorAdapterConfigNotFound, Reason: "Adapter configuration not found", HTTPCode: http.StatusNotFound},
+		ServiceError{Code: ErrorBrokerConnectionError, Reason: "Failed to connect to message broker", HTTPCode: http.StatusInternalServerError},
+		ServiceError{Code: ErrorKubernetesError, Reason: "Kubernetes API error", HTTPCode: http.StatusInternalServerError},
+		ServiceError{Code: ErrorHyperFleetAPIError, Reason: "HyperFleet API error", HTTPCode: http.StatusInternalServerError},
+		ServiceError{Code: ErrorInvalidCloudEvent, Reason: "Invalid CloudEvent", HTTPCode: http.StatusBadRequest},
+		ServiceError{Code: ErrorMaestroError, Reason: "Maestro API error", HTTPCode: http.StatusInternalServerError},
+		ServiceError{Code: ErrorConfigurationError, Reason: "Configuration error", HTTPCode: http.StatusInternalServerError},
 	}
 }
 
 type ServiceError struct {
-	// Code is the numeric and distinct ID for the error
-	Code ServiceErrorCode
 	// Reason is the context-specific reason the error was generated
 	Reason string
-	// HttpCode is the HttpCode associated with the error when the error is returned as an API response
-	HttpCode int
+	// Code is the numeric and distinct ID for the error
+	Code ServiceErrorCode
+	// HTTPCode is the HTTPCode associated with the error when the error is returned as an API response
+	HTTPCode int
 }
 
 // New Reason can be a string with format verbs, which will be replaced by the specified values
@@ -119,7 +119,7 @@ func New(code ServiceErrorCode, reason string, values ...interface{}) *ServiceEr
 	if !exists {
 		// Log undefined error code - using fmt.Printf as fallback since we don't have logger here
 		fmt.Printf("Undefined error code used: %d\n", code)
-		err = &ServiceError{ErrorGeneral, "Unspecified error", http.StatusInternalServerError}
+		err = &ServiceError{Code: ErrorGeneral, Reason: "Unspecified error", HTTPCode: http.StatusInternalServerError}
 	}
 
 	// If the reason is specified, use it (with formatting)

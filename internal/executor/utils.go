@@ -98,9 +98,9 @@ func ExecuteAPICall(ctx context.Context, apiCall *config_loader.APICall, execCtx
 	// Add headers
 	headers := make(map[string]string)
 	for _, h := range apiCall.Headers {
-		headerValue, err := renderTemplate(h.Value, execCtx.Params)
-		if err != nil {
-			return nil, url, fmt.Errorf("failed to render header '%s' template: %w", h.Name, err)
+		headerValue, headerErr := renderTemplate(h.Value, execCtx.Params)
+		if headerErr != nil {
+			return nil, url, fmt.Errorf("failed to render header '%s' template: %w", h.Name, headerErr)
 		}
 		headers[h.Name] = headerValue
 	}
@@ -110,11 +110,11 @@ func ExecuteAPICall(ctx context.Context, apiCall *config_loader.APICall, execCtx
 
 	// Set timeout if specified
 	if apiCall.Timeout != "" {
-		timeout, err := time.ParseDuration(apiCall.Timeout)
-		if err == nil {
+		timeout, timeoutErr := time.ParseDuration(apiCall.Timeout)
+		if timeoutErr == nil {
 			opts = append(opts, hyperfleet_api.WithRequestTimeout(timeout))
 		} else {
-			log.Warnf(ctx, "failed to parse timeout '%s': %v, using default timeout", apiCall.Timeout, err)
+			log.Warnf(ctx, "failed to parse timeout '%s': %v, using default timeout", apiCall.Timeout, timeoutErr)
 		}
 	}
 

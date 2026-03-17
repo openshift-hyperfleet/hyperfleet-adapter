@@ -10,7 +10,7 @@ import (
 // CommonResourceKinds provides commonly used GroupVersionKinds for testing purposes ONLY.
 //
 // This is a test helper and should NOT be used in production code.
-// Production code must extract GVK from config using GVKFromKindAndApiVersion().
+// Production code must extract GVK from config using GVKFromKindAndAPIVersion().
 //
 // Available only in test builds for:
 //   - Unit tests (internal/k8s_client/*_test.go)

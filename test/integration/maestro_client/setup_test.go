@@ -53,9 +53,9 @@ func setupMaestroTestEnv() (*MaestroTestEnv, error) {
 
 	// Step 2: Run Maestro migration
 	println("   🔄 Running Maestro database migration...")
-	if err := runMaestroMigration(ctx, env); err != nil {
+	if migrationErr := runMaestroMigration(ctx, env); migrationErr != nil {
 		_ = pgContainer.Terminate(ctx)
-		return nil, fmt.Errorf("failed to run Maestro migration: %w", err)
+		return nil, fmt.Errorf("failed to run Maestro migration: %w", migrationErr)
 	}
 	println("   ✅ Database migration complete")
 
@@ -317,8 +317,8 @@ func setupTLSMaestroEnv(env *MaestroTestEnv) error {
 	if err != nil {
 		return fmt.Errorf("failed to generate test certs: %w", err)
 	}
-	if err := certs.WriteToTempDir(); err != nil {
-		return fmt.Errorf("failed to write certs to temp dir: %w", err)
+	if writeErr := certs.WriteToTempDir(); writeErr != nil {
+		return fmt.Errorf("failed to write certs to temp dir: %w", writeErr)
 	}
 	env.TLSCerts = certs
 

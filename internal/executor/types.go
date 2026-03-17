@@ -48,11 +48,11 @@ type ResourceRef struct {
 
 // EventData represents the data payload of a HyperFleet CloudEvent
 type EventData struct {
+	OwnerReferences *ResourceRef `json:"owner_references,omitempty"`
 	ID              string       `json:"id,omitempty"`
 	Kind            string       `json:"kind,omitempty"`
 	Href            string       `json:"href,omitempty"`
 	Generation      int64        `json:"generation,omitempty"`
-	OwnerReferences *ResourceRef `json:"owner_references,omitempty"`
 }
 
 // ExecutorConfig holds configuration for the executor
@@ -80,52 +80,54 @@ type Executor struct {
 
 // ExecutionResult contains the result of processing an event
 type ExecutionResult struct {
+	// ExecutionContext contains the full execution context (for testing and debugging)
+	ExecutionContext *ExecutionContext
+	// Params contains the extracted parameters
+	Params map[string]interface{}
+	// Errors contains errors keyed by the phase where they occurred
+	Errors map[ExecutionPhase]error
+	// SkipReason is why resources were skipped (e.g., "precondition not met")
+	SkipReason string
 	// Status is the overall execution status (runtime perspective)
 	Status ExecutionStatus
 	// CurrentPhase is the phase where execution ended (or is currently)
 	CurrentPhase ExecutionPhase
-	// Params contains the extracted parameters
-	Params map[string]interface{}
 	// PreconditionResults contains results of precondition evaluations
 	PreconditionResults []PreconditionResult
 	// ResourceResults contains results of resource operations
 	ResourceResults []ResourceResult
 	// PostActionResults contains results of post-action executions
 	PostActionResults []PostActionResult
-	// Errors contains errors keyed by the phase where they occurred
-	Errors map[ExecutionPhase]error
 	// ResourcesSkipped indicates if resources were skipped (business outcome)
 	ResourcesSkipped bool
-	// SkipReason is why resources were skipped (e.g., "precondition not met")
-	SkipReason string
-	// ExecutionContext contains the full execution context (for testing and debugging)
-	ExecutionContext *ExecutionContext
 }
 
 // PreconditionResult contains the result of a single precondition evaluation
 type PreconditionResult struct {
+	// Error is the error if Status is StatusFailed
+	Error error
+	// CapturedFields contains fields captured from the API response
+	CapturedFields map[string]interface{}
+	// CELResult contains CEL evaluation result (if expression was used)
+	CELResult *criteria.CELResult
 	// Name is the precondition name
 	Name string
 	// Status is the result status
 	Status ExecutionStatus
+	// APIResponse contains the raw API response (if APICallMade)
+	APIResponse []byte
+	// ConditionResults contains individual condition evaluation results
+	ConditionResults []criteria.EvaluationResult
 	// Matched indicates if conditions were satisfied
 	Matched bool
 	// APICallMade indicates if an API call was made
 	APICallMade bool
-	// APIResponse contains the raw API response (if APICallMade)
-	APIResponse []byte
-	// CapturedFields contains fields captured from the API response
-	CapturedFields map[string]interface{}
-	// ConditionResults contains individual condition evaluation results
-	ConditionResults []criteria.EvaluationResult
-	// CELResult contains CEL evaluation result (if expression was used)
-	CELResult *criteria.CELResult
-	// Error is the error if Status is StatusFailed
-	Error error
 }
 
 // ResourceResult contains the result of a single resource operation
 type ResourceResult struct {
+	// Error is the error if Status is StatusFailed
+	Error error
 	// Name is the resource name from config
 	Name string
 	// Kind is the Kubernetes resource kind
@@ -134,35 +136,33 @@ type ResourceResult struct {
 	Namespace string
 	// ResourceName is the actual K8s resource name
 	ResourceName string
+	// OperationReason explains why this operation was performed
+	// Examples: "resource not found", "generation changed from 1 to 2", "generation 1 unchanged", "recreate_on_change=true"
+	OperationReason string
 	// Status is the result status
 	Status ExecutionStatus
 	// Operation is the operation performed (create, update, recreate, skip)
 	Operation manifest.Operation
-	// OperationReason explains why this operation was performed
-	// Examples: "resource not found", "generation changed from 1 to 2", "generation 1 unchanged", "recreate_on_change=true"
-	OperationReason string
-	// Error is the error if Status is StatusFailed
-	Error error
 }
 
 // PostActionResult contains the result of a single post-action execution
 type PostActionResult struct {
+	// Error is the error if Status is StatusFailed
+	Error error
 	// Name is the post-action name
 	Name string
-	// Status is the result status
-	Status ExecutionStatus
-	// Skipped indicates if the action was skipped due to when condition
-	Skipped bool
 	// SkipReason is the reason for skipping
 	SkipReason string
-	// APICallMade indicates if an API call was made
-	APICallMade bool
+	// Status is the result status
+	Status ExecutionStatus
 	// APIResponse contains the raw API response (if APICallMade)
 	APIResponse []byte
 	// HTTPStatus is the HTTP status code of the API response
 	HTTPStatus int
-	// Error is the error if Status is StatusFailed
-	Error error
+	// Skipped indicates if the action was skipped due to when condition
+	Skipped bool
+	// APICallMade indicates if an API call was made
+	APICallMade bool
 }
 
 // ExecutionContext holds runtime context during execution
@@ -181,29 +181,29 @@ type ExecutionContext struct {
 	// Nested discoveries are also added as top-level entries keyed by nested discovery name.
 	// Values are expected to be *unstructured.Unstructured.
 	Resources map[string]interface{}
-	// Adapter holds adapter execution metadata
-	Adapter AdapterMetadata
 	// Evaluations tracks all condition evaluations for debugging/auditing
 	Evaluations []EvaluationRecord
+	// Adapter holds adapter execution metadata
+	Adapter AdapterMetadata
 }
 
 // EvaluationRecord tracks a single condition evaluation during execution
 type EvaluationRecord struct {
-	// Phase is the execution phase where this evaluation occurred
-	Phase ExecutionPhase
-	// Name is the name of the precondition/resource/action being evaluated
-	Name string
-	// EvaluationType indicates what kind of evaluation was performed
-	EvaluationType EvaluationType
-	// Expression is the CEL expression or condition description
-	Expression string
-	// Matched indicates whether the evaluation succeeded
-	Matched bool
 	// FieldResults contains individual field evaluation results keyed by field path (for structured conditions)
 	// Reuses criteria.EvaluationResult to avoid duplication
 	FieldResults map[string]criteria.EvaluationResult
 	// Timestamp is when the evaluation occurred
 	Timestamp time.Time
+	// Name is the name of the precondition/resource/action being evaluated
+	Name string
+	// Expression is the CEL expression or condition description
+	Expression string
+	// Phase is the execution phase where this evaluation occurred
+	Phase ExecutionPhase
+	// EvaluationType indicates what kind of evaluation was performed
+	EvaluationType EvaluationType
+	// Matched indicates whether the evaluation succeeded
+	Matched bool
 }
 
 // EvaluationType indicates the type of evaluation performed
@@ -218,18 +218,18 @@ const (
 
 // AdapterMetadata holds adapter execution metadata for CEL expressions
 type AdapterMetadata struct {
+	// ExecutionError contains detailed error information if execution failed
+	ExecutionError *ExecutionError `json:"executionError,omitempty"`
 	// ExecutionStatus is the overall execution status (runtime perspective: "success", "failed")
 	ExecutionStatus string
 	// ErrorReason is the error reason if failed (process execution errors only)
 	ErrorReason string
 	// ErrorMessage is the error message if failed (process execution errors only)
 	ErrorMessage string
-	// ExecutionError contains detailed error information if execution failed
-	ExecutionError *ExecutionError `json:"executionError,omitempty"`
-	// ResourcesSkipped indicates if resources were skipped (business outcome)
-	ResourcesSkipped bool `json:"resourcesSkipped,omitempty"`
 	// SkipReason is why resources were skipped (e.g., "precondition not met")
 	SkipReason string `json:"skipReason,omitempty"`
+	// ResourcesSkipped indicates if resources were skipped (business outcome)
+	ResourcesSkipped bool `json:"resourcesSkipped,omitempty"`
 }
 
 // ExecutionError represents a structured execution error
@@ -307,6 +307,10 @@ func (ec *ExecutionContext) SetError(reason, message string) {
 	ec.Adapter.ExecutionStatus = string(StatusFailed)
 	ec.Adapter.ErrorReason = reason
 	ec.Adapter.ErrorMessage = message
+	ec.Adapter.ExecutionError = &ExecutionError{
+		Phase:   reason,
+		Message: message,
+	}
 }
 
 // SetSkipped sets the status to indicate execution was skipped (not an error)
@@ -358,10 +362,10 @@ func (ec *ExecutionContext) GetCELVariables() map[string]interface{} {
 
 // ExecutorError represents an error during execution
 type ExecutorError struct {
+	Err     error
 	Phase   ExecutionPhase
 	Step    string
 	Message string
-	Err     error
 }
 
 func (e *ExecutorError) Error() string {
@@ -387,13 +391,13 @@ func NewExecutorError(phase ExecutionPhase, step, message string, err error) *Ex
 
 // PreconditionsOutcome represents the high-level result of precondition evaluation
 type PreconditionsOutcome struct {
-	// AllMatched indicates whether all preconditions were satisfied (business outcome)
-	AllMatched bool
-	// Results contains individual precondition results
-	Results []PreconditionResult
 	// Error contains execution errors (API failures, parse errors, etc.)
 	// nil if preconditions were evaluated successfully, even if not matched
 	Error error
 	// NotMetReason provides details when AllMatched is false
 	NotMetReason string
+	// Results contains individual precondition results
+	Results []PreconditionResult
+	// AllMatched indicates whether all preconditions were satisfied (business outcome)
+	AllMatched bool
 }

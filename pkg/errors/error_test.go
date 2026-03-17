@@ -8,10 +8,10 @@ import (
 func TestFind(t *testing.T) {
 	tests := []struct {
 		name       string
-		code       ServiceErrorCode
-		shouldFind bool
 		wantReason string
+		code       ServiceErrorCode
 		wantHTTP   int
+		shouldFind bool
 	}{
 		{
 			name:       "find_not_found_error",
@@ -59,8 +59,8 @@ func TestFind(t *testing.T) {
 				if err.Reason != tt.wantReason {
 					t.Errorf("Expected reason '%s', got '%s'", tt.wantReason, err.Reason)
 				}
-				if err.HttpCode != tt.wantHTTP {
-					t.Errorf("Expected HTTP code %d, got %d", tt.wantHTTP, err.HttpCode)
+				if err.HTTPCode != tt.wantHTTP {
+					t.Errorf("Expected HTTP code %d, got %d", tt.wantHTTP, err.HTTPCode)
 				}
 			}
 		})
@@ -112,11 +112,11 @@ func TestErrors(t *testing.T) {
 func TestNew(t *testing.T) {
 	tests := []struct {
 		name         string
-		code         ServiceErrorCode
 		reason       string
-		values       []interface{}
-		wantCode     ServiceErrorCode
 		wantReason   string
+		values       []interface{}
+		code         ServiceErrorCode
+		wantCode     ServiceErrorCode
 		wantHTTPCode int
 	}{
 		{
@@ -173,8 +173,8 @@ func TestNew(t *testing.T) {
 				t.Errorf("Expected reason '%s', got '%s'", tt.wantReason, err.Reason)
 			}
 
-			if err.HttpCode != tt.wantHTTPCode {
-				t.Errorf("Expected HTTP code %d, got %d", tt.wantHTTPCode, err.HttpCode)
+			if err.HTTPCode != tt.wantHTTPCode {
+				t.Errorf("Expected HTTP code %d, got %d", tt.wantHTTPCode, err.HTTPCode)
 			}
 		})
 	}
@@ -229,8 +229,8 @@ func TestServiceError_AsError(t *testing.T) {
 
 func TestServiceError_Is404(t *testing.T) {
 	tests := []struct {
-		name string
 		err  *ServiceError
+		name string
 		want bool
 	}{
 		{
@@ -261,8 +261,8 @@ func TestServiceError_Is404(t *testing.T) {
 
 func TestServiceError_IsConflict(t *testing.T) {
 	tests := []struct {
-		name string
 		err  *ServiceError
+		name string
 		want bool
 	}{
 		{
@@ -288,8 +288,8 @@ func TestServiceError_IsConflict(t *testing.T) {
 
 func TestServiceError_IsForbidden(t *testing.T) {
 	tests := []struct {
-		name string
 		err  *ServiceError
+		name string
 		want bool
 	}{
 		{
@@ -316,8 +316,8 @@ func TestServiceError_IsForbidden(t *testing.T) {
 func TestCodeStr(t *testing.T) {
 	tests := []struct {
 		name string
-		code ServiceErrorCode
 		want string
+		code ServiceErrorCode
 	}{
 		{
 			name: "not_found_code_string",
@@ -352,8 +352,8 @@ func TestCodeStr(t *testing.T) {
 func TestHref(t *testing.T) {
 	tests := []struct {
 		name string
-		code ServiceErrorCode
 		want string
+		code ServiceErrorCode
 	}{
 		{
 			name: "not_found_href",
@@ -523,8 +523,8 @@ func TestHelperFunctions(t *testing.T) {
 				t.Errorf("Expected code %d, got %d", tt.wantCode, err.Code)
 			}
 
-			if err.HttpCode != tt.wantHTTPCode {
-				t.Errorf("Expected HTTP code %d, got %d", tt.wantHTTPCode, err.HttpCode)
+			if err.HTTPCode != tt.wantHTTPCode {
+				t.Errorf("Expected HTTP code %d, got %d", tt.wantHTTPCode, err.HTTPCode)
 			}
 
 			// Check formatted reason
@@ -603,8 +603,8 @@ func TestHTTPCodeMapping(t *testing.T) {
 				t.Fatal("Find() returned nil")
 			}
 
-			if err.HttpCode != tt.wantHTTP {
-				t.Errorf("Expected HTTP code %d, got %d", tt.wantHTTP, err.HttpCode)
+			if err.HTTPCode != tt.wantHTTP {
+				t.Errorf("Expected HTTP code %d, got %d", tt.wantHTTP, err.HTTPCode)
 			}
 		})
 	}

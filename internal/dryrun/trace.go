@@ -16,11 +16,11 @@ const (
 
 // ExecutionTrace contains all data needed to produce the trace output.
 type ExecutionTrace struct {
-	EventID   string
-	EventType string
 	Result    *executor.ExecutionResult
 	APIClient *DryrunAPIClient
 	Transport *DryrunTransportClient
+	EventID   string
+	EventType string
 	Verbose   bool
 }
 
@@ -46,10 +46,10 @@ type TraceEvent struct {
 
 // TracePrecondition is the JSON representation of a precondition result.
 type TracePrecondition struct {
+	Error   string `json:"error,omitempty"`
 	Name    string `json:"name"`
 	Status  string `json:"status"`
 	Matched bool   `json:"matched"`
-	Error   string `json:"error,omitempty"`
 }
 
 // TraceResource is the JSON representation of a resource result.
@@ -66,19 +66,19 @@ type TraceResource struct {
 
 // TracePostAction is the JSON representation of a post-action result.
 type TracePostAction struct {
+	Error   string `json:"error,omitempty"`
 	Name    string `json:"name"`
 	Status  string `json:"status"`
 	Skipped bool   `json:"skipped,omitempty"`
-	Error   string `json:"error,omitempty"`
 }
 
 // TraceAPIRequest is the JSON representation of a recorded API request.
 type TraceAPIRequest struct {
+	Request    string `json:"requestBody,omitempty"`
+	Response   string `json:"responseBody,omitempty"`
 	Method     string `json:"method"`
 	URL        string `json:"url"`
 	StatusCode int    `json:"statusCode"`
-	Request    string `json:"requestBody,omitempty"`
-	Response   string `json:"responseBody,omitempty"`
 }
 
 // TraceTransportOp is the JSON representation of a recorded transport operation.
@@ -188,7 +188,7 @@ func (t *ExecutionTrace) FormatText() string {
 
 			if t.Verbose {
 				for _, tr := range t.Transport.Records {
-					if tr.Operation == "apply" && tr.Name == rr.ResourceName && tr.Namespace == rr.Namespace {
+					if tr.Operation == operationApply && tr.GVK.Kind == rr.Kind && tr.Name == rr.ResourceName && tr.Namespace == rr.Namespace {
 						fmt.Fprintf(&b, "    [verbose] Rendered manifest:\n      %s\n", prettyJSON(tr.Manifest))
 						break
 					}

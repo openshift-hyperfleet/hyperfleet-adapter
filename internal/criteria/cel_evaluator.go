@@ -25,17 +25,17 @@ type CELEvaluator struct {
 type CELResult struct {
 	// Value is the result of the CEL expression evaluation (nil if error)
 	Value interface{}
-	// Matched indicates if the result is boolean true (for conditions)
-	// Always false when Error is set
-	Matched bool
+	// Error indicates if evaluation failed (nil if successful)
+	// Common causes: "field not found", "null value access", "type mismatch"
+	Error error
 	// ValueType is the CEL type of Value (e.g., "bool", "string", "int", "map", "list")
 	// Empty when evaluation failed
 	ValueType string
 	// Expression is the original expression that was evaluated
 	Expression string
-	// Error indicates if evaluation failed (nil if successful)
-	// Common causes: "field not found", "null value access", "type mismatch"
-	Error error
+	// Matched indicates if the result is boolean true (for conditions)
+	// Always false when Error is set
+	Matched bool
 }
 
 // HasError returns true if the evaluation resulted in an error

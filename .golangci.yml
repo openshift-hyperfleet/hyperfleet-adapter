@@ -1,8 +1,6 @@
-# HyperFleet Adapter golangci-lint v2 Configuration
-# Required linters (16):
-# - Code Quality (9): errcheck, govet, staticcheck, ineffassign, unused, unconvert, unparam, goconst, exhaustive
-# - Code Style (6): gofmt, goimports, misspell, lll, revive, gocritic
-# - Security (1): gosec
+# HyperFleet Adapter - golangci-lint configuration
+# Follows HyperFleet architecture linting standards
+# Aligned with: https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/golangci.yml
 
 version: "2"
 
@@ -36,9 +34,12 @@ linters:
       check-type-assertions: true
       check-blank: true
 
+    govet:
+      enable-all: true
+
     goconst:
       min-len: 3
-      min-occurrences: 4
+      min-occurrences: 3
 
     misspell:
       locale: US
@@ -49,28 +50,22 @@ linters:
       line-length: 120
 
     revive:
-      confidence: 0.1
       rules:
         - name: exported
-          disabled: true
+          severity: warning
+          disabled: true  # Can be too noisy for internal packages
+        - name: unexported-return
+          severity: warning
+          disabled: false
         - name: var-naming
-          disabled: true
-        - name: package-comments
-          disabled: true
-        - name: unused-parameter
-          disabled: true
-        - name: indent-error-flow
-          disabled: true
-        - name: empty-block
-          disabled: true
-        - name: context-as-argument
-          disabled: true
-        - name: redefines-builtin-id
-          disabled: true
+          severity: warning
+          disabled: false
+
+    unparam:
+      check-exported: false
 
     exhaustive:
       default-signifies-exhaustive: true
-      default-case-required: false
 
     gocritic:
       disabled-checks:
@@ -80,7 +75,7 @@ linters:
         - exitAfterDefer
 
   exclusions:
-    generated: strict
+    generated: lax
     presets:
       - comments
       - common-false-positives
@@ -88,8 +83,7 @@ linters:
       - std-error-handling
     rules:
       # Relaxed rules for test files
-      - path: '(.+)_test\.go'
-        linters:
+      - linters:
           - gosec
           - errcheck
           - unparam
@@ -97,9 +91,9 @@ linters:
           - lll
           - gocritic
           - exhaustive
+        path: _test\.go
       # Relaxed rules for integration tests
-      - path: 'test/'
-        linters:
+      - linters:
           - gosec
           - errcheck
           - unparam
@@ -108,35 +102,71 @@ linters:
           - gocritic
           - revive
           - exhaustive
+        path: test/
       # Relaxed rules for cmd/
-      - path: 'cmd/'
-        linters:
+      - linters:
           - revive
           - lll
+        path: cmd/
       # Relaxed rules for internal packages
-      - path: 'internal/'
-        linters:
+      - linters:
           - lll
+        path: internal/
       # Relaxed rules for pkg/
-      - path: 'pkg/'
-        linters:
+      - linters:
           - lll
+        path: pkg/
       # G304: file inclusion via variable - acceptable for config loader
-      - path: 'internal/config_loader/'
+      - linters:
+          - gosec
+        path: internal/config_loader/
         text: 'G304'
-        linters:
-          - gosec
       # G404: weak random - acceptable for jitter in retry logic
-      - path: 'internal/hyperfleet_api/client\.go'
-        text: 'G404'
-        linters:
+      - linters:
           - gosec
+        path: internal/hyperfleet_api/client\.go
+        text: 'G404'
+      # Package naming: underscore packages are structural and renaming is out of scope
+      # Scoped to legacy underscore packages only
+      - linters:
+          - revive
+        path: internal/(config_loader|hyperfleet_api|maestro_client|k8s_client|transport_client)/
+        text: "don't use an underscore in package name"
+      # Package naming: allow existing package names (scoped to legacy packages)
+      - linters:
+          - revive
+        path: (internal/(config_loader|hyperfleet_api|maestro_client|k8s_client|transport_client)|pkg/utils)/
+        text: "avoid meaningless package names"
+      - linters:
+          - revive
+        path: (internal/(config_loader|hyperfleet_api|maestro_client|k8s_client|transport_client)|pkg/errors)/
+        text: "avoid package names that conflict with"
+    # Standard exclusion paths
+    paths:
+      - third_party(/|$)
+      - builtin(/|$)
+      - examples(/|$)
 
 formatters:
   enable:
     - gofmt
     - goimports
+  settings:
+    gofmt:
+      simplify: true
+  exclusions:
+    generated: lax
+    paths:
+      - third_party(/|$)
+      - builtin(/|$)
+      - examples(/|$)
 
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
+  new: false
+
+output:
+  formats:
+    text:
+      path: stdout
