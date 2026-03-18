@@ -18,9 +18,6 @@ var (
 
 	// BuildDate is the date when the binary was built
 	BuildDate = "unknown"
-
-	// Tag is the git tag (if any)
-	Tag = "none"
 )
 
 // UserAgent returns the User-Agent string for HTTP clients.
@@ -39,7 +36,6 @@ func Info() VersionInfo {
 		Version:   Version,
 		Commit:    Commit,
 		BuildDate: BuildDate,
-		Tag:       Tag,
 	}
 }
 
@@ -48,5 +44,4 @@ type VersionInfo struct {
 	Version   string
 	Commit    string
 	BuildDate string
-	Tag       string
 }

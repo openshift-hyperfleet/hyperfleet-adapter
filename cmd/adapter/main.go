@@ -155,7 +155,6 @@ Priority order (lowest to highest): config file < env vars < CLI flags`,
 			fmt.Printf("  Version:    %s\n", info.Version)
 			fmt.Printf("  Commit:     %s\n", info.Commit)
 			fmt.Printf("  Built:      %s\n", info.BuildDate)
-			fmt.Printf("  Tag:        %s\n", info.Tag)
 		},
 	}
 
@@ -387,7 +386,7 @@ func runServe(flags *pflag.FlagSet) error {
 		return fmt.Errorf("failed to create logger: %w", err)
 	}
 
-	log.Infof(ctx, "Starting Hyperfleet Adapter version=%s commit=%s built=%s tag=%s", version.Version, version.Commit, version.BuildDate, version.Tag)
+	log.Infof(ctx, "Starting Hyperfleet Adapter version=%s commit=%s built=%s", version.Version, version.Commit, version.BuildDate)
 
 	// Load unified configuration (deployment + task configs)
 	config, err := loadConfig(ctx, log, flags)

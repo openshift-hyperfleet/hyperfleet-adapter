@@ -13,7 +13,6 @@ BINARY_NAME := $(BIN_DIR)/hyperfleet-adapter
 BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 GIT_SHA ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 GIT_DIRTY ?= $(shell [ -z "$$(git status --porcelain 2>/dev/null)" ] || echo "-modified")
-GIT_TAG ?= $(shell git describe --tags --exact-match 2>/dev/null || echo "")
 APP_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
 
 # Go build flags
@@ -23,9 +22,6 @@ LDFLAGS := -s -w \
            -X $(VERSION_PKG).Version=$(APP_VERSION) \
            -X $(VERSION_PKG).Commit=$(GIT_SHA) \
            -X $(VERSION_PKG).BuildDate=$(BUILD_DATE)
-ifneq ($(GIT_TAG),)
-LDFLAGS += -X $(VERSION_PKG).Tag=$(GIT_TAG)
-endif
 
 # Container tool (docker or podman)
 CONTAINER_TOOL ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
