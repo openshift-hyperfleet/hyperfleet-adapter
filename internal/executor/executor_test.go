@@ -3,6 +3,7 @@ package executor
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/cloudevents/sdk-go/v2/event"
@@ -1008,6 +1009,77 @@ func TestCreateHandler_NilMetricsRecorder(t *testing.T) {
 	assert.NotPanics(t, func() {
 		_ = handler(context.Background(), &evt)
 	}, "handler with nil MetricsRecorder should not panic")
+}
+
+// TestPreconditionAPIFailure_ExecutionStatusRemainsFailed verifies that when a precondition
+// API call fails, adapter.executionStatus stays "failed" and is not overwritten to "success".
+// This is a regression test for a bug where SetSkipped() was called after SetError(),
+// resetting executionStatus and causing Health CEL expressions to evaluate incorrectly.
+func TestPreconditionAPIFailure_ExecutionStatusRemainsFailed(t *testing.T) {
+	// Configure mock to return an error on GET (simulating precondition API failure)
+	mockClient := newMockAPIClient()
+	mockClient.GetError = fmt.Errorf("connection refused")
+	mockClient.GetResponse = nil
+
+	config := &configloader.Config{
+		Adapter: configloader.AdapterInfo{
+			Name:    "test-adapter",
+			Version: "1.0.0",
+		},
+		Clients: configloader.ClientsConfig{
+			HyperfleetAPI: configloader.HyperfleetAPIConfig{
+				BaseURL: "http://mock-api:8000",
+				Version: "v1",
+			},
+		},
+		Params: []configloader.Parameter{
+			{Name: "clusterId", Source: "event.id", Required: true},
+		},
+		Preconditions: []configloader.Precondition{
+			{
+				ActionBase: configloader.ActionBase{
+					Name: "clusterStatus",
+					APICall: &configloader.APICall{
+						Method:  "GET",
+						URL:     "/clusters/{{ .clusterId }}",
+						Timeout: "2s",
+					},
+				},
+			},
+		},
+	}
+
+	exec, err := NewBuilder().
+		WithConfig(config).
+		WithAPIClient(mockClient).
+		WithTransportClient(k8sclient.NewMockK8sClient()).
+		WithLogger(logger.NewTestLogger()).
+		Build()
+	require.NoError(t, err)
+
+	ctx := logger.WithEventID(context.Background(), "test-precond-fail")
+	result := exec.Execute(ctx, map[string]interface{}{"id": "cluster-123"})
+
+	// Verify overall result status is failed
+	assert.Equal(t, StatusFailed, result.Status, "expected overall status to be failed")
+	assert.True(t, result.ResourcesSkipped, "resources should be skipped on precondition failure")
+
+	// Critical assertion: verify adapter.executionStatus is "failed", not "success"
+	require.NotNil(t, result.ExecutionContext, "execution context should be present")
+	assert.Equal(t, string(StatusFailed), result.ExecutionContext.Adapter.ExecutionStatus,
+		"adapter.executionStatus must remain 'failed' after precondition API failure")
+
+	// Verify error information is preserved
+	assert.Equal(t, "PreconditionFailed", result.ExecutionContext.Adapter.ErrorReason,
+		"adapter.errorReason should be 'PreconditionFailed'")
+	assert.NotEmpty(t, result.ExecutionContext.Adapter.ErrorMessage,
+		"adapter.errorMessage should contain the error details")
+
+	// Verify skip metadata is also set (for CEL expressions that check resourcesSkipped)
+	assert.True(t, result.ExecutionContext.Adapter.ResourcesSkipped,
+		"adapter.resourcesSkipped should be true")
+	assert.NotEmpty(t, result.ExecutionContext.Adapter.SkipReason,
+		"adapter.skipReason should be set")
 }
 
 // helper functions for metrics assertions

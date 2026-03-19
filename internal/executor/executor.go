@@ -137,7 +137,11 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 		e.log.Errorf(errCtx, "Phase %s: FAILED", result.CurrentPhase)
 		result.ResourcesSkipped = true
 		result.SkipReason = "PreconditionFailed"
-		execCtx.SetSkipped("PreconditionFailed", precondOutcome.Error.Error())
+		// Set skip metadata on adapter context without overwriting the failed execution status
+		// Note: SetSkipped() is NOT called here because it resets ExecutionStatus to "success",
+		// which would mask the precondition failure in CEL expressions (e.g., Health condition)
+		execCtx.Adapter.ResourcesSkipped = true
+		execCtx.Adapter.SkipReason = precondOutcome.Error.Error()
 		// Continue to post actions for error reporting
 	case !precondOutcome.AllMatched:
 		// Business outcome: precondition not satisfied
