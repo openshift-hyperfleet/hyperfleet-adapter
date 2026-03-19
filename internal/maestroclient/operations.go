@@ -51,10 +51,6 @@ func (c *Client) CreateManifestWork(
 	ctx = logger.WithLogField(ctx, "manifestwork", work.Name)
 	ctx = logger.WithObservedGeneration(ctx, manifest.GetGeneration(work.ObjectMeta))
 
-	c.log.WithFields(map[string]interface{}{
-		"manifests": len(work.Spec.Workload.Manifests),
-	}).Debug(ctx, "Creating ManifestWork")
-
 	// Set namespace to consumer name (required by Maestro)
 	work.Namespace = consumerName
 
@@ -68,7 +64,6 @@ func (c *Client) CreateManifestWork(
 			consumerName, work.Name, err)
 	}
 
-	c.log.Info(ctx, "Created ManifestWork")
 	return created, nil
 }
 
@@ -80,8 +75,6 @@ func (c *Client) GetManifestWork(
 ) (*workv1.ManifestWork, error) {
 	ctx = logger.WithMaestroConsumer(ctx, consumerName)
 	ctx = logger.WithLogField(ctx, "manifestwork", workName)
-
-	c.log.Debug(ctx, "Getting ManifestWork")
 
 	work, err := c.workClient.ManifestWorks(consumerName).Get(ctx, workName, metav1.GetOptions{})
 	if err != nil {
@@ -106,8 +99,6 @@ func (c *Client) PatchManifestWork(
 	ctx = logger.WithMaestroConsumer(ctx, consumerName)
 	ctx = logger.WithLogField(ctx, "manifestwork", workName)
 
-	c.log.Debug(ctx, "Patching ManifestWork")
-
 	patched, err := c.workClient.ManifestWorks(consumerName).Patch(
 		ctx,
 		workName,
@@ -120,7 +111,6 @@ func (c *Client) PatchManifestWork(
 			consumerName, workName, err)
 	}
 
-	c.log.Info(ctx, "Patched ManifestWork")
 	return patched, nil
 }
 
@@ -133,20 +123,16 @@ func (c *Client) DeleteManifestWork(
 	ctx = logger.WithMaestroConsumer(ctx, consumerName)
 	ctx = logger.WithLogField(ctx, "manifestwork", workName)
 
-	c.log.Debug(ctx, "Deleting ManifestWork")
-
 	err := c.workClient.ManifestWorks(consumerName).Delete(ctx, workName, metav1.DeleteOptions{})
 	if err != nil {
 		// Ignore not found errors (already deleted)
 		if apierrors.IsNotFound(err) {
-			c.log.Debug(ctx, "ManifestWork already deleted")
 			return nil
 		}
 		return apperrors.MaestroError("failed to delete ManifestWork %s/%s: %v",
 			consumerName, workName, err)
 	}
 
-	c.log.Info(ctx, "Deleted ManifestWork")
 	return nil
 }
 
@@ -157,10 +143,6 @@ func (c *Client) ListManifestWorks(
 	labelSelector string,
 ) (*workv1.ManifestWorkList, error) {
 	ctx = logger.WithMaestroConsumer(ctx, consumerName)
-
-	c.log.WithFields(map[string]interface{}{
-		"labelSelector": labelSelector,
-	}).Debug(ctx, "Listing ManifestWorks")
 
 	opts := metav1.ListOptions{}
 	if labelSelector != "" {
@@ -173,9 +155,6 @@ func (c *Client) ListManifestWorks(
 			consumerName, err)
 	}
 
-	c.log.WithFields(map[string]interface{}{
-		"count": len(list.Items),
-	}).Debug(ctx, "Listed ManifestWorks")
 	return list, nil
 }
 
@@ -216,8 +195,6 @@ func (c *Client) ApplyManifestWork(
 	ctx = logger.WithMaestroConsumer(ctx, consumerName)
 	ctx = logger.WithLogField(ctx, "manifestwork", manifestWork.Name)
 	ctx = logger.WithObservedGeneration(ctx, newGeneration)
-
-	c.log.Debug(ctx, "Applying ManifestWork")
 
 	// Check if ManifestWork exists
 	existing, err := c.GetManifestWork(ctx, consumerName, manifestWork.Name)
@@ -307,8 +284,6 @@ func (c *Client) DiscoverManifest(
 	ctx = logger.WithMaestroConsumer(ctx, consumerName)
 	ctx = logger.WithLogField(ctx, "manifestwork", workName)
 
-	c.log.Debug(ctx, "Discovering manifests in ManifestWork")
-
 	// Get the ManifestWork
 	work, err := c.GetManifestWork(ctx, consumerName, workName)
 	if err != nil {
@@ -328,10 +303,6 @@ func (c *Client) DiscoverManifest(
 		return nil, apperrors.MaestroError("failed to discover manifests in %s/%s: %v",
 			consumerName, workName, err)
 	}
-
-	c.log.WithFields(map[string]interface{}{
-		"found": len(list.Items),
-	}).Debug(ctx, "Discovered manifests in ManifestWork")
 
 	return list, nil
 }

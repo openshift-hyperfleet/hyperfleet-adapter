@@ -488,8 +488,6 @@ func (c *Client) ApplyResource(
 	// Set namespace to consumer name
 	work.Namespace = consumerName
 
-	c.log.Infof(ctx, "Applying ManifestWork %s/%s", consumerName, work.Name)
-
 	// Apply the ManifestWork (create or update with generation comparison)
 	result, err := c.ApplyManifestWork(ctx, consumerName, work)
 	if err != nil {

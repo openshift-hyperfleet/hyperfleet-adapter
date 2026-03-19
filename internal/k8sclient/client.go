@@ -122,8 +122,6 @@ func (c *Client) CreateResource(
 	namespace := obj.GetNamespace()
 	name := obj.GetName()
 
-	c.log.Infof(ctx, "Creating resource: %s/%s (namespace: %s)", gvk.Kind, name, namespace)
-
 	err := c.client.Create(ctx, obj)
 	if err != nil {
 		if apierrors.IsAlreadyExists(err) {
@@ -138,8 +136,6 @@ func (c *Client) CreateResource(
 			Err:       err,
 		}
 	}
-
-	c.log.Infof(ctx, "Successfully created resource: %s/%s", gvk.Kind, name)
 	return obj, nil
 }
 
@@ -150,8 +146,6 @@ func (c *Client) GetResource(
 	namespace, name string,
 	_ transportclient.TransportContext,
 ) (*unstructured.Unstructured, error) {
-	c.log.Infof(ctx, "Getting resource: %s/%s (namespace: %s)", gvk.Kind, name, namespace)
-
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(gvk)
 
@@ -175,8 +169,6 @@ func (c *Client) GetResource(
 			Err:       err,
 		}
 	}
-
-	c.log.Infof(ctx, "Successfully retrieved resource: %s/%s", gvk.Kind, name)
 	return obj, nil
 }
 
@@ -194,9 +186,6 @@ func (c *Client) ListResources(
 	namespace string,
 	labelSelector string,
 ) (*unstructured.UnstructuredList, error) {
-	c.log.Infof(ctx, "Listing resources: %s (namespace: %s, labelSelector: %s)",
-		gvk.Kind, namespace, labelSelector)
-
 	list := &unstructured.UnstructuredList{}
 	list.SetGroupVersionKind(gvk)
 
@@ -228,8 +217,6 @@ func (c *Client) ListResources(
 		}
 	}
 
-	c.log.Infof(ctx, "Successfully listed resources: %s (found %d items)",
-		gvk.Kind, len(list.Items))
 	return list, nil
 }
 
@@ -261,8 +248,6 @@ func (c *Client) UpdateResource(
 	namespace := obj.GetNamespace()
 	name := obj.GetName()
 
-	c.log.Infof(ctx, "Updating resource: %s/%s (namespace: %s)", gvk.Kind, name, namespace)
-
 	err := c.client.Update(ctx, obj)
 	if err != nil {
 		if apierrors.IsConflict(err) {
@@ -277,15 +262,11 @@ func (c *Client) UpdateResource(
 			Err:       err,
 		}
 	}
-
-	c.log.Infof(ctx, "Successfully updated resource: %s/%s", gvk.Kind, name)
 	return obj, nil
 }
 
 // DeleteResource deletes a Kubernetes resource
 func (c *Client) DeleteResource(ctx context.Context, gvk schema.GroupVersionKind, namespace, name string) error {
-	c.log.Infof(ctx, "Deleting resource: %s/%s (namespace: %s)", gvk.Kind, name, namespace)
-
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(gvk)
 	obj.SetNamespace(namespace)
@@ -294,7 +275,6 @@ func (c *Client) DeleteResource(ctx context.Context, gvk schema.GroupVersionKind
 	err := c.client.Delete(ctx, obj)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			c.log.Infof(ctx, "Resource already deleted: %s/%s", gvk.Kind, name)
 			return nil
 		}
 		return &apperrors.K8sOperationError{
@@ -306,8 +286,6 @@ func (c *Client) DeleteResource(ctx context.Context, gvk schema.GroupVersionKind
 			Err:       err,
 		}
 	}
-
-	c.log.Infof(ctx, "Successfully deleted resource: %s/%s", gvk.Kind, name)
 	return nil
 }
 
@@ -342,8 +320,6 @@ func (c *Client) PatchResource(
 	namespace, name string,
 	patchData []byte,
 ) (*unstructured.Unstructured, error) {
-	c.log.Infof(ctx, "Patching resource: %s/%s (namespace: %s)", gvk.Kind, name, namespace)
-
 	// Parse patch data to validate JSON
 	var patchObj map[string]interface{}
 	if err := json.Unmarshal(patchData, &patchObj); err != nil {
@@ -375,8 +351,6 @@ func (c *Client) PatchResource(
 			Err:       err,
 		}
 	}
-
-	c.log.Infof(ctx, "Successfully patched resource: %s/%s", gvk.Kind, name)
 
 	// Get the updated resource to return
 	return c.GetResource(ctx, gvk, namespace, name, nil)
