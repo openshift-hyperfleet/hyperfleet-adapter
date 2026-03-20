@@ -106,6 +106,14 @@ func (c *Client) ApplyManifest(
 	switch result.Operation {
 	case manifest.OperationCreate:
 		_, applyErr = c.CreateResource(ctx, newManifest)
+		if applyErr != nil && apierrors.IsAlreadyExists(applyErr) {
+			// Resource was created by a concurrent process between our Get and Create.
+			// Treat as a successful no-op rather than an error.
+			c.log.Debugf(ctx, "Resource %s/%s already exists (concurrent create), treating as skip", gvk.Kind, name)
+			result.Operation = manifest.OperationSkip
+			result.Reason = "already exists (concurrent create)"
+			applyErr = nil
+		}
 
 	case manifest.OperationUpdate:
 		// Preserve resourceVersion and UID from existing for update
