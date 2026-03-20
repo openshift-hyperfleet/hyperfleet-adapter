@@ -218,6 +218,60 @@ rbac.authorization.k8s.io
 {{- end }}
 
 {{/*
+Validate required values that must not remain as placeholders.
+*/}}
+{{- define "hyperfleet-adapter.validateValues" -}}
+{{- if eq .Values.image.registry "CHANGE_ME" -}}
+{{- fail "image.registry must be set (e.g. --set image.registry=quay.io)" -}}
+{{- end -}}
+{{- if eq .Values.image.repository "CHANGE_ME" -}}
+{{- fail "image.repository must be set (e.g. --set image.repository=openshift-hyperfleet/hyperfleet-adapter)" -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Validate deprecated snake_case broker keys have not been used.
+Per Helm Chart Conventions Standard section 9 (Deprecation and Migration Pattern).
+*/}}
+{{- define "hyperfleet-adapter.validateDeprecatedKeys" -}}
+{{- if .Values.broker.googlepubsub }}
+{{- if hasKey .Values.broker.googlepubsub "project_id" }}
+{{- fail "broker.googlepubsub.project_id has been renamed to broker.googlepubsub.projectId (camelCase). Please update your values." }}
+{{- end -}}
+{{- if hasKey .Values.broker.googlepubsub "subscription_id" }}
+{{- fail "broker.googlepubsub.subscription_id has been renamed to broker.googlepubsub.subscriptionId (camelCase). Please update your values." }}
+{{- end -}}
+{{- if hasKey .Values.broker.googlepubsub "dead_letter_topic" }}
+{{- fail "broker.googlepubsub.dead_letter_topic has been renamed to broker.googlepubsub.deadLetterTopic (camelCase). Please update your values." }}
+{{- end -}}
+{{- if hasKey .Values.broker.googlepubsub "create_topic_if_missing" }}
+{{- fail "broker.googlepubsub.create_topic_if_missing has been renamed to broker.googlepubsub.createTopicIfMissing (camelCase). Please update your values." }}
+{{- end -}}
+{{- if hasKey .Values.broker.googlepubsub "create_subscription_if_missing" }}
+{{- fail "broker.googlepubsub.create_subscription_if_missing has been renamed to broker.googlepubsub.createSubscriptionIfMissing (camelCase). Please update your values." }}
+{{- end -}}
+{{- end -}}
+{{- if .Values.broker.rabbitmq }}
+{{- if hasKey .Values.broker.rabbitmq "routing_key" }}
+{{- fail "broker.rabbitmq.routing_key has been renamed to broker.rabbitmq.routingKey (camelCase). Please update your values." }}
+{{- end -}}
+{{- if hasKey .Values.broker.rabbitmq "exchange_type" }}
+{{- fail "broker.rabbitmq.exchange_type has been renamed to broker.rabbitmq.exchangeType (camelCase). Please update your values." }}
+{{- end -}}
+{{- end -}}
+{{- if .Values.adapterConfig }}
+{{- if hasKey .Values.adapterConfig "hyperfleet_api" }}
+{{- fail "adapterConfig.hyperfleet_api has been renamed to adapterConfig.hyperfleetApi (camelCase). Please update your values." }}
+{{- end -}}
+{{- if .Values.adapterConfig.hyperfleetApi }}
+{{- if hasKey .Values.adapterConfig.hyperfleetApi "base_url" }}
+{{- fail "adapterConfig.hyperfleetApi.base_url has been renamed to adapterConfig.hyperfleetApi.baseUrl (camelCase). Please update your values." }}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Determine the broker type.
 Returns broker.type if explicitly set, otherwise infers from broker config objects.
 */}}
