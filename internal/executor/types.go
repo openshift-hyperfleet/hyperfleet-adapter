@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/configloader"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleet_api"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleetapi"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transport_client"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transportclient"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/metrics"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -58,11 +58,11 @@ type EventData struct {
 // ExecutorConfig holds configuration for the executor
 type ExecutorConfig struct {
 	// Config is the unified configuration (merged from deployment and task configs)
-	Config *config_loader.Config
+	Config *configloader.Config
 	// APIClient is the HyperFleet API client
-	APIClient hyperfleet_api.Client
+	APIClient hyperfleetapi.Client
 	// TransportClient is the transport client for applying resources (kubernetes or maestro)
-	TransportClient transport_client.TransportClient
+	TransportClient transportclient.TransportClient
 	// Logger is the logger instance
 	Logger logger.Logger
 	// MetricsRecorder records adapter-level Prometheus metrics (nil disables recording)
@@ -137,7 +137,8 @@ type ResourceResult struct {
 	// ResourceName is the actual K8s resource name
 	ResourceName string
 	// OperationReason explains why this operation was performed
-	// Examples: "resource not found", "generation changed from 1 to 2", "generation 1 unchanged", "recreate_on_change=true"
+	// Examples: "resource not found", "generation changed from 1 to 2",
+	// "generation 1 unchanged", "recreate_on_change=true"
 	OperationReason string
 	// Status is the result status
 	Status ExecutionStatus
@@ -170,7 +171,7 @@ type ExecutionContext struct {
 	// Ctx is the Go context
 	Ctx context.Context
 	// Config is the unified adapter configuration
-	Config *config_loader.Config
+	Config *configloader.Config
 	// EventData is the parsed event data payload
 	EventData map[string]interface{}
 	// Params holds extracted parameters and captured fields
@@ -243,7 +244,11 @@ type ExecutionError struct {
 }
 
 // NewExecutionContext creates a new execution context
-func NewExecutionContext(ctx context.Context, eventData map[string]interface{}, config *config_loader.Config) *ExecutionContext {
+func NewExecutionContext(
+	ctx context.Context,
+	eventData map[string]interface{},
+	config *configloader.Config,
+) *ExecutionContext {
 	return &ExecutionContext{
 		Ctx:         ctx,
 		Config:      config,
@@ -258,7 +263,14 @@ func NewExecutionContext(ctx context.Context, eventData map[string]interface{}, 
 }
 
 // AddEvaluation records a condition evaluation result
-func (ec *ExecutionContext) AddEvaluation(phase ExecutionPhase, name string, evalType EvaluationType, expression string, matched bool, fieldResults map[string]criteria.EvaluationResult) {
+func (ec *ExecutionContext) AddEvaluation(
+	phase ExecutionPhase,
+	name string,
+	evalType EvaluationType,
+	expression string,
+	matched bool,
+	fieldResults map[string]criteria.EvaluationResult,
+) {
 	ec.Evaluations = append(ec.Evaluations, EvaluationRecord{
 		Phase:          phase,
 		Name:           name,
@@ -276,7 +288,12 @@ func (ec *ExecutionContext) AddCELEvaluation(phase ExecutionPhase, name, express
 }
 
 // AddConditionsEvaluation is a convenience method for recording structured conditions evaluations
-func (ec *ExecutionContext) AddConditionsEvaluation(phase ExecutionPhase, name string, matched bool, fieldResults map[string]criteria.EvaluationResult) {
+func (ec *ExecutionContext) AddConditionsEvaluation(
+	phase ExecutionPhase,
+	name string,
+	matched bool,
+	fieldResults map[string]criteria.EvaluationResult,
+) {
 	ec.AddEvaluation(phase, name, EvaluationTypeConditions, "", matched, fieldResults)
 }
 

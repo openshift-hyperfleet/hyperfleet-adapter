@@ -6,13 +6,17 @@ import (
 	"strings"
 
 	"github.com/go-viper/mapstructure/v2"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/configloader"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/utils"
 )
 
 // extractConfigParams extracts all configured parameters and populates execCtx.Params
 // This is a pure function that directly modifies execCtx for simplicity
-func extractConfigParams(config *config_loader.Config, execCtx *ExecutionContext, configMap map[string]interface{}) error {
+func extractConfigParams(
+	config *configloader.Config,
+	execCtx *ExecutionContext,
+	configMap map[string]interface{},
+) error {
 	for _, param := range config.Params {
 		value, err := extractParam(param, execCtx.EventData, configMap)
 		if err != nil {
@@ -62,7 +66,11 @@ func extractConfigParams(config *config_loader.Config, execCtx *ExecutionContext
 }
 
 // extractParam extracts a single parameter based on its source
-func extractParam(param config_loader.Parameter, eventData map[string]interface{}, configMap map[string]interface{}) (interface{}, error) {
+func extractParam(
+	param configloader.Parameter,
+	eventData map[string]interface{},
+	configMap map[string]interface{},
+) (interface{}, error) {
 	source := param.Source
 
 	// Handle different source types
@@ -85,7 +93,7 @@ func extractParam(param config_loader.Parameter, eventData map[string]interface{
 // configToMap converts a Config to map[string]interface{} using the yaml struct tags for key names.
 // mapstructure reads the "yaml" tag for key names but ignores the omitempty option, so zero-valued
 // fields like debug_config=false are preserved in the resulting map.
-func configToMap(cfg *config_loader.Config) (map[string]interface{}, error) {
+func configToMap(cfg *configloader.Config) (map[string]interface{}, error) {
 	var m map[string]interface{}
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
 		TagName: "yaml",
@@ -110,7 +118,7 @@ func extractFromEnv(envVar string) (interface{}, error) {
 }
 
 // addAdapterParams adds adapter info and the full config map to execCtx.Params
-func addAdapterParams(config *config_loader.Config, execCtx *ExecutionContext, configMap map[string]interface{}) {
+func addAdapterParams(config *configloader.Config, execCtx *ExecutionContext, configMap map[string]interface{}) {
 	execCtx.Params["adapter"] = map[string]interface{}{
 		"name":    config.Adapter.Name,
 		"version": config.Adapter.Version,

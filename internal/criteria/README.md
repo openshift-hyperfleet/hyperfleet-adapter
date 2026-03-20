@@ -209,7 +209,7 @@ The criteria package is designed to work seamlessly with conditions defined in a
 
 ```go
 import (
-    "github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
+    "github.com/openshift-hyperfleet/hyperfleet-adapter/internal/configloader"
     "github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
 )
 
@@ -309,8 +309,8 @@ go test -v ./internal/criteria/... -run Integration
 
 ## Related Packages
 
-- `internal/config_loader`: Parses adapter configurations with condition definitions
-- `internal/k8s_client`: Uses criteria for resource status evaluation
+- `internal/configloader`: Parses adapter configurations with condition definitions
+- `internal/k8sclient`: Uses criteria for resource status evaluation
 
 ## Configuration Template Examples
 

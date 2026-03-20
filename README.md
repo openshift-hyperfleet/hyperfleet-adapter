@@ -466,7 +466,7 @@ The first run will download golang:alpine and install envtest (~20-30 seconds). 
 
 </details>
 
-📖 **Full guide:** [`test/integration/k8s_client/README.md`](test/integration/k8s_client/README.md)
+📖 **Full guide:** [`test/integration/k8sclient/README.md`](test/integration/k8sclient/README.md)
 
 ### Test Coverage
 

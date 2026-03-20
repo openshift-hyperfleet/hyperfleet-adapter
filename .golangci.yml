@@ -43,8 +43,6 @@ linters:
 
     misspell:
       locale: US
-      ignore-rules:
-        - cancelled  # British spelling is acceptable
 
     lll:
       line-length: 120
@@ -67,79 +65,25 @@ linters:
     exhaustive:
       default-signifies-exhaustive: true
 
-    gocritic:
-      disabled-checks:
-        - ifElseChain
-        - singleCaseSwitch
-        - elseif
-        - exitAfterDefer
 
   exclusions:
     generated: lax
-    presets:
-      - comments
-      - common-false-positives
-      - legacy
-      - std-error-handling
     rules:
       # Relaxed rules for test files
       - linters:
           - gosec
           - errcheck
           - unparam
-          - goconst
-          - lll
-          - gocritic
-          - exhaustive
         path: _test\.go
-      # Relaxed rules for integration tests
-      - linters:
-          - gosec
-          - errcheck
-          - unparam
-          - goconst
-          - lll
-          - gocritic
-          - revive
-          - exhaustive
-        path: test/
-      # Relaxed rules for cmd/
+      # pkg/utils and pkg/errors: names conflict with Go conventions but renaming
+      # would break the public API surface
       - linters:
           - revive
-          - lll
-        path: cmd/
-      # Relaxed rules for internal packages
-      - linters:
-          - lll
-        path: internal/
-      # Relaxed rules for pkg/
-      - linters:
-          - lll
-        path: pkg/
-      # G304: file inclusion via variable - acceptable for config loader
-      - linters:
-          - gosec
-        path: internal/config_loader/
-        text: 'G304'
-      # G404: weak random - acceptable for jitter in retry logic
-      - linters:
-          - gosec
-        path: internal/hyperfleet_api/client\.go
-        text: 'G404'
-      # Package naming: underscore packages are structural and renaming is out of scope
-      # Scoped to legacy underscore packages only
-      - linters:
-          - revive
-        path: internal/(config_loader|hyperfleet_api|maestro_client|k8s_client|transport_client)/
-        text: "don't use an underscore in package name"
-      # Package naming: allow existing package names (scoped to legacy packages)
-      - linters:
-          - revive
-        path: (internal/(config_loader|hyperfleet_api|maestro_client|k8s_client|transport_client)|pkg/utils)/
+        path: pkg/utils/
         text: "avoid meaningless package names"
       - linters:
           - revive
-        path: (internal/(config_loader|hyperfleet_api|maestro_client|k8s_client|transport_client)|pkg/errors)/
+        path: pkg/errors/
         text: "avoid package names that conflict with"
     # Standard exclusion paths
     paths:

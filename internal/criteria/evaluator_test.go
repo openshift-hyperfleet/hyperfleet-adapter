@@ -901,7 +901,8 @@ func TestEvaluationError(t *testing.T) {
 
 func TestNewEvaluatorErrorsWithNilParams(t *testing.T) {
 	t.Run("errors with nil ctx", func(t *testing.T) {
-		_, err := NewEvaluator(nil, NewEvaluationContext(), logger.NewTestLogger()) //nolint:staticcheck // intentionally testing nil ctx
+		//nolint:staticcheck // intentionally testing nil ctx
+		_, err := NewEvaluator(nil, NewEvaluationContext(), logger.NewTestLogger())
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "ctx is required")
 	})

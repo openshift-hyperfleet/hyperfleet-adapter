@@ -3,6 +3,8 @@ package testutil
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -79,7 +81,10 @@ func NewMockAPIServer(t *testing.T) *MockAPIServer {
 		var bodyStr string
 		if r.Body != nil {
 			buf := make([]byte, 1024*1024)
-			n, _ := r.Body.Read(buf)
+			n, readErr := r.Body.Read(buf)
+			if readErr != nil && !errors.Is(readErr, io.EOF) {
+				t.Logf("Warning: error reading request body: %v", readErr)
+			}
 			bodyStr = string(buf[:n])
 		}
 
@@ -102,10 +107,12 @@ func NewMockAPIServer(t *testing.T) *MockAPIServer {
 				// Check if we should fail the post action
 				if mock.failPostAction {
 					w.WriteHeader(http.StatusInternalServerError)
-					_ = json.NewEncoder(w).Encode(map[string]string{
+					if encodeErr := json.NewEncoder(w).Encode(map[string]string{
 						"error":   "internal server error",
 						"message": "failed to update cluster status",
-					})
+					}); encodeErr != nil {
+						t.Logf("Warning: failed to encode error response: %v", encodeErr)
+					}
 					return
 				}
 
@@ -114,7 +121,9 @@ func NewMockAPIServer(t *testing.T) *MockAPIServer {
 					mock.statusResponses = append(mock.statusResponses, statusBody)
 				}
 				w.WriteHeader(http.StatusOK)
-				_ = json.NewEncoder(w).Encode(map[string]string{"status": "accepted"})
+				if encodeErr := json.NewEncoder(w).Encode(map[string]string{"status": "accepted"}); encodeErr != nil {
+					t.Logf("Warning: failed to encode status response: %v", encodeErr)
+				}
 				return
 			}
 
@@ -123,24 +132,32 @@ func NewMockAPIServer(t *testing.T) *MockAPIServer {
 			if r.Method == http.MethodGet {
 				if mock.failPrecondition {
 					w.WriteHeader(http.StatusNotFound)
-					_ = json.NewEncoder(w).Encode(map[string]string{"error": "cluster not found"})
+					if encodeErr := json.NewEncoder(w).Encode(map[string]string{"error": "cluster not found"}); encodeErr != nil {
+						t.Logf("Warning: failed to encode error response: %v", encodeErr)
+					}
 					return
 				}
 				w.WriteHeader(http.StatusOK)
-				_ = json.NewEncoder(w).Encode(mock.clusterResponse)
+				if encodeErr := json.NewEncoder(w).Encode(mock.clusterResponse); encodeErr != nil {
+					t.Logf("Warning: failed to encode cluster response: %v", encodeErr)
+				}
 				return
 			}
 
 		case strings.Contains(r.URL.Path, "/validation/availability"):
 			// GET validation availability
 			w.WriteHeader(http.StatusOK)
-			_ = json.NewEncoder(w).Encode("available")
+			if encodeErr := json.NewEncoder(w).Encode("available"); encodeErr != nil {
+				t.Logf("Warning: failed to encode availability response: %v", encodeErr)
+			}
 			return
 		}
 
 		// Default 404
 		w.WriteHeader(http.StatusNotFound)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "not found"})
+		if encodeErr := json.NewEncoder(w).Encode(map[string]string{"error": "not found"}); encodeErr != nil {
+			t.Logf("Warning: failed to encode 404 response: %v", encodeErr)
+		}
 	}))
 
 	return mock

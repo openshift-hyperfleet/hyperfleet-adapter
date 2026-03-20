@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"sync"
 
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleet_api"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleetapi"
 )
 
 // RequestRecord stores details of an API request made through the dryrun client.
@@ -21,7 +21,7 @@ type RequestRecord struct {
 	StatusCode int
 }
 
-// DryrunAPIClient implements hyperfleet_api.Client backed by file-defined dryrun responses.
+// DryrunAPIClient implements hyperfleetapi.Client backed by file-defined dryrun responses.
 // It matches requests by HTTP method and URL regex pattern, returning responses
 // sequentially from a configured array per endpoint. All requests are recorded.
 type DryrunAPIClient struct {
@@ -86,7 +86,7 @@ func (c *DryrunAPIClient) nextResponse(ep *compiledEndpoint) DryrunResponse {
 }
 
 // Do executes a dryrun HTTP request, matching against configured endpoints.
-func (c *DryrunAPIClient) Do(ctx context.Context, req *hyperfleet_api.Request) (*hyperfleet_api.Response, error) {
+func (c *DryrunAPIClient) Do(ctx context.Context, req *hyperfleetapi.Request) (*hyperfleetapi.Response, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -127,7 +127,7 @@ func (c *DryrunAPIClient) Do(ctx context.Context, req *hyperfleet_api.Request) (
 	}
 	c.Requests = append(c.Requests, record)
 
-	return &hyperfleet_api.Response{
+	return &hyperfleetapi.Response{
 		StatusCode: statusCode,
 		Status:     fmt.Sprintf("%d %s", statusCode, http.StatusText(statusCode)),
 		Body:       respBody,
@@ -137,8 +137,10 @@ func (c *DryrunAPIClient) Do(ctx context.Context, req *hyperfleet_api.Request) (
 }
 
 // Get performs a dryrun GET request.
-func (c *DryrunAPIClient) Get(ctx context.Context, url string, opts ...hyperfleet_api.RequestOption) (*hyperfleet_api.Response, error) {
-	req := &hyperfleet_api.Request{Method: http.MethodGet, URL: url}
+func (c *DryrunAPIClient) Get(
+	ctx context.Context, url string, opts ...hyperfleetapi.RequestOption,
+) (*hyperfleetapi.Response, error) {
+	req := &hyperfleetapi.Request{Method: http.MethodGet, URL: url}
 	for _, opt := range opts {
 		opt(req)
 	}
@@ -146,8 +148,10 @@ func (c *DryrunAPIClient) Get(ctx context.Context, url string, opts ...hyperflee
 }
 
 // Post performs a dryrun POST request.
-func (c *DryrunAPIClient) Post(ctx context.Context, url string, body []byte, opts ...hyperfleet_api.RequestOption) (*hyperfleet_api.Response, error) {
-	req := &hyperfleet_api.Request{Method: http.MethodPost, URL: url, Body: body}
+func (c *DryrunAPIClient) Post(
+	ctx context.Context, url string, body []byte, opts ...hyperfleetapi.RequestOption,
+) (*hyperfleetapi.Response, error) {
+	req := &hyperfleetapi.Request{Method: http.MethodPost, URL: url, Body: body}
 	for _, opt := range opts {
 		opt(req)
 	}
@@ -155,8 +159,10 @@ func (c *DryrunAPIClient) Post(ctx context.Context, url string, body []byte, opt
 }
 
 // Put performs a dryrun PUT request.
-func (c *DryrunAPIClient) Put(ctx context.Context, url string, body []byte, opts ...hyperfleet_api.RequestOption) (*hyperfleet_api.Response, error) {
-	req := &hyperfleet_api.Request{Method: http.MethodPut, URL: url, Body: body}
+func (c *DryrunAPIClient) Put(
+	ctx context.Context, url string, body []byte, opts ...hyperfleetapi.RequestOption,
+) (*hyperfleetapi.Response, error) {
+	req := &hyperfleetapi.Request{Method: http.MethodPut, URL: url, Body: body}
 	for _, opt := range opts {
 		opt(req)
 	}
@@ -164,8 +170,10 @@ func (c *DryrunAPIClient) Put(ctx context.Context, url string, body []byte, opts
 }
 
 // Patch performs a dryrun PATCH request.
-func (c *DryrunAPIClient) Patch(ctx context.Context, url string, body []byte, opts ...hyperfleet_api.RequestOption) (*hyperfleet_api.Response, error) {
-	req := &hyperfleet_api.Request{Method: http.MethodPatch, URL: url, Body: body}
+func (c *DryrunAPIClient) Patch(
+	ctx context.Context, url string, body []byte, opts ...hyperfleetapi.RequestOption,
+) (*hyperfleetapi.Response, error) {
+	req := &hyperfleetapi.Request{Method: http.MethodPatch, URL: url, Body: body}
 	for _, opt := range opts {
 		opt(req)
 	}
@@ -173,8 +181,10 @@ func (c *DryrunAPIClient) Patch(ctx context.Context, url string, body []byte, op
 }
 
 // Delete performs a dryrun DELETE request.
-func (c *DryrunAPIClient) Delete(ctx context.Context, url string, opts ...hyperfleet_api.RequestOption) (*hyperfleet_api.Response, error) {
-	req := &hyperfleet_api.Request{Method: http.MethodDelete, URL: url}
+func (c *DryrunAPIClient) Delete(
+	ctx context.Context, url string, opts ...hyperfleetapi.RequestOption,
+) (*hyperfleetapi.Response, error) {
+	req := &hyperfleetapi.Request{Method: http.MethodDelete, URL: url}
 	for _, opt := range opts {
 		opt(req)
 	}

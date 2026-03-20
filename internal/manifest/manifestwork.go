@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	workv1 "open-cluster-management.io/api/work/v1"
 	"sigs.k8s.io/yaml"
@@ -34,7 +35,7 @@ func ParseManifestWork(data []byte) (*workv1.ManifestWork, error) {
 
 // LoadManifestWork reads a ManifestWork from a file path (JSON or YAML).
 func LoadManifestWork(path string) (*workv1.ManifestWork, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read ManifestWork file %s: %w", path, err)
 	}

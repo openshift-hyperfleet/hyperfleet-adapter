@@ -6,10 +6,10 @@ import (
 	"fmt"
 
 	"github.com/mitchellh/copystructure"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/maestro_client"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/configloader"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/maestroclient"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transport_client"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transportclient"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -18,7 +18,7 @@ import (
 
 // ResourceExecutor creates and updates Kubernetes resources
 type ResourceExecutor struct {
-	client transport_client.TransportClient
+	client transportclient.TransportClient
 	log    logger.Logger
 }
 
@@ -33,7 +33,11 @@ func newResourceExecutor(config *ExecutorConfig) *ResourceExecutor {
 
 // ExecuteAll creates/updates all resources in sequence
 // Returns results for each resource and updates the execution context
-func (re *ResourceExecutor) ExecuteAll(ctx context.Context, resources []config_loader.Resource, execCtx *ExecutionContext) ([]ResourceResult, error) {
+func (re *ResourceExecutor) ExecuteAll(
+	ctx context.Context,
+	resources []configloader.Resource,
+	execCtx *ExecutionContext,
+) ([]ResourceResult, error) {
 	if execCtx.Resources == nil {
 		execCtx.Resources = make(map[string]interface{})
 	}
@@ -54,7 +58,11 @@ func (re *ResourceExecutor) ExecuteAll(ctx context.Context, resources []config_l
 // executeResource creates or updates a single resource via the transport client.
 // For k8s transport: renders manifest template → marshals to JSON → calls ApplyResource(bytes)
 // For maestro transport: renders manifestWork template → marshals to JSON → calls ApplyResource(bytes)
-func (re *ResourceExecutor) executeResource(ctx context.Context, resource config_loader.Resource, execCtx *ExecutionContext) (ResourceResult, error) {
+func (re *ResourceExecutor) executeResource(
+	ctx context.Context,
+	resource configloader.Resource,
+	execCtx *ExecutionContext,
+) (ResourceResult, error) {
 	result := ResourceResult{
 		Name:   resource.Name,
 		Status: StatusSuccess,
@@ -85,13 +93,13 @@ func (re *ResourceExecutor) executeResource(ctx context.Context, resource config
 	}
 
 	// Step 3: Prepare apply options
-	var applyOpts *transport_client.ApplyOptions
+	var applyOpts *transportclient.ApplyOptions
 	if resource.RecreateOnChange {
-		applyOpts = &transport_client.ApplyOptions{RecreateOnChange: true}
+		applyOpts = &transportclient.ApplyOptions{RecreateOnChange: true}
 	}
 
-	// Step 4: Build transport context (nil for k8s, *maestro_client.TransportContext for maestro)
-	var transportTarget transport_client.TransportContext
+	// Step 4: Build transport context (nil for k8s, *maestroclient.TransportContext for maestro)
+	var transportTarget transportclient.TransportContext
 	if resource.IsMaestroTransport() && resource.Transport.Maestro != nil {
 		targetCluster, tplErr := renderTemplate(resource.Transport.Maestro.TargetCluster, execCtx.Params)
 		if tplErr != nil {
@@ -99,7 +107,7 @@ func (re *ResourceExecutor) executeResource(ctx context.Context, resource config
 			result.Error = tplErr
 			return result, NewExecutorError(PhaseResources, resource.Name, "failed to render targetCluster template", tplErr)
 		}
-		transportTarget = &maestro_client.TransportContext{
+		transportTarget = &maestroclient.TransportContext{
 			ConsumerName: targetCluster,
 		}
 	}
@@ -142,7 +150,8 @@ func (re *ResourceExecutor) executeResource(ctx context.Context, resource config
 			errCtx := logger.WithK8sResult(ctx, "FAILED")
 			errCtx = logger.WithErrorField(errCtx, discoverErr)
 			re.log.Errorf(errCtx, "Resource[%s] discovery after apply failed: %v", resource.Name, discoverErr)
-			return result, NewExecutorError(PhaseResources, resource.Name, "failed to discover resource after apply", discoverErr)
+			return result, NewExecutorError(
+				PhaseResources, resource.Name, "failed to discover resource after apply", discoverErr)
 		}
 		if discovered != nil {
 			// Always store the discovered top-level resource by resource name.
@@ -155,14 +164,31 @@ func (re *ResourceExecutor) executeResource(ctx context.Context, resource config
 				nestedResults := re.discoverNestedResources(ctx, resource, execCtx, discovered)
 				for nestedName, nestedObj := range nestedResults {
 					if nestedName == resource.Name {
-						re.log.Warnf(ctx, "Nested discovery %q has the same name as parent resource; skipping to avoid overwriting parent", nestedName)
+						re.log.Warnf(ctx,
+							"Nested discovery %q has the same name as parent resource; skipping to avoid overwriting parent",
+							nestedName)
 						continue
 					}
 					if nestedObj == nil {
 						continue
 					}
 					if _, exists := execCtx.Resources[nestedName]; exists {
-						re.log.Warnf(ctx, "Nested discovery key collision for %q; overriding previous value", nestedName)
+						collisionErr := fmt.Errorf(
+							"nested discovery key collision: %q already exists in context",
+							nestedName,
+						)
+						result.Status = StatusFailed
+						result.Error = collisionErr
+						execCtx.Adapter.ExecutionError = &ExecutionError{
+							Phase:   string(PhaseResources),
+							Step:    resource.Name,
+							Message: collisionErr.Error(),
+						}
+						return result, NewExecutorError(
+							PhaseResources, resource.Name,
+							"duplicate resource context key",
+							collisionErr,
+						)
 					}
 					execCtx.Resources[nestedName] = nestedObj
 				}
@@ -177,7 +203,11 @@ func (re *ResourceExecutor) executeResource(ctx context.Context, resource config
 
 // renderToBytes renders the resource's manifest template to JSON bytes.
 // The manifest holds either a K8s resource or a ManifestWork depending on transport type.
-func (re *ResourceExecutor) renderToBytes(ctx context.Context, resource config_loader.Resource, execCtx *ExecutionContext) ([]byte, error) {
+func (re *ResourceExecutor) renderToBytes(
+	ctx context.Context,
+	resource configloader.Resource,
+	execCtx *ExecutionContext,
+) ([]byte, error) {
 	if resource.Manifest == nil {
 		return nil, fmt.Errorf("no manifest specified for resource %s", resource.Name)
 	}
@@ -217,7 +247,12 @@ func (re *ResourceExecutor) renderToBytes(ctx context.Context, resource config_l
 // For k8s transport: discovers the K8s resource by name or label selector.
 // For maestro transport: discovers the ManifestWork by name or label selector.
 // The discovered resource is stored in execCtx.Resources for post-action CEL evaluation.
-func (re *ResourceExecutor) discoverResource(ctx context.Context, resource config_loader.Resource, execCtx *ExecutionContext, transportTarget transport_client.TransportContext) (*unstructured.Unstructured, error) {
+func (re *ResourceExecutor) discoverResource(
+	ctx context.Context,
+	resource configloader.Resource,
+	execCtx *ExecutionContext,
+	transportTarget transportclient.TransportContext,
+) (*unstructured.Unstructured, error) {
 	discovery := resource.Discovery
 	if discovery == nil {
 		return nil, nil
@@ -285,7 +320,7 @@ func (re *ResourceExecutor) discoverResource(ctx context.Context, resource confi
 // Each nestedDiscovery is matched against the parent's nested manifests using manifest.DiscoverNestedManifest.
 func (re *ResourceExecutor) discoverNestedResources(
 	ctx context.Context,
-	resource config_loader.Resource,
+	resource configloader.Resource,
 	execCtx *ExecutionContext,
 	parent *unstructured.Unstructured,
 ) map[string]*unstructured.Unstructured {
@@ -333,7 +368,7 @@ func (re *ResourceExecutor) discoverNestedResources(
 
 // buildNestedDiscoveryConfig renders templates in a discovery config and returns a manifest.DiscoveryConfig.
 func (re *ResourceExecutor) buildNestedDiscoveryConfig(
-	discovery *config_loader.DiscoveryConfig,
+	discovery *configloader.DiscoveryConfig,
 	params map[string]interface{},
 ) (*manifest.DiscoveryConfig, error) {
 	namespace, err := renderTemplate(discovery.Namespace, params)
@@ -376,7 +411,7 @@ func (re *ResourceExecutor) buildNestedDiscoveryConfig(
 
 // resolveGVK extracts the GVK from the resource's manifest.
 // Works for both K8s resources and ManifestWorks since both have apiVersion and kind.
-func (re *ResourceExecutor) resolveGVK(resource config_loader.Resource) schema.GroupVersionKind {
+func (re *ResourceExecutor) resolveGVK(resource configloader.Resource) schema.GroupVersionKind {
 	manifestData, ok := resource.Manifest.(map[string]interface{})
 	if !ok {
 		return schema.GroupVersionKind{}
@@ -462,7 +497,10 @@ func deepCopyMap(ctx context.Context, m map[string]interface{}, log logger.Logge
 }
 
 // renderManifestTemplates recursively renders all template strings in a manifest
-func renderManifestTemplates(data map[string]interface{}, params map[string]interface{}) (map[string]interface{}, error) {
+func renderManifestTemplates(
+	data map[string]interface{},
+	params map[string]interface{},
+) (map[string]interface{}, error) {
 	result := make(map[string]interface{})
 
 	for k, v := range data {

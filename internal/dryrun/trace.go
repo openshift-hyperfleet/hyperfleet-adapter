@@ -188,7 +188,8 @@ func (t *ExecutionTrace) FormatText() string {
 
 			if t.Verbose {
 				for _, tr := range t.Transport.Records {
-					if tr.Operation == operationApply && tr.GVK.Kind == rr.Kind && tr.Name == rr.ResourceName && tr.Namespace == rr.Namespace {
+					if tr.Operation == operationApply && tr.GVK.Kind == rr.Kind &&
+						tr.Name == rr.ResourceName && tr.Namespace == rr.Namespace {
 						fmt.Fprintf(&b, "    [verbose] Rendered manifest:\n      %s\n", prettyJSON(tr.Manifest))
 						break
 					}
@@ -202,8 +203,10 @@ func (t *ExecutionTrace) FormatText() string {
 	}
 
 	// Discovery results (resources available for payload CEL: resources.<name>)
-	if result.ExecutionContext != nil && result.ExecutionContext.Resources != nil && len(result.ExecutionContext.Resources) > 0 {
-		b.WriteString("\nPhase 3.5: Discovery Results ................. (available as resources.* in payload)\n")
+	if result.ExecutionContext != nil && result.ExecutionContext.Resources != nil &&
+		len(result.ExecutionContext.Resources) > 0 {
+		msg := "\nPhase 3.5: Discovery Results ................. (available as resources.* in payload)\n"
+		b.WriteString(msg)
 		celVars := result.ExecutionContext.GetCELVariables()
 		if r, ok := celVars["resources"].(map[string]interface{}); ok {
 			for name, val := range r {

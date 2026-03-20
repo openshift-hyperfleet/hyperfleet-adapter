@@ -219,7 +219,7 @@ INTEGRATION_STRATEGY=k3s \
 
 The integration tests cover:
 
-### K8s Client Tests (`test/integration/k8s_client/`)
+### K8s Client Tests (`test/integration/k8sclient/`)
 
 - **CRUD Operations**: Create, Get, List, Update, Delete resources
 - **Patch Operations**: Strategic merge patch, JSON merge patch
@@ -247,7 +247,7 @@ test/integration/
 Tests use a unified interface (`TestEnv`) with automatic strategy selection:
 
 ```go
-// test/integration/k8s_client/helper_selector.go
+// test/integration/k8sclient/helper_selector.go
 func SetupTestEnv(t *testing.T) TestEnv {
     strategy := os.Getenv("INTEGRATION_STRATEGY")
     
@@ -574,7 +574,7 @@ INTEGRATION_ENVTEST_IMAGE=quay.io/your-org/integration-test:v1 make test-integra
 Since each test gets a fresh container, you can run tests in parallel:
 
 ```bash
-go test -v -tags=integration -parallel 4 ./test/integration/k8s_client/...
+go test -v -tags=integration -parallel 4 ./test/integration/k8sclient/...
 ```
 
 **Note**: This increases resource usage but can speed up total runtime.

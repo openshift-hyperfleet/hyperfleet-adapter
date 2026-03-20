@@ -1,4 +1,4 @@
-package executor_integration_test
+package executorintegrationtest
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/k8s_client"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/k8sclient"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/test/integration/testutil"
 	"github.com/testcontainers/testcontainers-go"
@@ -51,10 +51,10 @@ func TestMain(m *testing.M) {
 
 	// Quick check if testcontainers can work
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
 
 	provider, err := testcontainers.NewDockerProvider()
 	if err != nil {
+		cancel()
 		setupErr = err
 		println("⚠️  Warning: Could not connect to container runtime:", err.Error())
 		println("   K8s tests will be skipped")
@@ -63,6 +63,7 @@ func TestMain(m *testing.M) {
 
 	info, err := provider.DaemonHost(ctx)
 	_ = provider.Close()
+	cancel()
 
 	if err != nil {
 		setupErr = err
@@ -147,7 +148,7 @@ func setupSharedK8sEnvtestEnv() (*K8sTestEnv, error) {
 	println("   ✅ API server is ready!")
 
 	// Create K8s client
-	client, err := k8s_client.NewClientFromConfig(ctx, restConfig, log)
+	client, err := k8sclient.NewClientFromConfig(ctx, restConfig, log)
 	if err != nil {
 		sharedContainer.Cleanup()
 		return nil, fmt.Errorf("failed to create K8s client: %w", err)

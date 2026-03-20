@@ -5,15 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/configloader"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleet_api"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleetapi"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 )
 
 // PostActionExecutor executes post-processing actions
 type PostActionExecutor struct {
-	apiClient hyperfleet_api.Client
+	apiClient hyperfleetapi.Client
 	log       logger.Logger
 }
 
@@ -28,7 +28,11 @@ func newPostActionExecutor(config *ExecutorConfig) *PostActionExecutor {
 
 // ExecuteAll executes all post-processing actions
 // First builds payloads from post.payloads, then executes post.postActions
-func (pae *PostActionExecutor) ExecuteAll(ctx context.Context, postConfig *config_loader.PostConfig, execCtx *ExecutionContext) ([]PostActionResult, error) {
+func (pae *PostActionExecutor) ExecuteAll(
+	ctx context.Context,
+	postConfig *configloader.PostConfig,
+	execCtx *ExecutionContext,
+) ([]PostActionResult, error) {
 	if postConfig == nil {
 		return []PostActionResult{}, nil
 	}
@@ -44,7 +48,8 @@ func (pae *PostActionExecutor) ExecuteAll(ctx context.Context, postConfig *confi
 				Step:    "build_payloads",
 				Message: err.Error(),
 			}
-			return []PostActionResult{}, NewExecutorError(PhasePostActions, "build_payloads", "failed to build post payloads", err)
+			return []PostActionResult{}, NewExecutorError(
+				PhasePostActions, "build_payloads", "failed to build post payloads", err)
 		}
 		for _, payload := range postConfig.Payloads {
 			pae.log.Debugf(ctx, "payload[%s] built successfully", payload.Name)
@@ -79,7 +84,11 @@ func (pae *PostActionExecutor) ExecuteAll(ctx context.Context, postConfig *confi
 
 // buildPostPayloads builds all post payloads and stores them in execCtx.Params
 // Payloads are complex structures built from CEL expressions and templates
-func (pae *PostActionExecutor) buildPostPayloads(ctx context.Context, payloads []config_loader.Payload, execCtx *ExecutionContext) error {
+func (pae *PostActionExecutor) buildPostPayloads(
+	ctx context.Context,
+	payloads []configloader.Payload,
+	execCtx *ExecutionContext,
+) error {
 	// Create evaluation context with all CEL variables (params, adapter, resources)
 	evalCtx := criteria.NewEvaluationContext()
 	evalCtx.SetVariablesFromMap(execCtx.GetCELVariables())
@@ -92,11 +101,12 @@ func (pae *PostActionExecutor) buildPostPayloads(ctx context.Context, payloads [
 	for _, payload := range payloads {
 		// Determine build source (inline Build or BuildRef)
 		var buildDef any
-		if payload.Build != nil {
+		switch {
+		case payload.Build != nil:
 			buildDef = payload.Build
-		} else if payload.BuildRefContent != nil {
+		case payload.BuildRefContent != nil:
 			buildDef = payload.BuildRefContent
-		} else {
+		default:
 			return fmt.Errorf("payload '%s' has neither Build nor BuildRefContent", payload.Name)
 		}
 
@@ -121,7 +131,12 @@ func (pae *PostActionExecutor) buildPostPayloads(ctx context.Context, payloads [
 
 // buildPayload builds a payload from a build definition
 // The build definition can contain expressions that need to be evaluated
-func (pae *PostActionExecutor) buildPayload(ctx context.Context, build any, evaluator *criteria.Evaluator, params map[string]any) (any, error) {
+func (pae *PostActionExecutor) buildPayload(
+	ctx context.Context,
+	build any,
+	evaluator *criteria.Evaluator,
+	params map[string]any,
+) (any, error) {
 	switch v := build.(type) {
 	case map[string]any:
 		return pae.buildMapPayload(ctx, v, evaluator, params)
@@ -134,7 +149,12 @@ func (pae *PostActionExecutor) buildPayload(ctx context.Context, build any, eval
 }
 
 // buildMapPayload builds a map payload, evaluating expressions as needed
-func (pae *PostActionExecutor) buildMapPayload(ctx context.Context, m map[string]any, evaluator *criteria.Evaluator, params map[string]any) (map[string]any, error) {
+func (pae *PostActionExecutor) buildMapPayload(
+	ctx context.Context,
+	m map[string]any,
+	evaluator *criteria.Evaluator,
+	params map[string]any,
+) (map[string]any, error) {
 	result := make(map[string]any)
 
 	for k, v := range m {
@@ -157,11 +177,16 @@ func (pae *PostActionExecutor) buildMapPayload(ctx context.Context, m map[string
 }
 
 // processValue processes a value, evaluating expressions as needed
-func (pae *PostActionExecutor) processValue(ctx context.Context, v any, evaluator *criteria.Evaluator, params map[string]any) (any, error) {
+func (pae *PostActionExecutor) processValue(
+	ctx context.Context,
+	v any,
+	evaluator *criteria.Evaluator,
+	params map[string]any,
+) (any, error) {
 	switch val := v.(type) {
 	case map[string]any:
 		// Check if this is a value definition: { field: "...", default: ... } or { expression: "...", default: ... }
-		if valueDef, ok := config_loader.ParseValueDef(val); ok {
+		if valueDef, ok := configloader.ParseValueDef(val); ok {
 			result, err := evaluator.ExtractValue(valueDef.Field, valueDef.Expression)
 			// err indicates parse error - fail fast (bug in config)
 			if err != nil {
@@ -204,7 +229,11 @@ func (pae *PostActionExecutor) processValue(ctx context.Context, v any, evaluato
 }
 
 // executePostAction executes a single post-action
-func (pae *PostActionExecutor) executePostAction(ctx context.Context, action config_loader.PostAction, execCtx *ExecutionContext) (PostActionResult, error) {
+func (pae *PostActionExecutor) executePostAction(
+	ctx context.Context,
+	action configloader.PostAction,
+	execCtx *ExecutionContext,
+) (PostActionResult, error) {
 	result := PostActionResult{
 		Name:   action.Name,
 		Status: StatusSuccess,
@@ -226,7 +255,12 @@ func (pae *PostActionExecutor) executePostAction(ctx context.Context, action con
 }
 
 // executeAPICall executes an API call and populates the result with response details
-func (pae *PostActionExecutor) executeAPICall(ctx context.Context, apiCall *config_loader.APICall, execCtx *ExecutionContext, result *PostActionResult) error {
+func (pae *PostActionExecutor) executeAPICall(
+	ctx context.Context,
+	apiCall *configloader.APICall,
+	execCtx *ExecutionContext,
+	result *PostActionResult,
+) error {
 	resp, url, err := ExecuteAPICall(ctx, apiCall, execCtx, pae.apiClient, pae.log)
 	result.APICallMade = true
 

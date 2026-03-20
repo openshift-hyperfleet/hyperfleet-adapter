@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transport_client"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transportclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -98,7 +98,7 @@ func TestApplyResource_RecreateOnChange(t *testing.T) {
 	require.NoError(t, err)
 
 	// Second apply with RecreateOnChange.
-	opts := &transport_client.ApplyOptions{RecreateOnChange: true}
+	opts := &transportclient.ApplyOptions{RecreateOnChange: true}
 	result, err := client.ApplyResource(ctx, manifestBytes, opts, nil)
 	require.NoError(t, err)
 	assert.Equal(t, manifest.OperationRecreate, result.Operation)

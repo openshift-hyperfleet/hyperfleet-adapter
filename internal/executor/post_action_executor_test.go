@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	"github.com/cloudevents/sdk-go/v2/event"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/configloader"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleet_api"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleetapi"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -304,8 +304,8 @@ func TestProcessValue(t *testing.T) {
 
 func TestPostActionExecutor_ExecuteAll(t *testing.T) {
 	tests := []struct {
-		postConfig      *config_loader.PostConfig
-		mockResponse    *hyperfleet_api.Response
+		postConfig      *configloader.PostConfig
+		mockResponse    *hyperfleetapi.Response
 		name            string
 		expectedResults int
 		expectError     bool
@@ -318,20 +318,20 @@ func TestPostActionExecutor_ExecuteAll(t *testing.T) {
 		},
 		{
 			name: "empty post actions",
-			postConfig: &config_loader.PostConfig{
-				PostActions: []config_loader.PostAction{},
+			postConfig: &configloader.PostConfig{
+				PostActions: []configloader.PostAction{},
 			},
 			expectedResults: 0,
 			expectError:     false,
 		},
 		{
 			name: "single log action",
-			postConfig: &config_loader.PostConfig{
-				PostActions: []config_loader.PostAction{
+			postConfig: &configloader.PostConfig{
+				PostActions: []configloader.PostAction{
 					{
-						ActionBase: config_loader.ActionBase{
+						ActionBase: configloader.ActionBase{
 							Name: "log-status",
-							Log:  &config_loader.LogAction{Message: "Processing complete", Level: "info"},
+							Log:  &configloader.LogAction{Message: "Processing complete", Level: "info"},
 						},
 					},
 				},
@@ -341,11 +341,20 @@ func TestPostActionExecutor_ExecuteAll(t *testing.T) {
 		},
 		{
 			name: "multiple log actions",
-			postConfig: &config_loader.PostConfig{
-				PostActions: []config_loader.PostAction{
-					{ActionBase: config_loader.ActionBase{Name: "log1", Log: &config_loader.LogAction{Message: "Step 1", Level: "info"}}},
-					{ActionBase: config_loader.ActionBase{Name: "log2", Log: &config_loader.LogAction{Message: "Step 2", Level: "info"}}},
-					{ActionBase: config_loader.ActionBase{Name: "log3", Log: &config_loader.LogAction{Message: "Step 3", Level: "info"}}},
+			postConfig: &configloader.PostConfig{
+				PostActions: []configloader.PostAction{
+					{ActionBase: configloader.ActionBase{
+						Name: "log1",
+						Log:  &configloader.LogAction{Message: "Step 1", Level: "info"},
+					}},
+					{ActionBase: configloader.ActionBase{
+						Name: "log2",
+						Log:  &configloader.LogAction{Message: "Step 2", Level: "info"},
+					}},
+					{ActionBase: configloader.ActionBase{
+						Name: "log3",
+						Log:  &configloader.LogAction{Message: "Step 3", Level: "info"},
+					}},
 				},
 			},
 			expectedResults: 3,
@@ -353,8 +362,8 @@ func TestPostActionExecutor_ExecuteAll(t *testing.T) {
 		},
 		{
 			name: "with payloads",
-			postConfig: &config_loader.PostConfig{
-				Payloads: []config_loader.Payload{
+			postConfig: &configloader.PostConfig{
+				Payloads: []configloader.Payload{
 					{
 						Name: "statusPayload",
 						Build: map[string]interface{}{
@@ -362,8 +371,11 @@ func TestPostActionExecutor_ExecuteAll(t *testing.T) {
 						},
 					},
 				},
-				PostActions: []config_loader.PostAction{
-					{ActionBase: config_loader.ActionBase{Name: "log1", Log: &config_loader.LogAction{Message: "Done", Level: "info"}}},
+				PostActions: []configloader.PostAction{
+					{ActionBase: configloader.ActionBase{
+						Name: "log1",
+						Log:  &configloader.LogAction{Message: "Done", Level: "info"},
+					}},
 				},
 			},
 			expectedResults: 1,
@@ -373,7 +385,7 @@ func TestPostActionExecutor_ExecuteAll(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockClient := hyperfleet_api.NewMockClient()
+			mockClient := hyperfleetapi.NewMockClient()
 			if tt.mockResponse != nil {
 				mockClient.DoResponse = tt.mockResponse
 			}
@@ -407,9 +419,9 @@ func TestPostActionExecutor_ExecuteAll(t *testing.T) {
 func TestExecuteAPICall(t *testing.T) {
 	tests := []struct {
 		mockError    error
-		apiCall      *config_loader.APICall
+		apiCall      *configloader.APICall
 		params       map[string]interface{}
-		mockResponse *hyperfleet_api.Response
+		mockResponse *hyperfleetapi.Response
 		name         string
 		expectedURL  string
 		expectedBody string // optional: for POST/PUT/PATCH, assert last request body (rendered payload)
@@ -423,12 +435,12 @@ func TestExecuteAPICall(t *testing.T) {
 		},
 		{
 			name: "simple GET request",
-			apiCall: &config_loader.APICall{
+			apiCall: &configloader.APICall{
 				Method: "GET",
 				URL:    "http://api.example.com/clusters",
 			},
 			params: map[string]interface{}{},
-			mockResponse: &hyperfleet_api.Response{
+			mockResponse: &hyperfleetapi.Response{
 				StatusCode: http.StatusOK,
 				Status:     "200 OK",
 				Body:       []byte(`{"status":"ok"}`),
@@ -438,14 +450,14 @@ func TestExecuteAPICall(t *testing.T) {
 		},
 		{
 			name: "GET request with URL template",
-			apiCall: &config_loader.APICall{
+			apiCall: &configloader.APICall{
 				Method: "GET",
 				URL:    "http://api.example.com/clusters/{{ .clusterId }}",
 			},
 			params: map[string]interface{}{
 				"clusterId": "cluster-123",
 			},
-			mockResponse: &hyperfleet_api.Response{
+			mockResponse: &hyperfleetapi.Response{
 				StatusCode: http.StatusOK,
 				Status:     "200 OK",
 				Body:       []byte(`{}`),
@@ -455,7 +467,7 @@ func TestExecuteAPICall(t *testing.T) {
 		},
 		{
 			name: "POST request with body",
-			apiCall: &config_loader.APICall{
+			apiCall: &configloader.APICall{
 				Method: "POST",
 				URL:    "http://api.example.com/clusters",
 				Body:   `{"name": "{{ .name }}"}`,
@@ -463,7 +475,7 @@ func TestExecuteAPICall(t *testing.T) {
 			params: map[string]interface{}{
 				"name": "new-cluster",
 			},
-			mockResponse: &hyperfleet_api.Response{
+			mockResponse: &hyperfleetapi.Response{
 				StatusCode: http.StatusCreated,
 				Status:     "201 Created",
 			},
@@ -473,13 +485,13 @@ func TestExecuteAPICall(t *testing.T) {
 		},
 		{
 			name: "PUT request",
-			apiCall: &config_loader.APICall{
+			apiCall: &configloader.APICall{
 				Method: "PUT",
 				URL:    "http://api.example.com/clusters/{{ .id }}",
 				Body:   `{"status": "updated"}`,
 			},
 			params: map[string]interface{}{"id": "123"},
-			mockResponse: &hyperfleet_api.Response{
+			mockResponse: &hyperfleetapi.Response{
 				StatusCode: http.StatusOK,
 				Status:     "200 OK",
 			},
@@ -489,13 +501,13 @@ func TestExecuteAPICall(t *testing.T) {
 		},
 		{
 			name: "PATCH request",
-			apiCall: &config_loader.APICall{
+			apiCall: &configloader.APICall{
 				Method: "PATCH",
 				URL:    "http://api.example.com/clusters/123",
 				Body:   `{"field": "value"}`,
 			},
 			params: map[string]interface{}{},
-			mockResponse: &hyperfleet_api.Response{
+			mockResponse: &hyperfleetapi.Response{
 				StatusCode: http.StatusOK,
 				Status:     "200 OK",
 			},
@@ -505,13 +517,13 @@ func TestExecuteAPICall(t *testing.T) {
 		},
 		{
 			name: "POST with empty body",
-			apiCall: &config_loader.APICall{
+			apiCall: &configloader.APICall{
 				Method: "POST",
 				URL:    "http://api.example.com/clusters",
 				Body:   "",
 			},
 			params: map[string]interface{}{},
-			mockResponse: &hyperfleet_api.Response{
+			mockResponse: &hyperfleetapi.Response{
 				StatusCode: http.StatusOK,
 				Status:     "200 OK",
 			},
@@ -521,12 +533,12 @@ func TestExecuteAPICall(t *testing.T) {
 		},
 		{
 			name: "DELETE request",
-			apiCall: &config_loader.APICall{
+			apiCall: &configloader.APICall{
 				Method: "DELETE",
 				URL:    "http://api.example.com/clusters/123",
 			},
 			params: map[string]interface{}{},
-			mockResponse: &hyperfleet_api.Response{
+			mockResponse: &hyperfleetapi.Response{
 				StatusCode: http.StatusNoContent,
 				Status:     "204 No Content",
 			},
@@ -535,7 +547,7 @@ func TestExecuteAPICall(t *testing.T) {
 		},
 		{
 			name: "unsupported HTTP method",
-			apiCall: &config_loader.APICall{
+			apiCall: &configloader.APICall{
 				Method: "INVALID",
 				URL:    "http://api.example.com/test",
 			},
@@ -544,10 +556,10 @@ func TestExecuteAPICall(t *testing.T) {
 		},
 		{
 			name: "request with headers",
-			apiCall: &config_loader.APICall{
+			apiCall: &configloader.APICall{
 				Method: "GET",
 				URL:    "http://api.example.com/clusters",
-				Headers: []config_loader.Header{
+				Headers: []configloader.Header{
 					{Name: "Authorization", Value: "Bearer {{ .token }}"},
 					{Name: "X-Request-ID", Value: "{{ .requestId }}"},
 				},
@@ -556,7 +568,7 @@ func TestExecuteAPICall(t *testing.T) {
 				"token":     "secret-token",
 				"requestId": "req-123",
 			},
-			mockResponse: &hyperfleet_api.Response{
+			mockResponse: &hyperfleetapi.Response{
 				StatusCode: http.StatusOK,
 				Status:     "200 OK",
 			},
@@ -565,13 +577,13 @@ func TestExecuteAPICall(t *testing.T) {
 		},
 		{
 			name: "request with timeout",
-			apiCall: &config_loader.APICall{
+			apiCall: &configloader.APICall{
 				Method:  "GET",
 				URL:     "http://api.example.com/slow",
 				Timeout: "30s",
 			},
 			params: map[string]interface{}{},
-			mockResponse: &hyperfleet_api.Response{
+			mockResponse: &hyperfleetapi.Response{
 				StatusCode: http.StatusOK,
 				Status:     "200 OK",
 			},
@@ -580,14 +592,14 @@ func TestExecuteAPICall(t *testing.T) {
 		},
 		{
 			name: "request with retry config",
-			apiCall: &config_loader.APICall{
+			apiCall: &configloader.APICall{
 				Method:        "GET",
 				URL:           "http://api.example.com/flaky",
 				RetryAttempts: 3,
 				RetryBackoff:  "exponential",
 			},
 			params: map[string]interface{}{},
-			mockResponse: &hyperfleet_api.Response{
+			mockResponse: &hyperfleetapi.Response{
 				StatusCode: http.StatusOK,
 				Status:     "200 OK",
 			},
@@ -596,7 +608,7 @@ func TestExecuteAPICall(t *testing.T) {
 		},
 		{
 			name: "URL template error",
-			apiCall: &config_loader.APICall{
+			apiCall: &configloader.APICall{
 				Method: "GET",
 				URL:    "http://api.example.com/{{ .missing }}",
 			},
@@ -607,7 +619,7 @@ func TestExecuteAPICall(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockClient := hyperfleet_api.NewMockClient()
+			mockClient := hyperfleetapi.NewMockClient()
 			if tt.mockResponse != nil {
 				mockClient.DoResponse = tt.mockResponse
 			}
@@ -636,7 +648,11 @@ func TestExecuteAPICall(t *testing.T) {
 			assert.Equal(t, tt.expectedURL, url)
 
 			// For body-based methods, verify the rendered payload sent to the client
-			if tt.apiCall != nil && (tt.apiCall.Method == http.MethodPost || tt.apiCall.Method == http.MethodPut || tt.apiCall.Method == http.MethodPatch) {
+			isBodyMethod := tt.apiCall != nil &&
+				(tt.apiCall.Method == http.MethodPost ||
+					tt.apiCall.Method == http.MethodPut ||
+					tt.apiCall.Method == http.MethodPatch)
+			if isBodyMethod {
 				lastReq := mockClient.GetLastRequest()
 				require.NotNil(t, lastReq, "expected a request for %s", tt.apiCall.Method)
 				assert.Equal(t, tt.expectedBody, string(lastReq.Body), "request body should match rendered payload")
@@ -659,7 +675,7 @@ func TestBuildPostPayloads_WithResourceDiscoveryCELHelpers(t *testing.T) {
 		},
 	}
 
-	payloads := []config_loader.Payload{
+	payloads := []configloader.Payload{
 		{
 			Name: "inspectPayload",
 			Build: map[string]interface{}{

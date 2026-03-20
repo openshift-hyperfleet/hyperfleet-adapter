@@ -1,7 +1,7 @@
 // Package generation provides utilities for generation-based resource tracking.
 //
 // This package handles generation annotation validation, comparison, and extraction
-// for both k8s_client (Kubernetes resources) and maestro_client (ManifestWork).
+// for both k8sclient (Kubernetes resources) and maestroclient (ManifestWork).
 package generation
 
 import (
@@ -52,7 +52,7 @@ type ApplyDecision struct {
 //   - If generations differ: Update (apply changes)
 //
 // This function encapsulates the generation comparison logic used by both
-// resource_executor (for k8s resources) and maestro_client (for ManifestWorks).
+// resource_executor (for k8s resources) and maestroclient (for ManifestWorks).
 func CompareGenerations(newGen, existingGen int64, exists bool) ApplyDecision {
 	if !exists {
 		return ApplyDecision{
@@ -150,11 +150,13 @@ func ValidateGeneration(meta metav1.ObjectMeta) error {
 
 	gen, err := strconv.ParseInt(genStr, 10, 64)
 	if err != nil {
-		return apperrors.Validation("invalid %s annotation value %q: %v", constants.AnnotationGeneration, genStr, err).AsError()
+		return apperrors.Validation("invalid %s annotation value %q: %v",
+			constants.AnnotationGeneration, genStr, err).AsError()
 	}
 
 	if gen <= 0 {
-		return apperrors.Validation("%s annotation must be > 0, got %d", constants.AnnotationGeneration, gen).AsError()
+		return apperrors.Validation("%s annotation must be > 0, got %d",
+			constants.AnnotationGeneration, gen).AsError()
 	}
 
 	return nil
@@ -180,21 +182,24 @@ func ValidateManifestWorkGeneration(work *workv1.ManifestWork) error {
 	for i, m := range work.Spec.Workload.Manifests {
 		obj := &unstructured.Unstructured{}
 		if err := obj.UnmarshalJSON(m.Raw); err != nil {
-			return apperrors.Validation("ManifestWork %q manifest[%d]: failed to unmarshal: %v", work.Name, i, err).AsError()
+			return apperrors.Validation("ManifestWork %q manifest[%d]: failed to unmarshal: %v",
+				work.Name, i, err).AsError()
 		}
 
 		// Validate generation annotation exists
 		if err := ValidateGenerationFromUnstructured(obj); err != nil {
 			kind := obj.GetKind()
 			name := obj.GetName()
-			return apperrors.Validation("ManifestWork %q manifest[%d] %s/%s: %v", work.Name, i, kind, name, err).AsError()
+			return apperrors.Validation("ManifestWork %q manifest[%d] %s/%s: %v",
+				work.Name, i, kind, name, err).AsError()
 		}
 	}
 
 	return nil
 }
 
-// ValidateGenerationFromUnstructured validates that the generation annotation exists and is valid on an Unstructured object.
+// ValidateGenerationFromUnstructured validates that the generation annotation exists and is valid on an
+// Unstructured object.
 // Returns error if:
 //   - Object is nil
 //   - Annotation is missing
@@ -222,11 +227,13 @@ func ValidateGenerationFromUnstructured(obj *unstructured.Unstructured) error {
 
 	gen, err := strconv.ParseInt(genStr, 10, 64)
 	if err != nil {
-		return apperrors.Validation("invalid %s annotation value %q: %v", constants.AnnotationGeneration, genStr, err).AsError()
+		return apperrors.Validation("invalid %s annotation value %q: %v",
+			constants.AnnotationGeneration, genStr, err).AsError()
 	}
 
 	if gen <= 0 {
-		return apperrors.Validation("%s annotation must be > 0, got %d", constants.AnnotationGeneration, gen).AsError()
+		return apperrors.Validation("%s annotation must be > 0, got %d",
+			constants.AnnotationGeneration, gen).AsError()
 	}
 
 	return nil

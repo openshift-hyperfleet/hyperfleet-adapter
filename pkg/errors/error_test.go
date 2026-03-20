@@ -533,8 +533,7 @@ func TestHelperFunctions(t *testing.T) {
 				errStr := err.Error()
 				for _, arg := range tt.args {
 					argStr := ""
-					switch v := arg.(type) {
-					case string:
+					if v, ok := arg.(string); ok {
 						argStr = v
 					}
 					if argStr != "" && !containsString(errStr, argStr) {

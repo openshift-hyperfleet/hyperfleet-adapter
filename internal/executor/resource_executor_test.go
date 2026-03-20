@@ -5,14 +5,18 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/k8s_client"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/configloader"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/k8sclient"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transport_client"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transportclient"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+)
+
+const (
+	testStringModified = "modified"
 )
 
 func TestDeepCopyMap_BasicTypes(t *testing.T) {
@@ -36,7 +40,7 @@ func TestDeepCopyMap_BasicTypes(t *testing.T) {
 	// Verify no warnings logged
 
 	// Verify mutation doesn't affect original
-	copied["string"] = "modified"
+	copied["string"] = testStringModified
 	assert.Equal(t, "hello", original["string"], "Original should not be modified")
 }
 
@@ -57,7 +61,7 @@ func TestDeepCopyMap_NestedMaps(t *testing.T) {
 	// Modify the copied nested map
 	level1 := copied["level1"].(map[string]interface{})
 	level2 := level1["level2"].(map[string]interface{})
-	level2["value"] = "modified"
+	level2["value"] = testStringModified
 
 	// Verify original is NOT modified (deep copy worked)
 	originalLevel1 := original["level1"].(map[string]interface{})
@@ -78,7 +82,7 @@ func TestDeepCopyMap_Slices(t *testing.T) {
 
 	// Modify copied slice
 	copiedItems := copied["items"].([]interface{})
-	copiedItems[0] = "modified"
+	copiedItems[0] = testStringModified
 
 	// Verify original is NOT modified
 	originalItems := original["items"].([]interface{})
@@ -176,7 +180,7 @@ func TestDeepCopyMap_DeepCopyVerification(t *testing.T) {
 
 	// Verify deep copy works
 	copiedNested := copied["nested"].(map[string]interface{})
-	copiedNested["key"] = "modified"
+	copiedNested["key"] = testStringModified
 
 	originalNested := original["nested"].(map[string]interface{})
 	assert.Equal(t, "nested_value", originalNested["key"], "Original should not be modified")
@@ -213,7 +217,7 @@ func TestDeepCopyMap_KubernetesManifest(t *testing.T) {
 	// Modify copied manifest
 	copiedMetadata := copied["metadata"].(map[string]interface{})
 	copiedLabels := copiedMetadata["labels"].(map[string]interface{})
-	copiedLabels["app"] = "modified"
+	copiedLabels["app"] = testStringModified
 
 	// Verify original is NOT modified
 	originalMetadata := original["metadata"].(map[string]interface{})
@@ -245,13 +249,14 @@ func TestDeepCopyMap_RealWorldContext(t *testing.T) {
 }
 
 // TestResourceExecutor_ExecuteAll_DiscoveryFailure verifies that when discovery fails after a successful apply,
-// the error is logged and notified: ExecuteAll returns an error, result is failed, and execCtx.Adapter.ExecutionError is set.
+// the error is logged and notified: ExecuteAll returns an error, result is failed,
+// and execCtx.Adapter.ExecutionError is set.
 func TestResourceExecutor_ExecuteAll_DiscoveryFailure(t *testing.T) {
 	discoveryErr := errors.New("discovery failed: resource not found")
-	mock := k8s_client.NewMockK8sClient()
+	mock := k8sclient.NewMockK8sClient()
 	mock.GetResourceError = discoveryErr
 	// Apply succeeds so we reach discovery
-	mock.ApplyResourceResult = &transport_client.ApplyResult{
+	mock.ApplyResourceResult = &transportclient.ApplyResult{
 		Operation: manifest.OperationCreate,
 		Reason:    "mock",
 	}
@@ -262,9 +267,9 @@ func TestResourceExecutor_ExecuteAll_DiscoveryFailure(t *testing.T) {
 	}
 	re := newResourceExecutor(config)
 
-	resource := config_loader.Resource{
+	resource := configloader.Resource{
 		Name:      "test-resource",
-		Transport: &config_loader.TransportConfig{Client: "kubernetes"},
+		Transport: &configloader.TransportConfig{Client: "kubernetes"},
 		Manifest: map[string]interface{}{
 			"apiVersion": "v1",
 			"kind":       "ConfigMap",
@@ -273,12 +278,12 @@ func TestResourceExecutor_ExecuteAll_DiscoveryFailure(t *testing.T) {
 				"namespace": "default",
 			},
 		},
-		Discovery: &config_loader.DiscoveryConfig{
+		Discovery: &configloader.DiscoveryConfig{
 			Namespace: "default",
 			ByName:    "test-cm",
 		},
 	}
-	resources := []config_loader.Resource{resource}
+	resources := []configloader.Resource{resource}
 	execCtx := NewExecutionContext(context.Background(), map[string]interface{}{}, nil)
 
 	results, err := re.ExecuteAll(context.Background(), resources, execCtx)
@@ -295,8 +300,8 @@ func TestResourceExecutor_ExecuteAll_DiscoveryFailure(t *testing.T) {
 }
 
 func TestResourceExecutor_ExecuteAll_StoresNestedDiscoveriesByName(t *testing.T) {
-	mock := k8s_client.NewMockK8sClient()
-	mock.ApplyResourceResult = &transport_client.ApplyResult{
+	mock := k8sclient.NewMockK8sClient()
+	mock.ApplyResourceResult = &transportclient.ApplyResult{
 		Operation: manifest.OperationCreate,
 		Reason:    "mock",
 	}
@@ -364,9 +369,9 @@ func TestResourceExecutor_ExecuteAll_StoresNestedDiscoveriesByName(t *testing.T)
 		Logger:          logger.NewTestLogger(),
 	})
 
-	resource := config_loader.Resource{
+	resource := configloader.Resource{
 		Name: "resource0",
-		Transport: &config_loader.TransportConfig{
+		Transport: &configloader.TransportConfig{
 			Client: "kubernetes",
 		},
 		Manifest: map[string]interface{}{
@@ -377,14 +382,14 @@ func TestResourceExecutor_ExecuteAll_StoresNestedDiscoveriesByName(t *testing.T)
 				"namespace": "default",
 			},
 		},
-		Discovery: &config_loader.DiscoveryConfig{
+		Discovery: &configloader.DiscoveryConfig{
 			Namespace: "default",
 			ByName:    "cluster-1-adapter2",
 		},
-		NestedDiscoveries: []config_loader.NestedDiscovery{
+		NestedDiscoveries: []configloader.NestedDiscovery{
 			{
 				Name: "configmap0",
-				Discovery: &config_loader.DiscoveryConfig{
+				Discovery: &configloader.DiscoveryConfig{
 					Namespace: "default",
 					ByName:    "cluster-1-adapter2-configmap",
 				},
@@ -393,7 +398,7 @@ func TestResourceExecutor_ExecuteAll_StoresNestedDiscoveriesByName(t *testing.T)
 	}
 
 	execCtx := NewExecutionContext(context.Background(), map[string]interface{}{}, nil)
-	results, err := re.ExecuteAll(context.Background(), []config_loader.Resource{resource}, execCtx)
+	results, err := re.ExecuteAll(context.Background(), []configloader.Resource{resource}, execCtx)
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 	assert.Equal(t, StatusSuccess, results[0].Status)

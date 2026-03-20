@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 )
 
 // DiscoveryOverrides maps rendered Kubernetes resource names to complete resource
@@ -15,7 +16,7 @@ type DiscoveryOverrides map[string]map[string]interface{}
 // Each top-level key is a rendered metadata.name, and each value is a complete
 // Kubernetes-like resource object that must contain at least apiVersion and kind.
 func LoadDiscoveryOverrides(path string) (DiscoveryOverrides, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read discovery overrides file: %w", err)
 	}

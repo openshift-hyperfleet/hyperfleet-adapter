@@ -170,7 +170,7 @@ All event failures are ACKed (not retried) to avoid infinite loops on non-transi
 |-------------|-------|------------|
 | `"HyperFleet API request returned retryable status"` | API returning 5xx, 408, or 429 | Check HyperFleet API health |
 | `"API request failed: ... after N attempt(s)"` | All retries exhausted | API may be down or overloaded |
-| `"context cancelled"` | Request timed out | Increase `spec.clients.hyperfleetApi.timeout` or check API latency |
+| `"context canceled"` | Request timed out | Increase `spec.clients.hyperfleetApi.timeout` or check API latency |
 
 The adapter retries on 5xx, 408 (Request Timeout), and 429 (Too Many Requests) with configurable backoff (exponential, linear, or constant).
 
@@ -219,7 +219,7 @@ The adapter retries on 5xx, 408 (Request Timeout), and 429 (Too Many Requests) w
 | `"failed to create kubernetes client"` | RBAC or kubeconfig issues | Check ServiceAccount and RBAC permissions |
 | `K8sOperationError{Operation:"create",...}` | Resource creation failed | Check RBAC, resource quotas, namespace existence |
 | `K8sOperationError{Operation:"update",...}` | Conflict on update | Usually transient; retried automatically |
-| `"context cancelled while waiting for resource deletion"` | Recreate timed out waiting for deletion | Resource may have finalizers preventing deletion |
+| `"context canceled while waiting for resource deletion"` | Recreate timed out waiting for deletion | Resource may have finalizers preventing deletion |
 
 Retryable K8s errors (automatically retried): timeouts, server unavailable, internal errors, rate limiting, network errors (connection refused, connection reset).
 Non-retryable: forbidden, unauthorized, bad request, invalid, gone, method not supported, not acceptable.

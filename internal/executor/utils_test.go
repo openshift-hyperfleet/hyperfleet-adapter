@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/configloader"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleet_api"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleetapi"
 	apierrors "github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	"github.com/stretchr/testify/assert"
@@ -18,7 +18,7 @@ import (
 )
 
 func TestValidateAPIResponse_NilError_SuccessResponse(t *testing.T) {
-	resp := &hyperfleet_api.Response{
+	resp := &hyperfleetapi.Response{
 		StatusCode: 200,
 		Status:     "200 OK",
 		Body:       []byte(`{"status":"ok"}`),
@@ -171,7 +171,7 @@ func TestValidateAPIResponse_NonSuccessStatusCodes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resp := &hyperfleet_api.Response{
+			resp := &hyperfleetapi.Response{
 				StatusCode: tt.statusCode,
 				Status:     tt.status,
 				Body:       tt.body,
@@ -233,7 +233,7 @@ func TestValidateAPIResponse_SuccessStatusCodes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resp := &hyperfleet_api.Response{
+			resp := &hyperfleetapi.Response{
 				StatusCode: tt.statusCode,
 				Status:     tt.status,
 				Body:       nil,
@@ -249,7 +249,7 @@ func TestValidateAPIResponse_SuccessStatusCodes(t *testing.T) {
 }
 
 func TestValidateAPIResponse_PreservesAttempts(t *testing.T) {
-	resp := &hyperfleet_api.Response{
+	resp := &hyperfleetapi.Response{
 		StatusCode: 500,
 		Status:     "500 Internal Server Error",
 		Body:       []byte("error"),
@@ -272,7 +272,7 @@ func TestValidateAPIResponse_AllHTTPMethods(t *testing.T) {
 
 	for _, method := range methods {
 		t.Run(method, func(t *testing.T) {
-			resp := &hyperfleet_api.Response{
+			resp := &hyperfleetapi.Response{
 				StatusCode: 404,
 				Status:     "404 Not Found",
 			}
@@ -297,7 +297,7 @@ func TestValidateAPIResponse_URLPreserved(t *testing.T) {
 
 	for _, url := range urls {
 		t.Run(url, func(t *testing.T) {
-			resp := &hyperfleet_api.Response{
+			resp := &hyperfleetapi.Response{
 				StatusCode: 500,
 				Status:     "500 Internal Server Error",
 			}
@@ -331,7 +331,7 @@ func TestValidateAPIResponse_WrappedErrorChain(t *testing.T) {
 }
 
 func TestValidateAPIResponse_ErrorMessageContainsContext(t *testing.T) {
-	resp := &hyperfleet_api.Response{
+	resp := &hyperfleetapi.Response{
 		StatusCode: 503,
 		Status:     "503 Service Unavailable",
 		Body:       []byte(`{"message":"database connection failed","retry_after":30}`),
@@ -352,7 +352,7 @@ func TestValidateAPIResponse_ErrorMessageContainsContext(t *testing.T) {
 
 func TestValidateAPIResponse_APIErrorHelpers(t *testing.T) {
 	t.Run("IsServerError", func(t *testing.T) {
-		resp := &hyperfleet_api.Response{StatusCode: 500, Status: "500 Internal Server Error"}
+		resp := &hyperfleetapi.Response{StatusCode: 500, Status: "500 Internal Server Error"}
 		err := ValidateAPIResponse(resp, nil, "GET", "http://example.com")
 
 		apiErr, _ := apierrors.IsAPIError(err)
@@ -361,7 +361,7 @@ func TestValidateAPIResponse_APIErrorHelpers(t *testing.T) {
 	})
 
 	t.Run("IsClientError", func(t *testing.T) {
-		resp := &hyperfleet_api.Response{StatusCode: 400, Status: "400 Bad Request"}
+		resp := &hyperfleetapi.Response{StatusCode: 400, Status: "400 Bad Request"}
 		err := ValidateAPIResponse(resp, nil, "GET", "http://example.com")
 
 		apiErr, _ := apierrors.IsAPIError(err)
@@ -370,7 +370,7 @@ func TestValidateAPIResponse_APIErrorHelpers(t *testing.T) {
 	})
 
 	t.Run("IsNotFound", func(t *testing.T) {
-		resp := &hyperfleet_api.Response{StatusCode: 404, Status: "404 Not Found"}
+		resp := &hyperfleetapi.Response{StatusCode: 404, Status: "404 Not Found"}
 		err := ValidateAPIResponse(resp, nil, "GET", "http://example.com")
 
 		apiErr, _ := apierrors.IsAPIError(err)
@@ -378,7 +378,7 @@ func TestValidateAPIResponse_APIErrorHelpers(t *testing.T) {
 	})
 
 	t.Run("IsUnauthorized", func(t *testing.T) {
-		resp := &hyperfleet_api.Response{StatusCode: 401, Status: "401 Unauthorized"}
+		resp := &hyperfleetapi.Response{StatusCode: 401, Status: "401 Unauthorized"}
 		err := ValidateAPIResponse(resp, nil, "GET", "http://example.com")
 
 		apiErr, _ := apierrors.IsAPIError(err)
@@ -386,7 +386,7 @@ func TestValidateAPIResponse_APIErrorHelpers(t *testing.T) {
 	})
 
 	t.Run("IsForbidden", func(t *testing.T) {
-		resp := &hyperfleet_api.Response{StatusCode: 403, Status: "403 Forbidden"}
+		resp := &hyperfleetapi.Response{StatusCode: 403, Status: "403 Forbidden"}
 		err := ValidateAPIResponse(resp, nil, "GET", "http://example.com")
 
 		apiErr, _ := apierrors.IsAPIError(err)
@@ -394,7 +394,7 @@ func TestValidateAPIResponse_APIErrorHelpers(t *testing.T) {
 	})
 
 	t.Run("IsRateLimited", func(t *testing.T) {
-		resp := &hyperfleet_api.Response{StatusCode: 429, Status: "429 Too Many Requests"}
+		resp := &hyperfleetapi.Response{StatusCode: 429, Status: "429 Too Many Requests"}
 		err := ValidateAPIResponse(resp, nil, "GET", "http://example.com")
 
 		apiErr, _ := apierrors.IsAPIError(err)
@@ -402,7 +402,7 @@ func TestValidateAPIResponse_APIErrorHelpers(t *testing.T) {
 	})
 
 	t.Run("IsBadRequest", func(t *testing.T) {
-		resp := &hyperfleet_api.Response{StatusCode: 400, Status: "400 Bad Request"}
+		resp := &hyperfleetapi.Response{StatusCode: 400, Status: "400 Bad Request"}
 		err := ValidateAPIResponse(resp, nil, "GET", "http://example.com")
 
 		apiErr, _ := apierrors.IsAPIError(err)
@@ -410,7 +410,7 @@ func TestValidateAPIResponse_APIErrorHelpers(t *testing.T) {
 	})
 
 	t.Run("IsConflict", func(t *testing.T) {
-		resp := &hyperfleet_api.Response{StatusCode: 409, Status: "409 Conflict"}
+		resp := &hyperfleetapi.Response{StatusCode: 409, Status: "409 Conflict"}
 		err := ValidateAPIResponse(resp, nil, "POST", "http://example.com")
 
 		apiErr, _ := apierrors.IsAPIError(err)
@@ -419,7 +419,7 @@ func TestValidateAPIResponse_APIErrorHelpers(t *testing.T) {
 }
 
 func TestValidateAPIResponse_ResponseBodyString(t *testing.T) {
-	resp := &hyperfleet_api.Response{
+	resp := &hyperfleetapi.Response{
 		StatusCode: 500,
 		Status:     "500 Internal Server Error",
 		Body:       []byte(`{"error":"database timeout","code":"DB_TIMEOUT"}`),
@@ -433,21 +433,21 @@ func TestValidateAPIResponse_ResponseBodyString(t *testing.T) {
 	assert.Equal(t, `{"error":"database timeout","code":"DB_TIMEOUT"}`, apiErr.ResponseBodyString())
 }
 
-// TestToConditionDefs tests the conversion of config_loader conditions to criteria definitions
+// TestToConditionDefs tests the conversion of configloader conditions to criteria definitions
 func TestToConditionDefs(t *testing.T) {
 	tests := []struct {
 		name       string
 		expected   []criteria.ConditionDef
-		conditions []config_loader.Condition
+		conditions []configloader.Condition
 	}{
 		{
 			name:       "empty conditions",
-			conditions: []config_loader.Condition{},
+			conditions: []configloader.Condition{},
 			expected:   []criteria.ConditionDef{},
 		},
 		{
 			name: "single condition",
-			conditions: []config_loader.Condition{
+			conditions: []configloader.Condition{
 				{Field: "status.phase", Operator: "equals", Value: "Running"},
 			},
 			expected: []criteria.ConditionDef{
@@ -456,7 +456,7 @@ func TestToConditionDefs(t *testing.T) {
 		},
 		{
 			name: "multiple conditions with camelCase operators",
-			conditions: []config_loader.Condition{
+			conditions: []configloader.Condition{
 				{Field: "status.phase", Operator: "equals", Value: "Running"},
 				{Field: "replicas", Operator: "greaterThan", Value: 0},
 				{Field: "metadata.labels.app", Operator: "notEquals", Value: ""},
@@ -469,7 +469,7 @@ func TestToConditionDefs(t *testing.T) {
 		},
 		{
 			name: "all operator types",
-			conditions: []config_loader.Condition{
+			conditions: []configloader.Condition{
 				{Field: "f1", Operator: "equals", Value: "v1"},
 				{Field: "f2", Operator: "notEquals", Value: "v2"},
 				{Field: "f3", Operator: "greaterThan", Value: 10},
@@ -715,7 +715,7 @@ func TestAdapterMetadataToMap(t *testing.T) {
 // TestExecuteLogAction tests log action execution
 func TestExecuteLogAction(t *testing.T) {
 	tests := []struct {
-		logAction  *config_loader.LogAction
+		logAction  *configloader.LogAction
 		params     map[string]interface{}
 		name       string
 		expectCall bool
@@ -728,43 +728,43 @@ func TestExecuteLogAction(t *testing.T) {
 		},
 		{
 			name:       "empty message",
-			logAction:  &config_loader.LogAction{Message: ""},
+			logAction:  &configloader.LogAction{Message: ""},
 			params:     map[string]interface{}{},
 			expectCall: false,
 		},
 		{
 			name:       "simple message",
-			logAction:  &config_loader.LogAction{Message: "Hello World", Level: "info"},
+			logAction:  &configloader.LogAction{Message: "Hello World", Level: "info"},
 			params:     map[string]interface{}{},
 			expectCall: true,
 		},
 		{
 			name:       "template message",
-			logAction:  &config_loader.LogAction{Message: "Processing cluster {{ .clusterId }}", Level: "info"},
+			logAction:  &configloader.LogAction{Message: "Processing cluster {{ .clusterId }}", Level: "info"},
 			params:     map[string]interface{}{"clusterId": "cluster-123"},
 			expectCall: true,
 		},
 		{
 			name:       "debug level",
-			logAction:  &config_loader.LogAction{Message: "Debug info", Level: "debug"},
+			logAction:  &configloader.LogAction{Message: "Debug info", Level: "debug"},
 			params:     map[string]interface{}{},
 			expectCall: true,
 		},
 		{
 			name:       "warning level",
-			logAction:  &config_loader.LogAction{Message: "Warning message", Level: "warning"},
+			logAction:  &configloader.LogAction{Message: "Warning message", Level: "warning"},
 			params:     map[string]interface{}{},
 			expectCall: true,
 		},
 		{
 			name:       "error level",
-			logAction:  &config_loader.LogAction{Message: "Error occurred", Level: "error"},
+			logAction:  &configloader.LogAction{Message: "Error occurred", Level: "error"},
 			params:     map[string]interface{}{},
 			expectCall: true,
 		},
 		{
 			name:       "default level (empty)",
-			logAction:  &config_loader.LogAction{Message: "Default level", Level: ""},
+			logAction:  &configloader.LogAction{Message: "Default level", Level: ""},
 			params:     map[string]interface{}{},
 			expectCall: true,
 		},
@@ -1103,7 +1103,7 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 		{
 			name:     "empty URL returns empty",
 			url:      "",
-			execCtx:  &ExecutionContext{Config: &config_loader.Config{}},
+			execCtx:  &ExecutionContext{Config: &configloader.Config{}},
 			expected: "",
 		},
 		{
@@ -1122,9 +1122,9 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			name: "absolute URL matching baseURL extracts relative path",
 			url:  "http://localhost:8000/api/hyperfleet/v1/clusters/abc123",
 			execCtx: &ExecutionContext{
-				Config: &config_loader.Config{
-					Clients: config_loader.ClientsConfig{
-						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+				Config: &configloader.Config{
+					Clients: configloader.ClientsConfig{
+						HyperfleetAPI: configloader.HyperfleetAPIConfig{
 							BaseURL: "http://localhost:8000",
 							Version: "v1",
 						},
@@ -1137,9 +1137,9 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			name: "absolute URL with baseURL containing path extracts relative path",
 			url:  "http://localhost:8000/api/hyperfleet/v1/clusters/abc123",
 			execCtx: &ExecutionContext{
-				Config: &config_loader.Config{
-					Clients: config_loader.ClientsConfig{
-						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+				Config: &configloader.Config{
+					Clients: configloader.ClientsConfig{
+						HyperfleetAPI: configloader.HyperfleetAPIConfig{
 							BaseURL: "http://localhost:8000/api/hyperfleet/v1",
 							Version: "v1",
 						},
@@ -1152,9 +1152,9 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			name: "absolute URL with trailing slash in baseURL",
 			url:  "http://localhost:8000/api/hyperfleet/v1/clusters/abc123",
 			execCtx: &ExecutionContext{
-				Config: &config_loader.Config{
-					Clients: config_loader.ClientsConfig{
-						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+				Config: &configloader.Config{
+					Clients: configloader.ClientsConfig{
+						HyperfleetAPI: configloader.HyperfleetAPIConfig{
 							BaseURL: "http://localhost:8000/api/hyperfleet/v1/",
 							Version: "v1",
 						},
@@ -1167,9 +1167,9 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			name: "absolute URL with different host returns as-is",
 			url:  "http://other-host:9000/api/clusters/abc123",
 			execCtx: &ExecutionContext{
-				Config: &config_loader.Config{
-					Clients: config_loader.ClientsConfig{
-						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+				Config: &configloader.Config{
+					Clients: configloader.ClientsConfig{
+						HyperfleetAPI: configloader.HyperfleetAPIConfig{
 							BaseURL: "http://localhost:8000",
 							Version: "v1",
 						},
@@ -1182,9 +1182,9 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			name: "absolute URL with different scheme returns as-is",
 			url:  "https://localhost:8000/api/clusters/abc123",
 			execCtx: &ExecutionContext{
-				Config: &config_loader.Config{
-					Clients: config_loader.ClientsConfig{
-						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+				Config: &configloader.Config{
+					Clients: configloader.ClientsConfig{
+						HyperfleetAPI: configloader.HyperfleetAPIConfig{
 							BaseURL: "http://localhost:8000",
 							Version: "v1",
 						},
@@ -1197,9 +1197,9 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			name: "relative path with api/ prefix returns with leading slash",
 			url:  "api/hyperfleet/v1/clusters/abc123",
 			execCtx: &ExecutionContext{
-				Config: &config_loader.Config{
-					Clients: config_loader.ClientsConfig{
-						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+				Config: &configloader.Config{
+					Clients: configloader.ClientsConfig{
+						HyperfleetAPI: configloader.HyperfleetAPIConfig{
 							BaseURL: "http://localhost:8000",
 							Version: "v1",
 						},
@@ -1212,9 +1212,9 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			name: "relative path with /api/ prefix returns as-is",
 			url:  "/api/hyperfleet/v1/clusters/abc123",
 			execCtx: &ExecutionContext{
-				Config: &config_loader.Config{
-					Clients: config_loader.ClientsConfig{
-						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+				Config: &configloader.Config{
+					Clients: configloader.ClientsConfig{
+						HyperfleetAPI: configloader.HyperfleetAPIConfig{
 							BaseURL: "http://localhost:8000",
 							Version: "v1",
 						},
@@ -1227,9 +1227,9 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			name: "simple relative path gets full API path added",
 			url:  "clusters/abc123",
 			execCtx: &ExecutionContext{
-				Config: &config_loader.Config{
-					Clients: config_loader.ClientsConfig{
-						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+				Config: &configloader.Config{
+					Clients: configloader.ClientsConfig{
+						HyperfleetAPI: configloader.HyperfleetAPIConfig{
 							BaseURL: "http://localhost:8000",
 							Version: "v1",
 						},
@@ -1242,9 +1242,9 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			name: "simple relative path with leading slash gets full API path added",
 			url:  "/clusters/abc123",
 			execCtx: &ExecutionContext{
-				Config: &config_loader.Config{
-					Clients: config_loader.ClientsConfig{
-						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+				Config: &configloader.Config{
+					Clients: configloader.ClientsConfig{
+						HyperfleetAPI: configloader.HyperfleetAPIConfig{
 							BaseURL: "http://localhost:8000",
 							Version: "v1",
 						},
@@ -1257,9 +1257,9 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			name: "relative path with custom version",
 			url:  "clusters/abc123",
 			execCtx: &ExecutionContext{
-				Config: &config_loader.Config{
-					Clients: config_loader.ClientsConfig{
-						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+				Config: &configloader.Config{
+					Clients: configloader.ClientsConfig{
+						HyperfleetAPI: configloader.HyperfleetAPIConfig{
 							BaseURL: "http://localhost:8000",
 							Version: "v2",
 						},
@@ -1272,9 +1272,9 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			name: "relative path with empty version defaults to v1",
 			url:  "clusters/abc123",
 			execCtx: &ExecutionContext{
-				Config: &config_loader.Config{
-					Clients: config_loader.ClientsConfig{
-						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+				Config: &configloader.Config{
+					Clients: configloader.ClientsConfig{
+						HyperfleetAPI: configloader.HyperfleetAPIConfig{
 							BaseURL: "http://localhost:8000",
 							Version: "",
 						},
@@ -1287,9 +1287,9 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			name: "relative path with empty baseURL returns as-is",
 			url:  "clusters/abc123",
 			execCtx: &ExecutionContext{
-				Config: &config_loader.Config{
-					Clients: config_loader.ClientsConfig{
-						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+				Config: &configloader.Config{
+					Clients: configloader.ClientsConfig{
+						HyperfleetAPI: configloader.HyperfleetAPIConfig{
 							BaseURL: "",
 							Version: "v1",
 						},
@@ -1302,9 +1302,9 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			name: "path with trailing slashes gets cleaned",
 			url:  "clusters/abc123/",
 			execCtx: &ExecutionContext{
-				Config: &config_loader.Config{
-					Clients: config_loader.ClientsConfig{
-						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+				Config: &configloader.Config{
+					Clients: configloader.ClientsConfig{
+						HyperfleetAPI: configloader.HyperfleetAPIConfig{
 							BaseURL: "http://localhost:8000",
 							Version: "v1",
 						},
@@ -1317,9 +1317,9 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			name: "path with dot segments gets cleaned",
 			url:  "/clusters/../clusters/abc123",
 			execCtx: &ExecutionContext{
-				Config: &config_loader.Config{
-					Clients: config_loader.ClientsConfig{
-						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+				Config: &configloader.Config{
+					Clients: configloader.ClientsConfig{
+						HyperfleetAPI: configloader.HyperfleetAPIConfig{
 							BaseURL: "http://localhost:8000",
 							Version: "v1",
 						},
@@ -1332,9 +1332,9 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			name: "absolute URL with empty baseURL returns as-is",
 			url:  "http://localhost:8000/api/hyperfleet/v1/clusters/abc123",
 			execCtx: &ExecutionContext{
-				Config: &config_loader.Config{
-					Clients: config_loader.ClientsConfig{
-						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+				Config: &configloader.Config{
+					Clients: configloader.ClientsConfig{
+						HyperfleetAPI: configloader.HyperfleetAPIConfig{
 							BaseURL: "",
 							Version: "v1",
 						},
@@ -1347,9 +1347,9 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			name: "complex nested path",
 			url:  "clusters/abc123/statuses",
 			execCtx: &ExecutionContext{
-				Config: &config_loader.Config{
-					Clients: config_loader.ClientsConfig{
-						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+				Config: &configloader.Config{
+					Clients: configloader.ClientsConfig{
+						HyperfleetAPI: configloader.HyperfleetAPIConfig{
 							BaseURL: "http://localhost:8000",
 							Version: "v1",
 						},

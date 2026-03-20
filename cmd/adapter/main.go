@@ -10,13 +10,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/configloader"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/dryrun"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/executor"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleet_api"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/k8s_client"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/maestro_client"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transport_client"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleetapi"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/k8sclient"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/maestroclient"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transportclient"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/health"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/metrics"
@@ -113,7 +113,7 @@ Dry-run mode:
 	serveCmd.Flags().StringVar(&dryRunAPIResponses, "dry-run-api-responses", "",
 		"Path to mock API responses JSON file for dry-run mode (defaults to 200 OK)")
 	serveCmd.Flags().StringVar(&dryRunDiscovery, "dry-run-discovery", "",
-		"Path to mock discovery responses JSON file for dry-run mode (overrides applied resources by name)")
+		"Path to mock discovery responses JSON file for dry-run mode (overrides applied resources)")
 	serveCmd.Flags().BoolVar(&dryRunVerbose, "dry-run-verbose", false,
 		"Show rendered manifests, API request/response bodies in dry-run output")
 	serveCmd.Flags().StringVar(&dryRunOutput, "dry-run-output", "text",
@@ -181,7 +181,7 @@ func isDryRun() bool {
 // buildLoggerConfig creates a logger configuration with the following priority
 // (lowest to highest): config file < LOG_* env vars < --log-* CLI flags.
 // Pass logCfg=nil for the bootstrap logger (before config is loaded).
-func buildLoggerConfig(component string, logCfg *config_loader.LogConfig) logger.Config {
+func buildLoggerConfig(component string, logCfg *configloader.LogConfig) logger.Config {
 	cfg := logger.DefaultConfig()
 
 	// Apply config file values (lowest priority)
@@ -226,13 +226,13 @@ func buildLoggerConfig(component string, logCfg *config_loader.LogConfig) logger
 }
 
 // loadConfig loads the unified adapter configuration from both config files.
-func loadConfig(ctx context.Context, log logger.Logger, flags *pflag.FlagSet) (*config_loader.Config, error) {
+func loadConfig(ctx context.Context, log logger.Logger, flags *pflag.FlagSet) (*configloader.Config, error) {
 	log.Info(ctx, "Loading adapter configuration...")
-	config, err := config_loader.LoadConfig(
-		config_loader.WithAdapterConfigPath(configPath),
-		config_loader.WithTaskConfigPath(taskConfigPath),
-		config_loader.WithAdapterVersion(version.Version),
-		config_loader.WithFlags(flags),
+	config, err := configloader.LoadConfig(
+		configloader.WithAdapterConfigPath(configPath),
+		configloader.WithTaskConfigPath(taskConfigPath),
+		configloader.WithAdapterVersion(version.Version),
+		configloader.WithFlags(flags),
 	)
 	if err != nil {
 		errCtx := logger.WithErrorField(ctx, err)
@@ -247,54 +247,61 @@ func loadConfig(ctx context.Context, log logger.Logger, flags *pflag.FlagSet) (*
 // -----------------------------------------------------------------------------
 
 // createAPIClient creates a HyperFleet API client from the config
-func createAPIClient(apiConfig config_loader.HyperfleetAPIConfig, log logger.Logger) (hyperfleet_api.Client, error) {
-	var opts []hyperfleet_api.ClientOption
+func createAPIClient(apiConfig configloader.HyperfleetAPIConfig, log logger.Logger) (hyperfleetapi.Client, error) {
+	var opts []hyperfleetapi.ClientOption
 
 	// Set base URL if configured (env fallback handled in NewClient)
 	if apiConfig.BaseURL != "" {
-		opts = append(opts, hyperfleet_api.WithBaseURL(apiConfig.BaseURL))
+		opts = append(opts, hyperfleetapi.WithBaseURL(apiConfig.BaseURL))
 	}
 
 	// Set timeout if configured (0 means use default)
 	if apiConfig.Timeout > 0 {
-		opts = append(opts, hyperfleet_api.WithTimeout(apiConfig.Timeout))
+		opts = append(opts, hyperfleetapi.WithTimeout(apiConfig.Timeout))
 	}
 
 	// Set retry attempts
 	if apiConfig.RetryAttempts > 0 {
-		opts = append(opts, hyperfleet_api.WithRetryAttempts(apiConfig.RetryAttempts))
+		opts = append(opts, hyperfleetapi.WithRetryAttempts(apiConfig.RetryAttempts))
 	}
 
 	// Set retry backoff strategy
 	if apiConfig.RetryBackoff != "" {
 		switch apiConfig.RetryBackoff {
-		case hyperfleet_api.BackoffExponential, hyperfleet_api.BackoffLinear, hyperfleet_api.BackoffConstant:
-			opts = append(opts, hyperfleet_api.WithRetryBackoff(apiConfig.RetryBackoff))
+		case hyperfleetapi.BackoffExponential, hyperfleetapi.BackoffLinear, hyperfleetapi.BackoffConstant:
+			opts = append(opts, hyperfleetapi.WithRetryBackoff(apiConfig.RetryBackoff))
 		default:
-			return nil, fmt.Errorf("invalid retry backoff strategy %q (supported: exponential, linear, constant)", apiConfig.RetryBackoff)
+			return nil, fmt.Errorf(
+				"invalid retry backoff strategy %q (supported: exponential, linear, constant)",
+				apiConfig.RetryBackoff,
+			)
 		}
 	}
 
 	// Set retry base delay
 	if apiConfig.BaseDelay > 0 {
-		opts = append(opts, hyperfleet_api.WithBaseDelay(apiConfig.BaseDelay))
+		opts = append(opts, hyperfleetapi.WithBaseDelay(apiConfig.BaseDelay))
 	}
 
 	// Set retry max delay
 	if apiConfig.MaxDelay > 0 {
-		opts = append(opts, hyperfleet_api.WithMaxDelay(apiConfig.MaxDelay))
+		opts = append(opts, hyperfleetapi.WithMaxDelay(apiConfig.MaxDelay))
 	}
 
 	// Set default headers
 	for key, value := range apiConfig.DefaultHeaders {
-		opts = append(opts, hyperfleet_api.WithDefaultHeader(key, value))
+		opts = append(opts, hyperfleetapi.WithDefaultHeader(key, value))
 	}
 
-	return hyperfleet_api.NewClient(log, opts...)
+	return hyperfleetapi.NewClient(log, opts...)
 }
 
 // createTransportClient creates the appropriate transport client based on config.
-func createTransportClient(ctx context.Context, config *config_loader.Config, log logger.Logger) (transport_client.TransportClient, error) {
+func createTransportClient(
+	ctx context.Context,
+	config *configloader.Config,
+	log logger.Logger,
+) (transportclient.TransportClient, error) {
 	if config.Clients.Maestro != nil {
 		log.Info(ctx, "Creating Maestro transport client...")
 		client, err := createMaestroClient(ctx, config.Clients.Maestro, log)
@@ -315,18 +322,26 @@ func createTransportClient(ctx context.Context, config *config_loader.Config, lo
 }
 
 // createK8sClient creates a Kubernetes client from the config
-func createK8sClient(ctx context.Context, k8sConfig config_loader.KubernetesConfig, log logger.Logger) (*k8s_client.Client, error) {
-	clientConfig := k8s_client.ClientConfig{
+func createK8sClient(
+	ctx context.Context,
+	k8sConfig configloader.KubernetesConfig,
+	log logger.Logger,
+) (*k8sclient.Client, error) {
+	clientConfig := k8sclient.ClientConfig{
 		KubeConfigPath: k8sConfig.KubeConfigPath,
 		QPS:            k8sConfig.QPS,
 		Burst:          k8sConfig.Burst,
 	}
-	return k8s_client.NewClient(ctx, clientConfig, log)
+	return k8sclient.NewClient(ctx, clientConfig, log)
 }
 
 // createMaestroClient creates a Maestro client from the config
-func createMaestroClient(ctx context.Context, maestroConfig *config_loader.MaestroClientConfig, log logger.Logger) (*maestro_client.Client, error) {
-	config := &maestro_client.Config{
+func createMaestroClient(
+	ctx context.Context,
+	maestroConfig *configloader.MaestroClientConfig,
+	log logger.Logger,
+) (*maestroclient.Client, error) {
+	config := &maestroclient.Config{
 		MaestroServerAddr: maestroConfig.HTTPServerAddress,
 		GRPCServerAddr:    maestroConfig.GRPCServerAddress,
 		SourceID:          maestroConfig.SourceID,
@@ -344,7 +359,11 @@ func createMaestroClient(ctx context.Context, maestroConfig *config_loader.Maest
 	if maestroConfig.ServerHealthinessTimeout != "" {
 		d, err := time.ParseDuration(maestroConfig.ServerHealthinessTimeout)
 		if err != nil {
-			return nil, fmt.Errorf("invalid maestro serverHealthinessTimeout %q: %w", maestroConfig.ServerHealthinessTimeout, err)
+			return nil, fmt.Errorf(
+				"invalid maestro serverHealthinessTimeout %q: %w",
+				maestroConfig.ServerHealthinessTimeout,
+				err,
+			)
 		}
 		config.ServerHealthinessTimeout = d
 	}
@@ -356,11 +375,17 @@ func createMaestroClient(ctx context.Context, maestroConfig *config_loader.Maest
 		config.HTTPCAFile = maestroConfig.Auth.TLSConfig.HTTPCAFile
 	}
 
-	return maestro_client.NewMaestroClient(ctx, config, log)
+	return maestroclient.NewMaestroClient(ctx, config, log)
 }
 
 // buildExecutor creates the executor with the given clients.
-func buildExecutor(config *config_loader.Config, apiClient hyperfleet_api.Client, tc transport_client.TransportClient, log logger.Logger, recorder *metrics.Recorder) (*executor.Executor, error) {
+func buildExecutor(
+	config *configloader.Config,
+	apiClient hyperfleetapi.Client,
+	tc transportclient.TransportClient,
+	log logger.Logger,
+	recorder *metrics.Recorder,
+) (*executor.Executor, error) {
 	return executor.NewBuilder().
 		WithConfig(config).
 		WithAPIClient(apiClient).
@@ -386,7 +411,8 @@ func runServe(flags *pflag.FlagSet) error {
 		return fmt.Errorf("failed to create logger: %w", err)
 	}
 
-	log.Infof(ctx, "Starting Hyperfleet Adapter version=%s commit=%s built=%s", version.Version, version.Commit, version.BuildDate)
+	log.Infof(ctx, "Starting Hyperfleet Adapter version=%s commit=%s built=%s",
+		version.Version, version.Commit, version.BuildDate)
 
 	// Load unified configuration (deployment + task configs)
 	config, err := loadConfig(ctx, log, flags)
@@ -400,11 +426,9 @@ func runServe(flags *pflag.FlagSet) error {
 		return fmt.Errorf("failed to create logger with adapter config: %w", err)
 	}
 
-	log.Infof(ctx, "Adapter configuration loaded successfully: name=%s ",
-		config.Adapter.Name)
+	log.Infof(ctx, "Adapter configuration loaded successfully: name=%s ", config.Adapter.Name)
 	log.Infof(ctx, "HyperFleet API client configured: timeout=%s retry_attempts=%d",
-		config.Clients.HyperfleetAPI.Timeout.String(),
-		config.Clients.HyperfleetAPI.RetryAttempts)
+		config.Clients.HyperfleetAPI.Timeout.String(), config.Clients.HyperfleetAPI.RetryAttempts)
 	var redactedConfigBytes []byte
 	if config.DebugConfig {
 		var data []byte
@@ -585,7 +609,7 @@ func runServe(flags *pflag.FlagSet) error {
 	// Wait for shutdown signal or fatal subscription error
 	select {
 	case <-ctx.Done():
-		log.Info(ctx, "Context cancelled, shutting down...")
+		log.Info(ctx, "Context canceled, shutting down...")
 	case err := <-fatalErrCh:
 		errCtx := logger.WithErrorField(ctx, err)
 		log.Errorf(errCtx, "Fatal subscription error, shutting down")
@@ -595,7 +619,9 @@ func runServe(flags *pflag.FlagSet) error {
 
 	// Close subscriber gracefully
 	log.Info(ctx, "Closing broker subscriber...")
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	shutdownCtx, shutdownCancel := context.WithTimeout(
+		context.Background(), 30*time.Second,
+	)
 	defer shutdownCancel()
 
 	closeDone := make(chan error, 1)
@@ -754,39 +780,55 @@ func runConfigDump(flags *pflag.FlagSet) error {
 // addConfigPathFlags registers the --config and --task-config path flags.
 func addConfigPathFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&configPath, "config", "c", "",
-		fmt.Sprintf("Path to adapter deployment config file (can also use %s env var)", config_loader.EnvAdapterConfig))
+		fmt.Sprintf("Path to adapter deployment config file (can also use %s env var)",
+			configloader.EnvAdapterConfig))
 	cmd.Flags().StringVarP(&taskConfigPath, "task-config", "t", "",
-		fmt.Sprintf("Path to adapter task config file (can also use %s env var)", config_loader.EnvTaskConfigPath))
+		fmt.Sprintf("Path to adapter task config file (can also use %s env var)",
+			configloader.EnvTaskConfigPath))
 }
 
 // addOverrideFlags registers all configuration override flags (Maestro, API, broker, Kubernetes).
 // These flags are available on both the serve and config-dump commands.
 func addOverrideFlags(cmd *cobra.Command) {
 	// Maestro override flags
-	cmd.Flags().String("maestro-grpc-server-address", "", "Maestro gRPC server address. Env: HYPERFLEET_MAESTRO_GRPC_SERVER_ADDRESS")
-	cmd.Flags().String("maestro-http-server-address", "", "Maestro HTTP server address. Env: HYPERFLEET_MAESTRO_HTTP_SERVER_ADDRESS")
+	cmd.Flags().String("maestro-grpc-server-address", "",
+		"Maestro gRPC server address. Env: HYPERFLEET_MAESTRO_GRPC_SERVER_ADDRESS")
+	cmd.Flags().String("maestro-http-server-address", "",
+		"Maestro HTTP server address. Env: HYPERFLEET_MAESTRO_HTTP_SERVER_ADDRESS")
 	cmd.Flags().String("maestro-source-id", "", "Maestro source ID. Env: HYPERFLEET_MAESTRO_SOURCE_ID")
 	cmd.Flags().String("maestro-client-id", "", "Maestro client ID. Env: HYPERFLEET_MAESTRO_CLIENT_ID")
 	cmd.Flags().String("maestro-auth-type", "", "Maestro auth type (tls, none). Env: HYPERFLEET_MAESTRO_AUTH_TYPE")
 	cmd.Flags().String("maestro-ca-file", "", "Maestro gRPC CA certificate file. Env: HYPERFLEET_MAESTRO_CA_FILE")
 	cmd.Flags().String("maestro-cert-file", "", "Maestro gRPC client certificate file. Env: HYPERFLEET_MAESTRO_CERT_FILE")
 	cmd.Flags().String("maestro-key-file", "", "Maestro gRPC client key file. Env: HYPERFLEET_MAESTRO_KEY_FILE")
-	cmd.Flags().String("maestro-http-ca-file", "", "Maestro HTTP CA certificate file. Env: HYPERFLEET_MAESTRO_HTTP_CA_FILE")
-	cmd.Flags().String("maestro-timeout", "", "Maestro client timeout (e.g. 10s). Env: HYPERFLEET_MAESTRO_TIMEOUT")
-	cmd.Flags().String("maestro-server-healthiness-timeout", "", "Maestro server healthiness check timeout (e.g. 20s). Env: HYPERFLEET_MAESTRO_SERVER_HEALTHINESS_TIMEOUT")
-	cmd.Flags().Int("maestro-retry-attempts", 0, "Maestro retry attempts. Env: HYPERFLEET_MAESTRO_RETRY_ATTEMPTS")
-	cmd.Flags().String("maestro-keepalive-time", "", "Maestro gRPC keepalive ping interval (e.g. 30s). Env: HYPERFLEET_MAESTRO_KEEPALIVE_TIME")
-	cmd.Flags().String("maestro-keepalive-timeout", "", "Maestro gRPC keepalive ping timeout (e.g. 10s). Env: HYPERFLEET_MAESTRO_KEEPALIVE_TIMEOUT")
-	cmd.Flags().Bool("maestro-insecure", false, "Use insecure connection to Maestro. Env: HYPERFLEET_MAESTRO_INSECURE")
+	cmd.Flags().String("maestro-http-ca-file", "",
+		"Maestro HTTP CA certificate file. Env: HYPERFLEET_MAESTRO_HTTP_CA_FILE")
+	cmd.Flags().String("maestro-timeout", "",
+		"Maestro client timeout (e.g. 10s). Env: HYPERFLEET_MAESTRO_TIMEOUT")
+	cmd.Flags().String("maestro-server-healthiness-timeout", "",
+		"Maestro server healthiness check timeout (e.g. 20s). Env: HYPERFLEET_MAESTRO_SERVER_HEALTHINESS_TIMEOUT")
+	cmd.Flags().Int("maestro-retry-attempts", 0,
+		"Maestro retry attempts. Env: HYPERFLEET_MAESTRO_RETRY_ATTEMPTS")
+	cmd.Flags().String("maestro-keepalive-time", "",
+		"Maestro gRPC keepalive ping interval (e.g. 30s). Env: HYPERFLEET_MAESTRO_KEEPALIVE_TIME")
+	cmd.Flags().String("maestro-keepalive-timeout", "",
+		"Maestro gRPC keepalive ping timeout (e.g. 10s). Env: HYPERFLEET_MAESTRO_KEEPALIVE_TIMEOUT")
+	cmd.Flags().Bool("maestro-insecure", false,
+		"Use insecure connection to Maestro. Env: HYPERFLEET_MAESTRO_INSECURE")
 
 	// HyperFleet API override flags
 	cmd.Flags().String("hyperfleet-api-base-url", "", "HyperFleet API base URL. Env: HYPERFLEET_API_BASE_URL")
 	cmd.Flags().String("hyperfleet-api-version", "", "HyperFleet API version (e.g. v1). Env: HYPERFLEET_API_VERSION")
-	cmd.Flags().String("hyperfleet-api-timeout", "", "HyperFleet API timeout (e.g. 10s). Env: HYPERFLEET_API_TIMEOUT")
-	cmd.Flags().Int("hyperfleet-api-retry", 0, "HyperFleet API retry attempts. Env: HYPERFLEET_API_RETRY_ATTEMPTS")
-	cmd.Flags().String("hyperfleet-api-retry-backoff", "", "HyperFleet API retry backoff strategy (exponential, linear, constant). Env: HYPERFLEET_API_RETRY_BACKOFF")
-	cmd.Flags().String("hyperfleet-api-base-delay", "", "HyperFleet API retry base delay (e.g. 1s). Env: HYPERFLEET_API_BASE_DELAY")
-	cmd.Flags().String("hyperfleet-api-max-delay", "", "HyperFleet API retry max delay (e.g. 30s). Env: HYPERFLEET_API_MAX_DELAY")
+	cmd.Flags().String("hyperfleet-api-timeout", "",
+		"HyperFleet API timeout (e.g. 10s). Env: HYPERFLEET_API_TIMEOUT")
+	cmd.Flags().Int("hyperfleet-api-retry", 0,
+		"HyperFleet API retry attempts. Env: HYPERFLEET_API_RETRY_ATTEMPTS")
+	cmd.Flags().String("hyperfleet-api-retry-backoff", "",
+		"HyperFleet API retry backoff strategy (exponential, linear, constant). Env: HYPERFLEET_API_RETRY_BACKOFF")
+	cmd.Flags().String("hyperfleet-api-base-delay", "",
+		"HyperFleet API retry base delay (e.g. 1s). Env: HYPERFLEET_API_BASE_DELAY")
+	cmd.Flags().String("hyperfleet-api-max-delay", "",
+		"HyperFleet API retry max delay (e.g. 30s). Env: HYPERFLEET_API_MAX_DELAY")
 
 	// Broker override flags
 	cmd.Flags().String("broker-subscription-id", "", "Broker subscription ID. Env: HYPERFLEET_BROKER_SUBSCRIPTION_ID")

@@ -126,8 +126,10 @@ func TestShouldCaptureStackTrace_K8sAPIErrors(t *testing.T) {
 			expectCapture: false,
 		},
 		{
-			name:          "Conflict_skips_stack_trace",
-			err:           apierrors.NewConflict(schema.GroupResource{Group: "", Resource: "pods"}, "my-pod", errors.New("conflict")),
+			name: "Conflict_skips_stack_trace",
+			err: apierrors.NewConflict(
+				schema.GroupResource{Group: "", Resource: "pods"}, "my-pod", errors.New("conflict"),
+			),
 			expectCapture: false,
 		},
 		{
@@ -136,8 +138,10 @@ func TestShouldCaptureStackTrace_K8sAPIErrors(t *testing.T) {
 			expectCapture: false,
 		},
 		{
-			name:          "Forbidden_skips_stack_trace",
-			err:           apierrors.NewForbidden(schema.GroupResource{Group: "", Resource: "pods"}, "my-pod", errors.New("forbidden")),
+			name: "Forbidden_skips_stack_trace",
+			err: apierrors.NewForbidden(
+				schema.GroupResource{Group: "", Resource: "pods"}, "my-pod", errors.New("forbidden"),
+			),
 			expectCapture: false,
 		},
 		{
@@ -184,18 +188,24 @@ func TestShouldCaptureStackTrace_K8sResourceDataErrors(t *testing.T) {
 		expectCapture bool
 	}{
 		{
-			name:          "K8sResourceKeyNotFoundError_skips_stack_trace",
-			err:           apperrors.NewK8sResourceKeyNotFoundError("Secret", "default", "my-secret", "password"),
+			name: "K8sResourceKeyNotFoundError_skips_stack_trace",
+			err: apperrors.NewK8sResourceKeyNotFoundError(
+				"Secret", "default", "my-secret", "password",
+			),
 			expectCapture: false,
 		},
 		{
-			name:          "K8sInvalidPathError_skips_stack_trace",
-			err:           apperrors.NewK8sInvalidPathError("Secret", "invalid/path", "namespace.name.key"),
+			name: "K8sInvalidPathError_skips_stack_trace",
+			err: apperrors.NewK8sInvalidPathError(
+				"Secret", "invalid/path", "namespace.name.key",
+			),
 			expectCapture: false,
 		},
 		{
-			name:          "K8sResourceDataError_skips_stack_trace",
-			err:           apperrors.NewK8sResourceDataError("ConfigMap", "default", "my-config", "data field missing", nil),
+			name: "K8sResourceDataError_skips_stack_trace",
+			err: apperrors.NewK8sResourceDataError(
+				"ConfigMap", "default", "my-config", "data field missing", nil,
+			),
 			expectCapture: false,
 		},
 	}
@@ -217,43 +227,59 @@ func TestShouldCaptureStackTrace_APIErrors(t *testing.T) {
 		expectCapture bool
 	}{
 		{
-			name:          "APIError_NotFound_skips_stack_trace",
-			err:           apperrors.NewAPIError("GET", "/api/v1/clusters/123", 404, "Not Found", nil, 1, 0, errors.New("not found")),
+			name: "APIError_NotFound_skips_stack_trace",
+			err: apperrors.NewAPIError(
+				"GET", "/api/v1/clusters/123", 404, "Not Found", nil, 1, 0, errors.New("not found"),
+			),
 			expectCapture: false,
 		},
 		{
-			name:          "APIError_Unauthorized_skips_stack_trace",
-			err:           apperrors.NewAPIError("GET", "/api/v1/clusters", 401, "Unauthorized", nil, 1, 0, errors.New("unauthorized")),
+			name: "APIError_Unauthorized_skips_stack_trace",
+			err: apperrors.NewAPIError(
+				"GET", "/api/v1/clusters", 401, "Unauthorized", nil, 1, 0, errors.New("unauthorized"),
+			),
 			expectCapture: false,
 		},
 		{
-			name:          "APIError_Forbidden_skips_stack_trace",
-			err:           apperrors.NewAPIError("POST", "/api/v1/clusters", 403, "Forbidden", nil, 1, 0, errors.New("forbidden")),
+			name: "APIError_Forbidden_skips_stack_trace",
+			err: apperrors.NewAPIError(
+				"POST", "/api/v1/clusters", 403, "Forbidden", nil, 1, 0, errors.New("forbidden"),
+			),
 			expectCapture: false,
 		},
 		{
-			name:          "APIError_BadRequest_skips_stack_trace",
-			err:           apperrors.NewAPIError("POST", "/api/v1/clusters", 400, "Bad Request", nil, 1, 0, errors.New("bad request")),
+			name: "APIError_BadRequest_skips_stack_trace",
+			err: apperrors.NewAPIError(
+				"POST", "/api/v1/clusters", 400, "Bad Request", nil, 1, 0, errors.New("bad request"),
+			),
 			expectCapture: false,
 		},
 		{
-			name:          "APIError_Conflict_skips_stack_trace",
-			err:           apperrors.NewAPIError("PUT", "/api/v1/clusters/123", 409, "Conflict", nil, 1, 0, errors.New("conflict")),
+			name: "APIError_Conflict_skips_stack_trace",
+			err: apperrors.NewAPIError(
+				"PUT", "/api/v1/clusters/123", 409, "Conflict", nil, 1, 0, errors.New("conflict"),
+			),
 			expectCapture: false,
 		},
 		{
-			name:          "APIError_RateLimited_skips_stack_trace",
-			err:           apperrors.NewAPIError("GET", "/api/v1/clusters", 429, "Too Many Requests", nil, 1, 0, errors.New("rate limited")),
+			name: "APIError_RateLimited_skips_stack_trace",
+			err: apperrors.NewAPIError(
+				"GET", "/api/v1/clusters", 429, "Too Many Requests", nil, 1, 0, errors.New("rate limited"),
+			),
 			expectCapture: false,
 		},
 		{
-			name:          "APIError_Timeout_skips_stack_trace",
-			err:           apperrors.NewAPIError("GET", "/api/v1/clusters", 408, "Request Timeout", nil, 1, 0, errors.New("timeout")),
+			name: "APIError_Timeout_skips_stack_trace",
+			err: apperrors.NewAPIError(
+				"GET", "/api/v1/clusters", 408, "Request Timeout", nil, 1, 0, errors.New("timeout"),
+			),
 			expectCapture: false,
 		},
 		{
-			name:          "APIError_ServerError_skips_stack_trace",
-			err:           apperrors.NewAPIError("GET", "/api/v1/clusters", 503, "Service Unavailable", nil, 3, 0, errors.New("server error")),
+			name: "APIError_ServerError_skips_stack_trace",
+			err: apperrors.NewAPIError(
+				"GET", "/api/v1/clusters", 503, "Service Unavailable", nil, 3, 0, errors.New("server error"),
+			),
 			expectCapture: false,
 		},
 	}
@@ -342,15 +368,19 @@ func TestCaptureStackTrace(t *testing.T) {
 			// (the first frame was skipped, but a new frame was captured at the end)
 			for i := 0; i < len(stack1)-1; i++ {
 				if stack1[i] != stack0[i+1] {
-					t.Errorf("Expected stack1[%d] to equal stack0[%d], got %q vs %q",
-						i, i+1, stack1[i], stack0[i+1])
+					t.Errorf(
+						"Expected stack1[%d] to equal stack0[%d], got %q vs %q",
+						i, i+1, stack1[i], stack0[i+1],
+					)
 				}
 			}
 			return
 		}
 
-		t.Errorf("Expected skip=1 to result in fewer frames or shifted stack, got len(stack0)=%d, len(stack1)=%d",
-			len(stack0), len(stack1))
+		t.Errorf(
+			"Expected skip=1 to result in fewer frames or shifted stack, got len(stack0)=%d, len(stack1)=%d",
+			len(stack0), len(stack1),
+		)
 	})
 
 	t.Run("frames_contain_file_line_function", func(t *testing.T) {
@@ -444,7 +474,10 @@ func TestWithErrorField_StackTraceIntegration(t *testing.T) {
 
 	t.Run("api_error_server_error_no_stack_trace", func(t *testing.T) {
 		ctx := context.Background()
-		err := apperrors.NewAPIError("GET", "/api/v1/clusters", 500, "Internal Server Error", nil, 1, 0, errors.New("server error"))
+		err := apperrors.NewAPIError(
+			"GET", "/api/v1/clusters", 500, "Internal Server Error", nil, 1, 0,
+			errors.New("server error"),
+		)
 		result := WithErrorField(ctx, err)
 
 		fields := GetLogFields(result)

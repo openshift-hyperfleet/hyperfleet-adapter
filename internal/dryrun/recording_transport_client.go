@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transport_client"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transportclient"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -21,7 +21,7 @@ const (
 // TransportRecord stores details of a transport client operation.
 type TransportRecord struct {
 	Error     error
-	Result    *transport_client.ApplyResult
+	Result    *transportclient.ApplyResult
 	Namespace string
 	Name      string
 	GVK       schema.GroupVersionKind
@@ -29,7 +29,7 @@ type TransportRecord struct {
 	Manifest  []byte
 }
 
-// DryrunTransportClient implements transport_client.TransportClient by recording
+// DryrunTransportClient implements transportclient.TransportClient by recording
 // all operations in-memory without executing real Kubernetes calls.
 // Applied resources are stored for subsequent discovery/get operations.
 type DryrunTransportClient struct {
@@ -64,7 +64,12 @@ func resourceKey(gvk schema.GroupVersionKind, namespace, name string) string {
 }
 
 // ApplyResource parses the manifest JSON, stores it in-memory, and records the operation.
-func (c *DryrunTransportClient) ApplyResource(ctx context.Context, manifestBytes []byte, opts *transport_client.ApplyOptions, target transport_client.TransportContext) (*transport_client.ApplyResult, error) {
+func (c *DryrunTransportClient) ApplyResource(
+	ctx context.Context,
+	manifestBytes []byte,
+	opts *transportclient.ApplyOptions,
+	target transportclient.TransportContext,
+) (*transportclient.ApplyResult, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -109,7 +114,7 @@ func (c *DryrunTransportClient) ApplyResource(ctx context.Context, manifestBytes
 		c.resources[key] = obj
 	}
 
-	result := &transport_client.ApplyResult{
+	result := &transportclient.ApplyResult{
 		Operation: operation,
 		Reason:    fmt.Sprintf("dry-run %s", operation),
 	}
@@ -127,7 +132,12 @@ func (c *DryrunTransportClient) ApplyResource(ctx context.Context, manifestBytes
 }
 
 // GetResource returns a resource from the in-memory store or a NotFound error.
-func (c *DryrunTransportClient) GetResource(ctx context.Context, gvk schema.GroupVersionKind, namespace, name string, target transport_client.TransportContext) (*unstructured.Unstructured, error) {
+func (c *DryrunTransportClient) GetResource(
+	ctx context.Context,
+	gvk schema.GroupVersionKind,
+	namespace, name string,
+	target transportclient.TransportContext,
+) (*unstructured.Unstructured, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -142,14 +152,20 @@ func (c *DryrunTransportClient) GetResource(ctx context.Context, gvk schema.Grou
 	})
 
 	if !exists {
-		return nil, fmt.Errorf("resource %s/%s %s/%s not found (dry-run)", gvk.Kind, gvk.Version, namespace, name)
+		return nil, fmt.Errorf("resource %s/%s %s/%s not found (dry-run)",
+			gvk.Kind, gvk.Version, namespace, name)
 	}
 
 	return obj.DeepCopy(), nil
 }
 
 // DiscoverResources returns resources from the in-memory store filtered by discovery config.
-func (c *DryrunTransportClient) DiscoverResources(ctx context.Context, gvk schema.GroupVersionKind, discovery manifest.Discovery, target transport_client.TransportContext) (*unstructured.UnstructuredList, error) {
+func (c *DryrunTransportClient) DiscoverResources(
+	ctx context.Context,
+	gvk schema.GroupVersionKind,
+	discovery manifest.Discovery,
+	target transportclient.TransportContext,
+) (*unstructured.UnstructuredList, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 

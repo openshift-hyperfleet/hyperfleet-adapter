@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2/event"
 )
@@ -11,7 +12,7 @@ import (
 // LoadCloudEvent reads a CloudEvent from a JSON file in standard CloudEvents
 // JSON format and returns the parsed event.
 func LoadCloudEvent(path string) (*cloudevents.Event, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read event file %q: %w", path, err)
 	}

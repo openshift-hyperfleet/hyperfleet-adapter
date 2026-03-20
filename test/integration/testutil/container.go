@@ -33,7 +33,8 @@ type ContainerConfig struct {
 	// StartupTimeout is the maximum time to wait for container to start (default: 180s)
 	StartupTimeout time.Duration
 	// CleanupTimeout is the maximum time to wait for container cleanup (default: 60s)
-	// Note: The cleanup path enforces a minimum of 60s to ensure containers have time to stop gracefully.
+	// Note: The cleanup path enforces a minimum of 60s to ensure containers have time to stop
+	// gracefully.
 	CleanupTimeout time.Duration
 	// RetryDelay is the base delay between retries (default: 1s, increases with attempt number)
 	RetryDelay time.Duration
@@ -125,7 +126,10 @@ func StartContainer(t *testing.T, config ContainerConfig) (*ContainerResult, err
 	for attempt := 1; attempt <= config.MaxRetries; attempt++ {
 		if attempt > 1 {
 			delay := config.RetryDelay * time.Duration(attempt)
-			t.Logf("Retry attempt %d/%d for %s container (waiting %v)...", attempt, config.MaxRetries, config.Name, delay)
+			t.Logf(
+				"Retry attempt %d/%d for %s container (waiting %v)...",
+				attempt, config.MaxRetries, config.Name, delay,
+			)
 			time.Sleep(delay)
 		}
 
@@ -149,7 +153,9 @@ func StartContainer(t *testing.T, config ContainerConfig) (*ContainerResult, err
 			t.Logf("Attempt %d failed but container was created. Terminating...", attempt)
 			terminateCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 			if termErr := container.Terminate(terminateCtx); termErr != nil {
-				t.Logf("Warning: Failed to terminate failed container from attempt %d: %v", attempt, termErr)
+				t.Logf(
+					"Warning: Failed to terminate failed container from attempt %d: %v", attempt, termErr,
+				)
 				// Try force cleanup
 				if cid := container.GetContainerID(); cid != "" {
 					forceCleanupContainer(t, cid)
@@ -195,7 +201,9 @@ func StartContainer(t *testing.T, config ContainerConfig) (*ContainerResult, err
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to start %s container after %d attempts: %w", config.Name, config.MaxRetries, err)
+		return nil, fmt.Errorf(
+			"failed to start %s container after %d attempts: %w", config.Name, config.MaxRetries, err,
+		)
 	}
 
 	// Get container host
@@ -209,7 +217,9 @@ func StartContainer(t *testing.T, config ContainerConfig) (*ContainerResult, err
 	for _, portSpec := range config.ExposedPorts {
 		port, err := container.MappedPort(ctx, nat.Port(portSpec))
 		if err != nil {
-			return nil, fmt.Errorf("failed to get mapped port %s for %s container: %w", portSpec, config.Name, err)
+			return nil, fmt.Errorf(
+				"failed to get mapped port %s for %s container: %w", portSpec, config.Name, err,
+			)
 		}
 		ports[portSpec] = port.Port()
 	}
@@ -226,8 +236,8 @@ func StartContainer(t *testing.T, config ContainerConfig) (*ContainerResult, err
 // forceCleanupContainer attempts to force remove a specific container using docker/podman CLI.
 // This is a fallback when testcontainers' Terminate() fails.
 //
-// Note: This function requires either 'docker' or 'podman' CLI to be available in PATH.
-// If neither is available, cleanup will fail with a warning message suggesting manual cleanup.
+// Note: This function requires either 'docker' or 'podman' CLI to be available in PATH. If
+// neither is available, cleanup will fail with a warning message suggesting manual cleanup.
 func forceCleanupContainer(t *testing.T, containerID string) {
 	t.Helper()
 
@@ -238,35 +248,52 @@ func forceCleanupContainer(t *testing.T, containerID string) {
 	// Try docker first, then podman
 	runtimes := []string{"docker", "podman"}
 
-	for _, runtime := range runtimes {
-		rmCmd := exec.Command(runtime, "rm", "-f", containerID)
-		if output, err := rmCmd.CombinedOutput(); err == nil {
-			t.Logf("Force-removed container %s using %s", containerID, runtime)
+	for _, rt := range runtimes {
+		cmdCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		// #nosec G204 -- test infrastructure, commands constructed internally
+		rmCmd := exec.CommandContext(cmdCtx, rt, "rm", "-f", containerID)
+		output, err := rmCmd.CombinedOutput()
+		cancel()
+		if err == nil {
+			t.Logf("Force-removed container %s using %s", containerID, rt)
 			return
-		} else {
-			// Log the error; some "not found" noise is acceptable for cleanup
-			t.Logf("Failed to force-remove with %s: %v (output: %s)", runtime, err, string(output))
 		}
+		// Log the error; some "not found" noise is acceptable for cleanup
+		t.Logf(
+			"Failed to force-remove with %s: %v (output: %s)",
+			rt, err, string(output))
 	}
 
-	t.Logf("WARNING: Could not force-remove container %s. It may already be removed or manual cleanup required.", containerID)
-	t.Logf("Run: docker rm -f %s  OR  podman rm -f %s", containerID, containerID)
+	t.Logf(
+		"WARNING: Could not force-remove container %s. "+
+			"It may already be removed or manual cleanup required.",
+		containerID,
+	)
+	t.Logf(
+		"Run: docker rm -f %s  OR  podman rm -f %s",
+		containerID, containerID)
 }
 
 // CleanupLeakedContainers removes any containers matching the given image pattern.
 // This can be called to clean up containers from previous failed test runs.
 //
-// Note: This function requires either 'docker' or 'podman' CLI to be available in PATH.
-// If neither is available, cleanup will silently skip (no containers found with either runtime).
+// Note: This function requires either 'docker' or 'podman' CLI to be available in PATH. If
+// neither is available, cleanup will silently skip (no containers found with either runtime).
 func CleanupLeakedContainers(t *testing.T, imagePattern string) {
 	t.Helper()
 
 	runtimes := []string{"docker", "podman"}
 
-	for _, runtime := range runtimes {
+	for _, rt := range runtimes {
 		// List containers matching the image
-		listCmd := exec.Command(runtime, "ps", "-a", "-q", "--filter", fmt.Sprintf("ancestor=%s", imagePattern))
+		listCtx, listCancel := context.WithTimeout(
+			context.Background(), 30*time.Second)
+		// #nosec G204 -- test infrastructure, commands constructed internally
+		listCmd := exec.CommandContext(
+			listCtx, rt, "ps", "-a", "-q",
+			"--filter", fmt.Sprintf("ancestor=%s", imagePattern))
 		output, err := listCmd.Output()
+		listCancel()
 		if err != nil {
 			continue // Try next runtime
 		}
@@ -282,12 +309,16 @@ func CleanupLeakedContainers(t *testing.T, imagePattern string) {
 			if id == "" {
 				continue
 			}
-			rmCmd := exec.Command(runtime, "rm", "-f", id)
+			rmCtx, rmCancel := context.WithTimeout(
+				context.Background(), 30*time.Second)
+			// #nosec G204 -- test infrastructure, commands constructed internally
+			rmCmd := exec.CommandContext(rmCtx, rt, "rm", "-f", id)
 			if rmErr := rmCmd.Run(); rmErr != nil {
 				t.Logf("Warning: Failed to remove container %s: %v", id, rmErr)
 			} else {
 				t.Logf("Cleaned up leaked container: %s", id)
 			}
+			rmCancel()
 		}
 		return // Success with this runtime
 	}
@@ -360,7 +391,9 @@ func (s *SharedContainer) Cleanup() {
 
 	println(fmt.Sprintf("🧹 Cleaning up shared %s container...", s.Name))
 	if err := s.Container.Terminate(ctx); err != nil {
-		println(fmt.Sprintf("⚠️  Warning: Failed to terminate shared %s container: %v", s.Name, err))
+		println(
+			fmt.Sprintf("⚠️  Warning: Failed to terminate shared %s container: %v", s.Name, err),
+		)
 		// Try force cleanup
 		if cid := s.Container.GetContainerID(); cid != "" {
 			forceCleanupContainerNoTest(cid)
@@ -420,7 +453,9 @@ func StartSharedContainer(config ContainerConfig) (*SharedContainer, error) {
 	var err error
 
 	for attempt := 1; attempt <= config.MaxRetries; attempt++ {
-		println(fmt.Sprintf("🚀 Starting shared %s container (attempt %d/%d)...", config.Name, attempt, config.MaxRetries))
+		println(
+			fmt.Sprintf("🚀 Starting shared %s container (attempt %d/%d)...", config.Name, attempt, config.MaxRetries),
+		)
 
 		// Create context with timeout for this attempt
 		attemptCtx, cancel := context.WithTimeout(ctx, config.StartupTimeout)
@@ -439,9 +474,14 @@ func StartSharedContainer(config ContainerConfig) (*SharedContainer, error) {
 
 		// If container was created but failed to start fully, terminate it
 		if container != nil {
-			terminateCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-			_ = container.Terminate(terminateCtx)
-			cancel()
+			terminateCtx, tCancel := context.WithTimeout(
+				context.Background(), 60*time.Second)
+			if termErr := container.Terminate(terminateCtx); termErr != nil {
+				println(fmt.Sprintf(
+					"   Failed to terminate container: %v", termErr))
+				forceCleanupContainerNoTest(container.GetContainerID())
+			}
+			tCancel()
 		}
 
 		if attempt < config.MaxRetries {
@@ -452,13 +492,22 @@ func StartSharedContainer(config ContainerConfig) (*SharedContainer, error) {
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to start shared %s container after %d attempts: %w", config.Name, config.MaxRetries, err)
+		return nil, fmt.Errorf(
+			"failed to start shared %s container after %d attempts: %w", config.Name, config.MaxRetries, err,
+		)
 	}
 
 	// Get container host
 	host, err := container.Host(ctx)
 	if err != nil {
-		_ = container.Terminate(ctx)
+		terminateCtx, tCancel := context.WithTimeout(
+			context.Background(), 60*time.Second)
+		if termErr := container.Terminate(terminateCtx); termErr != nil {
+			println(fmt.Sprintf(
+				"   Failed to terminate container after host error: %v", termErr))
+			forceCleanupContainerNoTest(container.GetContainerID())
+		}
+		tCancel()
 		return nil, fmt.Errorf("failed to get %s container host: %w", config.Name, err)
 	}
 
@@ -467,13 +516,26 @@ func StartSharedContainer(config ContainerConfig) (*SharedContainer, error) {
 	for _, portSpec := range config.ExposedPorts {
 		port, err := container.MappedPort(ctx, nat.Port(portSpec))
 		if err != nil {
-			_ = container.Terminate(ctx)
-			return nil, fmt.Errorf("failed to get mapped port %s for %s container: %w", portSpec, config.Name, err)
+			terminateCtx, tCancel := context.WithTimeout(
+				context.Background(), 60*time.Second)
+			if termErr := container.Terminate(terminateCtx); termErr != nil {
+				println(fmt.Sprintf(
+					"   Failed to terminate container after port mapping error: %v",
+					termErr))
+				forceCleanupContainerNoTest(container.GetContainerID())
+			}
+			tCancel()
+			return nil, fmt.Errorf(
+				"failed to get mapped port %s for %s container: %w",
+				portSpec, config.Name, err,
+			)
 		}
 		ports[portSpec] = port.Port()
 	}
 
-	println(fmt.Sprintf("✅ Shared %s container started successfully (host: %s)", config.Name, host))
+	println(
+		fmt.Sprintf("✅ Shared %s container started successfully (host: %s)", config.Name, host),
+	)
 
 	return &SharedContainer{
 		Container: container,
@@ -492,13 +554,20 @@ func forceCleanupContainerNoTest(containerID string) {
 
 	runtimes := []string{"docker", "podman"}
 
-	for _, runtime := range runtimes {
-		rmCmd := exec.Command(runtime, "rm", "-f", containerID)
-		if _, err := rmCmd.CombinedOutput(); err == nil {
-			println(fmt.Sprintf("   Force-removed container %s using %s", containerID, runtime))
+	for _, rt := range runtimes {
+		cmdCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		// #nosec G204 -- test infrastructure, commands constructed internally
+		rmCmd := exec.CommandContext(cmdCtx, rt, "rm", "-f", containerID)
+		_, err := rmCmd.CombinedOutput()
+		cancel()
+		if err == nil {
+			println(fmt.Sprintf(
+				"   Force-removed container %s using %s", containerID, rt))
 			return
 		}
 	}
 
-	println(fmt.Sprintf("⚠️  Could not force-remove container %s. Manual cleanup may be required.", containerID))
+	println(
+		fmt.Sprintf("⚠️  Could not force-remove container %s. Manual cleanup may be required.", containerID),
+	)
 }

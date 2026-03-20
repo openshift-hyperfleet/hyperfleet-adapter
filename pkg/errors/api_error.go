@@ -120,7 +120,15 @@ func (e *APIError) HasResponseBody() bool {
 // -----------------------------------------------------------------------------
 
 // NewAPIError creates a new APIError with all fields
-func NewAPIError(method, url string, statusCode int, status string, body []byte, attempts int, duration time.Duration, err error) *APIError {
+func NewAPIError(
+	method, url string,
+	statusCode int,
+	status string,
+	body []byte,
+	attempts int,
+	duration time.Duration,
+	err error,
+) *APIError {
 	return &APIError{
 		Method:       method,
 		URL:          url,

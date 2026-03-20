@@ -35,22 +35,33 @@ const (
 func GetTraceSampleRatio(log logger.Logger, ctx context.Context) float64 {
 	ratioStr := os.Getenv(EnvTraceSampleRatio)
 	if ratioStr == "" {
-		log.Infof(ctx, "Using default trace sample ratio: %.2f (set %s to override)", DefaultTraceSampleRatio, EnvTraceSampleRatio)
+		log.Infof(
+			ctx, "Using default trace sample ratio: %.2f (set %s to override)",
+			DefaultTraceSampleRatio, EnvTraceSampleRatio,
+		)
 		return DefaultTraceSampleRatio
 	}
 
 	ratio, err := strconv.ParseFloat(ratioStr, 64)
 	if err != nil {
-		log.Warnf(ctx, "Invalid %s value %q, using default %.2f: %v", EnvTraceSampleRatio, ratioStr, DefaultTraceSampleRatio, err)
+		log.Warnf(
+			ctx, "Invalid %s value %q, using default %.2f: %v",
+			EnvTraceSampleRatio, ratioStr, DefaultTraceSampleRatio, err,
+		)
 		return DefaultTraceSampleRatio
 	}
 
 	if ratio < 0.0 || ratio > 1.0 {
-		log.Warnf(ctx, "Invalid %s value %.4f (must be 0.0-1.0), using default %.2f", EnvTraceSampleRatio, ratio, DefaultTraceSampleRatio)
+		log.Warnf(
+			ctx, "Invalid %s value %.4f (must be 0.0-1.0), using default %.2f",
+			EnvTraceSampleRatio, ratio, DefaultTraceSampleRatio,
+		)
 		return DefaultTraceSampleRatio
 	}
 
-	log.Infof(ctx, "Trace sample ratio configured: %.4f (%.2f%% of traces will be sampled)", ratio, ratio*100)
+	log.Infof(
+		ctx, "Trace sample ratio configured: %.4f (%.2f%% of traces will be sampled)", ratio, ratio*100,
+	)
 	return ratio
 }
 

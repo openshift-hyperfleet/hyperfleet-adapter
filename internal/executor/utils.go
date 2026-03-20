@@ -12,18 +12,18 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/configloader"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleet_api"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleetapi"
 	apierrors "github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/errors"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
 
-// ToConditionDefs converts config_loader.Condition slice to criteria.ConditionDef slice.
+// ToConditionDefs converts configloader.Condition slice to criteria.ConditionDef slice.
 // This centralizes the conversion logic that was previously repeated in multiple places.
-func ToConditionDefs(conditions []config_loader.Condition) []criteria.ConditionDef {
+func ToConditionDefs(conditions []configloader.Condition) []criteria.ConditionDef {
 	defs := make([]criteria.ConditionDef, len(conditions))
 	for i, cond := range conditions {
 		defs[i] = criteria.ConditionDef{
@@ -38,7 +38,12 @@ func ToConditionDefs(conditions []config_loader.Condition) []criteria.ConditionD
 // ExecuteLogAction executes a log action with the given context
 // The message is rendered as a Go template with access to all params
 // This is a shared utility function used by both PreconditionExecutor and PostActionExecutor
-func ExecuteLogAction(ctx context.Context, logAction *config_loader.LogAction, execCtx *ExecutionContext, log logger.Logger) {
+func ExecuteLogAction(
+	ctx context.Context,
+	logAction *configloader.LogAction,
+	execCtx *ExecutionContext,
+	log logger.Logger,
+) {
 	if logAction == nil || logAction.Message == "" {
 		return
 	}
@@ -76,7 +81,13 @@ func ExecuteLogAction(ctx context.Context, logAction *config_loader.LogAction, e
 // This is a shared utility function used by both PreconditionExecutor and PostActionExecutor
 // On error, it returns an APIError with full context (method, URL, status, body, attempts, duration)
 // Returns: response, renderedURL, error
-func ExecuteAPICall(ctx context.Context, apiCall *config_loader.APICall, execCtx *ExecutionContext, apiClient hyperfleet_api.Client, log logger.Logger) (*hyperfleet_api.Response, string, error) {
+func ExecuteAPICall(
+	ctx context.Context,
+	apiCall *configloader.APICall,
+	execCtx *ExecutionContext,
+	apiClient hyperfleetapi.Client,
+	log logger.Logger,
+) (*hyperfleetapi.Response, string, error) {
 	if apiCall == nil {
 		return nil, "", fmt.Errorf("apiCall is nil")
 	}
@@ -93,7 +104,7 @@ func ExecuteAPICall(ctx context.Context, apiCall *config_loader.APICall, execCtx
 	log.Infof(ctx, "Making API call: %s %s", apiCall.Method, url)
 
 	// Build request options
-	opts := make([]hyperfleet_api.RequestOption, 0)
+	opts := make([]hyperfleetapi.RequestOption, 0)
 
 	// Add headers
 	headers := make(map[string]string)
@@ -105,14 +116,14 @@ func ExecuteAPICall(ctx context.Context, apiCall *config_loader.APICall, execCtx
 		headers[h.Name] = headerValue
 	}
 	if len(headers) > 0 {
-		opts = append(opts, hyperfleet_api.WithHeaders(headers))
+		opts = append(opts, hyperfleetapi.WithHeaders(headers))
 	}
 
 	// Set timeout if specified
 	if apiCall.Timeout != "" {
 		timeout, timeoutErr := time.ParseDuration(apiCall.Timeout)
 		if timeoutErr == nil {
-			opts = append(opts, hyperfleet_api.WithRequestTimeout(timeout))
+			opts = append(opts, hyperfleetapi.WithRequestTimeout(timeout))
 		} else {
 			log.Warnf(ctx, "failed to parse timeout '%s': %v, using default timeout", apiCall.Timeout, timeoutErr)
 		}
@@ -120,15 +131,15 @@ func ExecuteAPICall(ctx context.Context, apiCall *config_loader.APICall, execCtx
 
 	// Set retry configuration
 	if apiCall.RetryAttempts > 0 {
-		opts = append(opts, hyperfleet_api.WithRequestRetryAttempts(apiCall.RetryAttempts))
+		opts = append(opts, hyperfleetapi.WithRequestRetryAttempts(apiCall.RetryAttempts))
 	}
 	if apiCall.RetryBackoff != "" {
-		backoff := hyperfleet_api.BackoffStrategy(apiCall.RetryBackoff)
-		opts = append(opts, hyperfleet_api.WithRequestRetryBackoff(backoff))
+		backoff := hyperfleetapi.BackoffStrategy(apiCall.RetryBackoff)
+		opts = append(opts, hyperfleetapi.WithRequestRetryBackoff(backoff))
 	}
 
 	// Execute request based on method
-	var resp *hyperfleet_api.Response
+	var resp *hyperfleetapi.Response
 	switch strings.ToUpper(apiCall.Method) {
 	case http.MethodGet:
 		resp, err = apiClient.Get(ctx, url, opts...)
@@ -223,7 +234,7 @@ func ExecuteAPICall(ctx context.Context, apiCall *config_loader.APICall, execCtx
 
 // buildHyperfleetAPICallURL builds a full HyperFleet API URL when a relative path is provided.
 // It uses hyperfleet API client settings from execution context config.
-// Since the hyperfleet_api.Client always prepends its baseURL to the path,
+// Since the hyperfleetapi.Client always prepends its baseURL to the path,
 // this function returns a relative path that the client can use correctly.
 // If the URL is absolute and contains the baseURL, the relative path is extracted.
 func buildHyperfleetAPICallURL(apiCallURL string, execCtx *ExecutionContext) string {
@@ -298,7 +309,7 @@ func buildHyperfleetAPICallURL(apiCallURL string, execCtx *ExecutionContext) str
 // ValidateAPIResponse checks if an API response is valid and successful
 // Returns an APIError with full context if response is nil or unsuccessful
 // method and url are used to construct APIError with proper context
-func ValidateAPIResponse(resp *hyperfleet_api.Response, err error, method, url string) error {
+func ValidateAPIResponse(resp *hyperfleetapi.Response, err error, method, url string) error {
 	if err != nil {
 		// If it's already an APIError, return it as-is
 		if _, ok := apierrors.IsAPIError(err); ok { //nolint:errcheck // checking type only, not using the value

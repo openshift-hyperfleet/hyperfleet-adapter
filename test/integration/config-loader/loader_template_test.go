@@ -1,4 +1,4 @@
-package config_loader_integration
+package configloaderintegration
 
 import (
 	"os"
@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleet_api"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/configloader"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleetapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -46,10 +46,10 @@ func TestLoadSplitConfig(t *testing.T) {
 	adapterConfigPath := filepath.Join(projectRoot, "test/testdata/adapter-config.yaml")
 	taskConfigPath := filepath.Join(projectRoot, "test/testdata/task-config.yaml")
 
-	config, err := config_loader.LoadConfig(
-		config_loader.WithAdapterConfigPath(adapterConfigPath),
-		config_loader.WithTaskConfigPath(taskConfigPath),
-		config_loader.WithSkipSemanticValidation(),
+	config, err := configloader.LoadConfig(
+		configloader.WithAdapterConfigPath(adapterConfigPath),
+		configloader.WithTaskConfigPath(taskConfigPath),
+		configloader.WithSkipSemanticValidation(),
 	)
 	require.NoError(t, err, "should be able to load split config files")
 	require.NotNil(t, config)
@@ -62,17 +62,17 @@ func TestLoadSplitConfig(t *testing.T) {
 	// Clients config comes from adapter config
 	assert.Equal(t, 2*time.Second, config.Clients.HyperfleetAPI.Timeout)
 	assert.Equal(t, 3, config.Clients.HyperfleetAPI.RetryAttempts)
-	assert.Equal(t, hyperfleet_api.BackoffExponential, config.Clients.HyperfleetAPI.RetryBackoff)
+	assert.Equal(t, hyperfleetapi.BackoffExponential, config.Clients.HyperfleetAPI.RetryBackoff)
 
 	// Verify params exist (from task config)
 	assert.NotEmpty(t, config.Params)
 	assert.GreaterOrEqual(t, len(config.Params), 1, "should have at least 1 parameter")
 
 	// Check specific params (using accessor method)
-	clusterIdParam := config.GetParamByName("clusterId")
-	require.NotNil(t, clusterIdParam, "clusterId parameter should exist")
-	assert.Equal(t, "event.id", clusterIdParam.Source)
-	assert.True(t, clusterIdParam.Required)
+	clusterIDParam := config.GetParamByName("clusterId")
+	require.NotNil(t, clusterIDParam, "clusterId parameter should exist")
+	assert.Equal(t, "event.id", clusterIDParam.Source)
+	assert.True(t, clusterIDParam.Required)
 
 	// Verify preconditions (from task config)
 	assert.NotEmpty(t, config.Preconditions)
@@ -133,10 +133,10 @@ func TestLoadSplitConfigWithResourceByName(t *testing.T) {
 	adapterConfigPath := filepath.Join(projectRoot, "test/testdata/adapter-config.yaml")
 	taskConfigPath := filepath.Join(projectRoot, "test/testdata/task-config.yaml")
 
-	config, err := config_loader.LoadConfig(
-		config_loader.WithAdapterConfigPath(adapterConfigPath),
-		config_loader.WithTaskConfigPath(taskConfigPath),
-		config_loader.WithSkipSemanticValidation(),
+	config, err := configloader.LoadConfig(
+		configloader.WithAdapterConfigPath(adapterConfigPath),
+		configloader.WithTaskConfigPath(taskConfigPath),
+		configloader.WithSkipSemanticValidation(),
 	)
 	require.NoError(t, err)
 	require.NotNil(t, config)
@@ -148,7 +148,7 @@ func TestLoadSplitConfigWithResourceByName(t *testing.T) {
 }
 
 // Helper function to find a capture field by name
-func findCaptureByName(captures []config_loader.CaptureField, name string) *config_loader.CaptureField {
+func findCaptureByName(captures []configloader.CaptureField, name string) *configloader.CaptureField {
 	for i := range captures {
 		if captures[i].Name == name {
 			return &captures[i]

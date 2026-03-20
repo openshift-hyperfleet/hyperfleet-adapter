@@ -1,6 +1,6 @@
 //go:build integration
 
-package config_loader_integration
+package configloaderintegration
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/configloader"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 )
@@ -42,15 +42,15 @@ func getTaskConfigPath() string {
 }
 
 // loadTestConfig loads split adapter and task configs and returns the merged Config.
-func loadTestConfig(t *testing.T) *config_loader.Config {
+func loadTestConfig(t *testing.T) *configloader.Config {
 	t.Helper()
 	adapterConfigPath := getAdapterConfigPath()
 	taskConfigPath := getTaskConfigPath()
 
-	config, err := config_loader.LoadConfig(
-		config_loader.WithAdapterConfigPath(adapterConfigPath),
-		config_loader.WithTaskConfigPath(taskConfigPath),
-		config_loader.WithSkipSemanticValidation(),
+	config, err := configloader.LoadConfig(
+		configloader.WithAdapterConfigPath(adapterConfigPath),
+		configloader.WithTaskConfigPath(taskConfigPath),
+		configloader.WithSkipSemanticValidation(),
 	)
 	require.NoError(t, err, "should load split config files from %s and %s", adapterConfigPath, taskConfigPath)
 	require.NotNil(t, config)

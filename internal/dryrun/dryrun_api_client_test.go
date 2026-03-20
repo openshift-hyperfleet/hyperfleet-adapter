@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleet_api"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleetapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -64,7 +64,7 @@ func TestDo_MatchesEndpoint(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	req := &hyperfleet_api.Request{
+	req := &hyperfleetapi.Request{
 		Method: "GET",
 		URL:    "/api/v1/tasks/123",
 	}
@@ -106,7 +106,7 @@ func TestDo_NoMatchDefaultOK(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	req := &hyperfleet_api.Request{
+	req := &hyperfleetapi.Request{
 		Method: "GET",
 		URL:    "/unmatched-path",
 	}
@@ -136,7 +136,7 @@ func TestDo_MethodFiltering(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	req := &hyperfleet_api.Request{
+	req := &hyperfleetapi.Request{
 		Method: "GET",
 		URL:    "/api/v1/tasks",
 	}
@@ -180,7 +180,7 @@ func TestDo_WildcardMethod(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			req := &hyperfleet_api.Request{
+			req := &hyperfleetapi.Request{
 				Method: tc.method,
 				URL:    "/api/v1/anything",
 			}
@@ -212,7 +212,7 @@ func TestDo_SequentialResponses(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	req := &hyperfleet_api.Request{
+	req := &hyperfleetapi.Request{
 		Method: "GET",
 		URL:    "/api/v1/resource",
 	}
@@ -262,7 +262,7 @@ func TestDo_StatusCodeZeroDefaultsOK(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	req := &hyperfleet_api.Request{
+	req := &hyperfleetapi.Request{
 		Method: "GET",
 		URL:    "/api/v1/zero",
 	}
@@ -276,40 +276,40 @@ func TestDo_StatusCodeZeroDefaultsOK(t *testing.T) {
 func TestConvenienceMethods(t *testing.T) {
 	tests := []struct {
 		name           string
-		call           func(ctx context.Context, client *DryrunAPIClient) (*hyperfleet_api.Response, error)
+		call           func(ctx context.Context, client *DryrunAPIClient) (*hyperfleetapi.Response, error)
 		expectedMethod string
 	}{
 		{
 			name: "Get",
-			call: func(ctx context.Context, c *DryrunAPIClient) (*hyperfleet_api.Response, error) {
+			call: func(ctx context.Context, c *DryrunAPIClient) (*hyperfleetapi.Response, error) {
 				return c.Get(ctx, "/test")
 			},
 			expectedMethod: "GET",
 		},
 		{
 			name: "Post",
-			call: func(ctx context.Context, c *DryrunAPIClient) (*hyperfleet_api.Response, error) {
+			call: func(ctx context.Context, c *DryrunAPIClient) (*hyperfleetapi.Response, error) {
 				return c.Post(ctx, "/test", []byte(`{"data":"post"}`))
 			},
 			expectedMethod: "POST",
 		},
 		{
 			name: "Put",
-			call: func(ctx context.Context, c *DryrunAPIClient) (*hyperfleet_api.Response, error) {
+			call: func(ctx context.Context, c *DryrunAPIClient) (*hyperfleetapi.Response, error) {
 				return c.Put(ctx, "/test", []byte(`{"data":"put"}`))
 			},
 			expectedMethod: "PUT",
 		},
 		{
 			name: "Patch",
-			call: func(ctx context.Context, c *DryrunAPIClient) (*hyperfleet_api.Response, error) {
+			call: func(ctx context.Context, c *DryrunAPIClient) (*hyperfleetapi.Response, error) {
 				return c.Patch(ctx, "/test", []byte(`{"data":"patch"}`))
 			},
 			expectedMethod: "PATCH",
 		},
 		{
 			name: "Delete",
-			call: func(ctx context.Context, c *DryrunAPIClient) (*hyperfleet_api.Response, error) {
+			call: func(ctx context.Context, c *DryrunAPIClient) (*hyperfleetapi.Response, error) {
 				return c.Delete(ctx, "/test")
 			},
 			expectedMethod: "DELETE",

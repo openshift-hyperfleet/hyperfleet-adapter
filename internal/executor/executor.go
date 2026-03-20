@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/cloudevents/sdk-go/v2/event"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleet_api"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transport_client"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/configloader"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleetapi"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transportclient"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/metrics"
 	pkgotel "github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/otel"
@@ -126,7 +126,8 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 	precondOutcome := e.precondExecutor.ExecuteAll(ctx, preconditions, execCtx)
 	result.PreconditionResults = precondOutcome.Results
 
-	if precondOutcome.Error != nil {
+	switch {
+	case precondOutcome.Error != nil:
 		// Process execution error: precondition evaluation failed
 		result.Status = StatusFailed
 		precondErr := fmt.Errorf("precondition evaluation failed: error=%w", precondOutcome.Error)
@@ -136,15 +137,19 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 		e.log.Errorf(errCtx, "Phase %s: FAILED", result.CurrentPhase)
 		result.ResourcesSkipped = true
 		result.SkipReason = "PreconditionFailed"
-		execCtx.SetSkipped("PreconditionFailed", precondOutcome.Error.Error())
+		// Set skip metadata on adapter context without overwriting the failed execution status
+		// Note: SetSkipped() is NOT called here because it resets ExecutionStatus to "success",
+		// which would mask the precondition failure in CEL expressions (e.g., Health condition)
+		execCtx.Adapter.ResourcesSkipped = true
+		execCtx.Adapter.SkipReason = precondOutcome.Error.Error()
 		// Continue to post actions for error reporting
-	} else if !precondOutcome.AllMatched {
+	case !precondOutcome.AllMatched:
 		// Business outcome: precondition not satisfied
 		result.ResourcesSkipped = true
 		result.SkipReason = precondOutcome.NotMetReason
 		execCtx.SetSkipped("PreconditionNotMet", precondOutcome.NotMetReason)
 		e.log.Infof(ctx, "Phase %s: SUCCESS - NOT_MET - %s", result.CurrentPhase, precondOutcome.NotMetReason)
-	} else {
+	default:
 		// All preconditions matched
 		e.log.Infof(ctx, "Phase %s: SUCCESS - MET - %d passed", result.CurrentPhase, len(precondOutcome.Results))
 	}
@@ -197,7 +202,9 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 	result.ExecutionContext = execCtx
 
 	if result.Status == StatusSuccess {
-		e.log.Infof(ctx, "Event execution finished: event_execution_status=success resources_skipped=%t reason=%s", result.ResourcesSkipped, result.SkipReason)
+		e.log.Infof(ctx,
+			"Event execution finished: event_execution_status=success resources_skipped=%t reason=%s",
+			result.ResourcesSkipped, result.SkipReason)
 	} else {
 		// Combine all errors into a single error for logging
 		var errMsgs []string
@@ -363,19 +370,19 @@ func NewBuilder() *ExecutorBuilder {
 }
 
 // WithConfig sets the unified configuration
-func (b *ExecutorBuilder) WithConfig(config *config_loader.Config) *ExecutorBuilder {
+func (b *ExecutorBuilder) WithConfig(config *configloader.Config) *ExecutorBuilder {
 	b.config.Config = config
 	return b
 }
 
 // WithAPIClient sets the HyperFleet API client
-func (b *ExecutorBuilder) WithAPIClient(client hyperfleet_api.Client) *ExecutorBuilder {
+func (b *ExecutorBuilder) WithAPIClient(client hyperfleetapi.Client) *ExecutorBuilder {
 	b.config.APIClient = client
 	return b
 }
 
 // WithTransportClient sets the transport client for resource application (kubernetes or maestro)
-func (b *ExecutorBuilder) WithTransportClient(client transport_client.TransportClient) *ExecutorBuilder {
+func (b *ExecutorBuilder) WithTransportClient(client transportclient.TransportClient) *ExecutorBuilder {
 	b.config.TransportClient = client
 	return b
 }

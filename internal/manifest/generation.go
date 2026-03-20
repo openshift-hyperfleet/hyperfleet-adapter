@@ -1,4 +1,5 @@
-// Package manifest provides utilities for Kubernetes manifest validation, generation tracking, and discovery.
+// Package manifest provides utilities for Kubernetes manifest validation,
+// generation tracking, and discovery.
 //
 // This package handles:
 //   - Manifest validation (apiVersion, kind, name, generation annotation)
@@ -6,7 +7,7 @@
 //   - ManifestWork validation for OCM
 //   - Discovery interface for finding resources/manifests
 //
-// Used by both k8s_client (Kubernetes resources) and maestro_client (ManifestWork).
+// Used by both k8sclient (Kubernetes resources) and maestroclient (ManifestWork).
 package manifest
 
 import (
@@ -58,7 +59,7 @@ type ApplyDecision struct {
 //   - If generations differ: Update (apply changes)
 //
 // This function encapsulates the generation comparison logic used by both
-// resource_executor (for k8s resources) and maestro_client (for ManifestWorks).
+// resource_executor (for k8s resources) and maestroclient (for ManifestWorks).
 func CompareGenerations(newGen, existingGen int64, exists bool) ApplyDecision {
 	if !exists {
 		return ApplyDecision{
@@ -111,7 +112,8 @@ func GetGeneration(meta metav1.ObjectMeta) int64 {
 	return gen
 }
 
-// GetGenerationFromUnstructured is a convenience wrapper for getting generation from unstructured.Unstructured.
+// GetGenerationFromUnstructured is a convenience wrapper for getting generation
+// from unstructured.Unstructured.
 // Returns 0 if the resource is nil, has no annotations, or the annotation cannot be parsed.
 func GetGenerationFromUnstructured(obj *unstructured.Unstructured) int64 {
 	if obj == nil {
@@ -132,7 +134,8 @@ func GetGenerationFromUnstructured(obj *unstructured.Unstructured) int64 {
 	return gen
 }
 
-// ValidateGeneration validates that the generation annotation exists and is valid on ObjectMeta.
+// ValidateGeneration validates that the generation annotation exists and is valid
+// on ObjectMeta.
 // Returns error if:
 //   - Annotation is missing
 //   - Annotation value is empty
@@ -142,12 +145,14 @@ func GetGenerationFromUnstructured(obj *unstructured.Unstructured) int64 {
 // This is used to validate that templates properly set the generation annotation.
 func ValidateGeneration(meta metav1.ObjectMeta) error {
 	if meta.Annotations == nil {
-		return apperrors.Validation("missing %s annotation", constants.AnnotationGeneration).AsError()
+		return apperrors.Validation(
+			"missing %s annotation", constants.AnnotationGeneration).AsError()
 	}
 
 	genStr, ok := meta.Annotations[constants.AnnotationGeneration]
 	if !ok {
-		return apperrors.Validation("missing %s annotation", constants.AnnotationGeneration).AsError()
+		return apperrors.Validation(
+			"missing %s annotation", constants.AnnotationGeneration).AsError()
 	}
 
 	if genStr == "" {
@@ -156,7 +161,9 @@ func ValidateGeneration(meta metav1.ObjectMeta) error {
 
 	gen, err := strconv.ParseInt(genStr, 10, 64)
 	if err != nil {
-		return apperrors.Validation("invalid %s annotation value %q: %v", constants.AnnotationGeneration, genStr, err).AsError()
+		return apperrors.Validation(
+			"invalid %s annotation value %q: %v", constants.AnnotationGeneration, genStr, err,
+		).AsError()
 	}
 
 	if gen <= 0 {
@@ -200,7 +207,8 @@ func ValidateManifestWorkGeneration(work *workv1.ManifestWork) error {
 	return nil
 }
 
-// ValidateGenerationFromUnstructured validates that the generation annotation exists and is valid on an Unstructured object.
+// ValidateGenerationFromUnstructured validates that the generation annotation exists
+// and is valid on an Unstructured object.
 // Returns error if:
 //   - Object is nil
 //   - Annotation is missing
@@ -214,31 +222,39 @@ func ValidateGenerationFromUnstructured(obj *unstructured.Unstructured) error {
 
 	annotations := obj.GetAnnotations()
 	if annotations == nil {
-		return apperrors.Validation("missing %s annotation", constants.AnnotationGeneration).AsError()
+		return apperrors.Validation(
+			"missing %s annotation", constants.AnnotationGeneration).AsError()
 	}
 
 	genStr, ok := annotations[constants.AnnotationGeneration]
 	if !ok {
-		return apperrors.Validation("missing %s annotation", constants.AnnotationGeneration).AsError()
+		return apperrors.Validation(
+			"missing %s annotation", constants.AnnotationGeneration).AsError()
 	}
 
 	if genStr == "" {
-		return apperrors.Validation("%s annotation is empty", constants.AnnotationGeneration).AsError()
+		return apperrors.Validation(
+			"%s annotation is empty", constants.AnnotationGeneration).AsError()
 	}
 
 	gen, err := strconv.ParseInt(genStr, 10, 64)
 	if err != nil {
-		return apperrors.Validation("invalid %s annotation value %q: %v", constants.AnnotationGeneration, genStr, err).AsError()
+		return apperrors.Validation(
+			"invalid %s annotation value %q: %v",
+			constants.AnnotationGeneration, genStr, err).AsError()
 	}
 
 	if gen <= 0 {
-		return apperrors.Validation("%s annotation must be > 0, got %d", constants.AnnotationGeneration, gen).AsError()
+		return apperrors.Validation(
+			"%s annotation must be > 0, got %d",
+			constants.AnnotationGeneration, gen).AsError()
 	}
 
 	return nil
 }
 
-// GetLatestGenerationFromList returns the resource with the highest generation annotation from a list.
+// GetLatestGenerationFromList returns the resource with the highest generation annotation
+// from a list.
 // It sorts by generation annotation (descending) and uses metadata.name as a secondary sort key
 // for deterministic behavior when generations are equal.
 // Returns nil if the list is nil or empty.
@@ -273,7 +289,8 @@ func GetLatestGenerationFromList(list *unstructured.UnstructuredList) *unstructu
 // =============================================================================
 
 // Discovery defines the interface for resource/manifest discovery configuration.
-// This interface is used by both k8s_client (for K8s resources) and maestro_client (for ManifestWork manifests).
+// This interface is used by both k8sclient (for K8s resources)
+// and maestroclient (for ManifestWork manifests).
 type Discovery interface {
 	// GetNamespace returns the namespace to search in.
 	// Empty string means cluster-scoped or all namespaces.
@@ -283,7 +300,8 @@ type Discovery interface {
 	// Empty string means use selector-based discovery.
 	GetName() string
 
-	// GetLabelSelector returns the label selector string (e.g., "app=myapp,env=prod").
+	// GetLabelSelector returns the label selector string
+	// (e.g., "app=myapp,env=prod").
 	// Empty string means no label filtering.
 	GetLabelSelector() string
 
@@ -292,7 +310,7 @@ type Discovery interface {
 }
 
 // DiscoveryConfig is the default implementation of the Discovery interface.
-// Used by both k8s_client and maestro_client for consistent discovery configuration.
+// Used by both k8sclient and maestroclient for consistent discovery configuration.
 type DiscoveryConfig struct {
 	// Namespace to search in (empty for cluster-scoped or all namespaces)
 	Namespace string
@@ -375,8 +393,8 @@ func MatchesLabels(obj *unstructured.Unstructured, labelSelector string) bool {
 	return true
 }
 
-// DiscoverNestedManifest finds manifests within a parent resource (e.g., ManifestWork) that match
-// the discovery criteria. The parent is expected to contain nested manifests at
+// DiscoverNestedManifest finds manifests within a parent resource (e.g., ManifestWork)
+// that match the discovery criteria. The parent is expected to contain nested manifests at
 // spec.workload.manifests (OCM ManifestWork structure).
 //
 // Parameters:
@@ -386,7 +404,10 @@ func MatchesLabels(obj *unstructured.Unstructured, labelSelector string) bool {
 // Returns:
 //   - List of matching manifests as unstructured objects
 //   - The manifest with the highest generation if multiple match
-func DiscoverNestedManifest(parent *unstructured.Unstructured, discovery Discovery) (*unstructured.UnstructuredList, error) {
+func DiscoverNestedManifest(
+	parent *unstructured.Unstructured,
+	discovery Discovery,
+) (*unstructured.UnstructuredList, error) {
 	list := &unstructured.UnstructuredList{}
 
 	if parent == nil || discovery == nil {
@@ -394,9 +415,11 @@ func DiscoverNestedManifest(parent *unstructured.Unstructured, discovery Discove
 	}
 
 	// Extract spec.workload.manifests from the unstructured parent
-	manifests, found, err := unstructured.NestedSlice(parent.Object, "spec", "workload", "manifests")
+	manifests, found, err := unstructured.NestedSlice(
+		parent.Object, "spec", "workload", "manifests")
 	if err != nil {
-		return nil, apperrors.Validation("failed to extract spec.workload.manifests from %q: %v",
+		return nil, apperrors.Validation(
+			"failed to extract spec.workload.manifests from %q: %v",
 			parent.GetName(), err)
 	}
 	if !found {
@@ -431,7 +454,8 @@ func EnrichWithResourceStatus(parent, nested *unstructured.Unstructured) {
 		return
 	}
 
-	statusManifests, found, err := unstructured.NestedSlice(parent.Object, "status", "resourceStatus", "manifests")
+	statusManifests, found, err := unstructured.NestedSlice(
+		parent.Object, "status", "resourceStatus", "manifests")
 	if err != nil || !found {
 		return
 	}
@@ -471,7 +495,8 @@ func EnrichWithResourceStatus(parent, nested *unstructured.Unstructured) {
 	}
 }
 
-// MatchesDiscoveryCriteria checks if a resource matches the discovery criteria (namespace, name, or labels).
+// MatchesDiscoveryCriteria checks if a resource matches the discovery criteria
+// (namespace, name, or labels).
 func MatchesDiscoveryCriteria(obj *unstructured.Unstructured, discovery Discovery) bool {
 	// Check namespace if specified
 	if ns := discovery.GetNamespace(); ns != "" && obj.GetNamespace() != ns {

@@ -3,13 +3,14 @@ package executor
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/cloudevents/sdk-go/v2/event"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/configloader"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleet_api"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/k8s_client"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleetapi"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/k8sclient"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus"
@@ -19,8 +20,8 @@ import (
 )
 
 // newMockAPIClient creates a new mock API client for convenience
-func newMockAPIClient() *hyperfleet_api.MockClient {
-	return hyperfleet_api.NewMockClient()
+func newMockAPIClient() *hyperfleetapi.MockClient {
+	return hyperfleetapi.NewMockClient()
 }
 
 // TestNewExecutor tests the NewExecutor function
@@ -46,7 +47,7 @@ func TestNewExecutor(t *testing.T) {
 		{
 			name: "missing API client",
 			config: &ExecutorConfig{
-				Config: &config_loader.Config{},
+				Config: &configloader.Config{},
 				Logger: logger.NewTestLogger(),
 			},
 			expectError: true,
@@ -54,7 +55,7 @@ func TestNewExecutor(t *testing.T) {
 		{
 			name: "missing logger",
 			config: &ExecutorConfig{
-				Config:    &config_loader.Config{},
+				Config:    &configloader.Config{},
 				APIClient: newMockAPIClient(),
 			},
 			expectError: true,
@@ -62,9 +63,9 @@ func TestNewExecutor(t *testing.T) {
 		{
 			name: "valid config",
 			config: &ExecutorConfig{
-				Config:          &config_loader.Config{},
+				Config:          &configloader.Config{},
 				APIClient:       newMockAPIClient(),
-				TransportClient: k8s_client.NewMockK8sClient(),
+				TransportClient: k8sclient.NewMockK8sClient(),
 				Logger:          logger.NewTestLogger(),
 			},
 			expectError: false,
@@ -84,8 +85,8 @@ func TestNewExecutor(t *testing.T) {
 }
 
 func TestExecutorBuilder(t *testing.T) {
-	config := &config_loader.Config{
-		Adapter: config_loader.AdapterInfo{
+	config := &configloader.Config{
+		Adapter: configloader.AdapterInfo{
 			Name:    "test-adapter",
 			Version: "1.0.0",
 		},
@@ -94,7 +95,7 @@ func TestExecutorBuilder(t *testing.T) {
 	exec, err := NewBuilder().
 		WithConfig(config).
 		WithAPIClient(newMockAPIClient()).
-		WithTransportClient(k8s_client.NewMockK8sClient()).
+		WithTransportClient(k8sclient.NewMockK8sClient()).
 		WithLogger(logger.NewTestLogger()).
 		Build()
 
@@ -239,12 +240,12 @@ func TestExecute_ParamExtraction(t *testing.T) {
 	// Set up environment variable for test
 	t.Setenv("TEST_VAR", "test-value")
 
-	config := &config_loader.Config{
-		Adapter: config_loader.AdapterInfo{
+	config := &configloader.Config{
+		Adapter: configloader.AdapterInfo{
 			Name:    "test-adapter",
 			Version: "1.0.0",
 		},
-		Params: []config_loader.Parameter{
+		Params: []configloader.Parameter{
 			{
 				Name:     "testParam",
 				Source:   "env.TEST_VAR",
@@ -261,7 +262,7 @@ func TestExecute_ParamExtraction(t *testing.T) {
 	exec, err := NewBuilder().
 		WithConfig(config).
 		WithAPIClient(newMockAPIClient()).
-		WithTransportClient(k8s_client.NewMockK8sClient()).
+		WithTransportClient(k8sclient.NewMockK8sClient()).
 		WithLogger(logger.NewTestLogger()).
 		Build()
 	if err != nil {
@@ -305,12 +306,12 @@ func TestParamExtractor(t *testing.T) {
 		expectValue interface{}
 		name        string
 		expectKey   string
-		params      []config_loader.Parameter
+		params      []configloader.Parameter
 		expectError bool
 	}{
 		{
 			name: "extract from env",
-			params: []config_loader.Parameter{
+			params: []configloader.Parameter{
 				{Name: "envVar", Source: "env.TEST_ENV"},
 			},
 			expectKey:   "envVar",
@@ -318,7 +319,7 @@ func TestParamExtractor(t *testing.T) {
 		},
 		{
 			name: "extract from event",
-			params: []config_loader.Parameter{
+			params: []configloader.Parameter{
 				{Name: "clusterId", Source: "event.id"},
 			},
 			expectKey:   "clusterId",
@@ -326,7 +327,7 @@ func TestParamExtractor(t *testing.T) {
 		},
 		{
 			name: "extract nested from event",
-			params: []config_loader.Parameter{
+			params: []configloader.Parameter{
 				{Name: "nestedVal", Source: "event.nested.value"},
 			},
 			expectKey:   "nestedVal",
@@ -334,7 +335,7 @@ func TestParamExtractor(t *testing.T) {
 		},
 		{
 			name: "use default for missing optional",
-			params: []config_loader.Parameter{
+			params: []configloader.Parameter{
 				{Name: "optional", Source: "env.MISSING", Default: "default-val"},
 			},
 			expectKey:   "optional",
@@ -342,14 +343,14 @@ func TestParamExtractor(t *testing.T) {
 		},
 		{
 			name: "fail on missing required",
-			params: []config_loader.Parameter{
+			params: []configloader.Parameter{
 				{Name: "required", Source: "env.MISSING", Required: true},
 			},
 			expectError: true,
 		},
 		{
 			name: "extract from config",
-			params: []config_loader.Parameter{
+			params: []configloader.Parameter{
 				{Name: "adapterName", Source: "config.adapter.name"},
 			},
 			expectKey:   "adapterName",
@@ -357,7 +358,7 @@ func TestParamExtractor(t *testing.T) {
 		},
 		{
 			name: "extract nested from config",
-			params: []config_loader.Parameter{
+			params: []configloader.Parameter{
 				{Name: "adapterVersion", Source: "config.adapter.version"},
 			},
 			expectKey:   "adapterVersion",
@@ -365,7 +366,7 @@ func TestParamExtractor(t *testing.T) {
 		},
 		{
 			name: "use default for missing optional config field",
-			params: []config_loader.Parameter{
+			params: []configloader.Parameter{
 				{Name: "optional", Source: "config.nonexistent", Default: "fallback"},
 			},
 			expectKey:   "optional",
@@ -373,7 +374,7 @@ func TestParamExtractor(t *testing.T) {
 		},
 		{
 			name: "fail on missing required config field",
-			params: []config_loader.Parameter{
+			params: []configloader.Parameter{
 				{Name: "required", Source: "config.nonexistent", Required: true},
 			},
 			expectError: true,
@@ -386,8 +387,8 @@ func TestParamExtractor(t *testing.T) {
 			execCtx := NewExecutionContext(context.Background(), eventData, nil)
 
 			// Create config with test params
-			config := &config_loader.Config{
-				Adapter: config_loader.AdapterInfo{
+			config := &configloader.Config{
+				Adapter: configloader.AdapterInfo{
 					Name:    "test",
 					Version: "1.0.0",
 				},
@@ -474,17 +475,17 @@ func TestSequentialExecution_Preconditions(t *testing.T) {
 	tests := []struct {
 		name             string
 		expectedLastName string
-		preconditions    []config_loader.Precondition
+		preconditions    []configloader.Precondition
 		expectedResults  int // number of results before stopping
 		expectError      bool
 		expectNotMet     bool
 	}{
 		{
 			name: "all pass - all executed",
-			preconditions: []config_loader.Precondition{
-				{ActionBase: config_loader.ActionBase{Name: "precond1"}, Expression: "true"},
-				{ActionBase: config_loader.ActionBase{Name: "precond2"}, Expression: "true"},
-				{ActionBase: config_loader.ActionBase{Name: "precond3"}, Expression: "true"},
+			preconditions: []configloader.Precondition{
+				{ActionBase: configloader.ActionBase{Name: "precond1"}, Expression: "true"},
+				{ActionBase: configloader.ActionBase{Name: "precond2"}, Expression: "true"},
+				{ActionBase: configloader.ActionBase{Name: "precond3"}, Expression: "true"},
 			},
 			expectedResults:  3,
 			expectError:      false,
@@ -493,10 +494,10 @@ func TestSequentialExecution_Preconditions(t *testing.T) {
 		},
 		{
 			name: "first fails - stops immediately",
-			preconditions: []config_loader.Precondition{
-				{ActionBase: config_loader.ActionBase{Name: "precond1"}, Expression: "false"},
-				{ActionBase: config_loader.ActionBase{Name: "precond2"}, Expression: "true"},
-				{ActionBase: config_loader.ActionBase{Name: "precond3"}, Expression: "true"},
+			preconditions: []configloader.Precondition{
+				{ActionBase: configloader.ActionBase{Name: "precond1"}, Expression: "false"},
+				{ActionBase: configloader.ActionBase{Name: "precond2"}, Expression: "true"},
+				{ActionBase: configloader.ActionBase{Name: "precond3"}, Expression: "true"},
 			},
 			expectedResults:  1,
 			expectError:      false,
@@ -505,10 +506,10 @@ func TestSequentialExecution_Preconditions(t *testing.T) {
 		},
 		{
 			name: "second fails - first executes, stops at second",
-			preconditions: []config_loader.Precondition{
-				{ActionBase: config_loader.ActionBase{Name: "precond1"}, Expression: "true"},
-				{ActionBase: config_loader.ActionBase{Name: "precond2"}, Expression: "false"},
-				{ActionBase: config_loader.ActionBase{Name: "precond3"}, Expression: "true"},
+			preconditions: []configloader.Precondition{
+				{ActionBase: configloader.ActionBase{Name: "precond1"}, Expression: "true"},
+				{ActionBase: configloader.ActionBase{Name: "precond2"}, Expression: "false"},
+				{ActionBase: configloader.ActionBase{Name: "precond3"}, Expression: "true"},
 			},
 			expectedResults:  2,
 			expectError:      false,
@@ -517,10 +518,10 @@ func TestSequentialExecution_Preconditions(t *testing.T) {
 		},
 		{
 			name: "third fails - first two execute, stops at third",
-			preconditions: []config_loader.Precondition{
-				{ActionBase: config_loader.ActionBase{Name: "precond1"}, Expression: "true"},
-				{ActionBase: config_loader.ActionBase{Name: "precond2"}, Expression: "true"},
-				{ActionBase: config_loader.ActionBase{Name: "precond3"}, Expression: "false"},
+			preconditions: []configloader.Precondition{
+				{ActionBase: configloader.ActionBase{Name: "precond1"}, Expression: "true"},
+				{ActionBase: configloader.ActionBase{Name: "precond2"}, Expression: "true"},
+				{ActionBase: configloader.ActionBase{Name: "precond3"}, Expression: "false"},
 			},
 			expectedResults:  3,
 			expectError:      false,
@@ -531,8 +532,8 @@ func TestSequentialExecution_Preconditions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			config := &config_loader.Config{
-				Adapter: config_loader.AdapterInfo{
+			config := &configloader.Config{
+				Adapter: configloader.AdapterInfo{
 					Name:    "test-adapter",
 					Version: "1.0.0",
 				},
@@ -542,7 +543,7 @@ func TestSequentialExecution_Preconditions(t *testing.T) {
 			exec, err := NewBuilder().
 				WithConfig(config).
 				WithAPIClient(newMockAPIClient()).
-				WithTransportClient(k8s_client.NewMockK8sClient()).
+				WithTransportClient(k8sclient.NewMockK8sClient()).
 				WithLogger(logger.NewTestLogger()).
 				Build()
 			if err != nil {
@@ -580,7 +581,8 @@ func TestSequentialExecution_Preconditions(t *testing.T) {
 	}
 }
 
-// TestPrecondition_CustomCELFunctions tests that custom CEL functions (like now()) are available in precondition expressions
+// TestPrecondition_CustomCELFunctions tests that custom CEL functions
+// (like now()) are available in precondition expressions
 func TestPrecondition_CustomCELFunctions(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -601,20 +603,20 @@ func TestPrecondition_CustomCELFunctions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			config := &config_loader.Config{
-				Adapter: config_loader.AdapterInfo{
+			config := &configloader.Config{
+				Adapter: configloader.AdapterInfo{
 					Name:    "test-adapter",
 					Version: "1.0.0",
 				},
-				Preconditions: []config_loader.Precondition{
-					{ActionBase: config_loader.ActionBase{Name: "test-custom-function"}, Expression: tt.expression},
+				Preconditions: []configloader.Precondition{
+					{ActionBase: configloader.ActionBase{Name: "test-custom-function"}, Expression: tt.expression},
 				},
 			}
 
 			exec, err := NewBuilder().
 				WithConfig(config).
 				WithAPIClient(newMockAPIClient()).
-				WithTransportClient(k8s_client.NewMockK8sClient()).
+				WithTransportClient(k8sclient.NewMockK8sClient()).
 				WithLogger(logger.NewTestLogger()).
 				Build()
 			require.NoError(t, err, "failed to create executor")
@@ -647,13 +649,13 @@ func TestSequentialExecution_Resources(t *testing.T) {
 
 	tests := []struct {
 		name            string
-		resources       []config_loader.Resource
+		resources       []configloader.Resource
 		expectedResults int
 		expectFailure   bool
 	}{
 		{
 			name: "single resource with valid manifest",
-			resources: []config_loader.Resource{
+			resources: []configloader.Resource{
 				{
 					Name: "resource1",
 					Manifest: map[string]interface{}{
@@ -670,7 +672,7 @@ func TestSequentialExecution_Resources(t *testing.T) {
 		},
 		{
 			name: "first resource has no manifest - stops immediately",
-			resources: []config_loader.Resource{
+			resources: []configloader.Resource{
 				{Name: "resource1"}, // No manifest at all
 				{
 					Name: "resource2",
@@ -690,8 +692,8 @@ func TestSequentialExecution_Resources(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			config := &config_loader.Config{
-				Adapter: config_loader.AdapterInfo{
+			config := &configloader.Config{
+				Adapter: configloader.AdapterInfo{
 					Name:    "test-adapter",
 					Version: "1.0.0",
 				},
@@ -701,7 +703,7 @@ func TestSequentialExecution_Resources(t *testing.T) {
 			exec, err := NewBuilder().
 				WithConfig(config).
 				WithAPIClient(newMockAPIClient()).
-				WithTransportClient(k8s_client.NewMockK8sClient()).
+				WithTransportClient(k8sclient.NewMockK8sClient()).
 				WithLogger(logger.NewTestLogger()).
 				Build()
 			if err != nil {
@@ -729,18 +731,18 @@ func TestSequentialExecution_Resources(t *testing.T) {
 func TestSequentialExecution_PostActions(t *testing.T) {
 	tests := []struct {
 		mockError       error
-		mockResponse    *hyperfleet_api.Response
+		mockResponse    *hyperfleetapi.Response
 		name            string
-		postActions     []config_loader.PostAction
+		postActions     []configloader.PostAction
 		expectedResults int
 		expectError     bool
 	}{
 		{
 			name: "all log actions succeed",
-			postActions: []config_loader.PostAction{
-				{ActionBase: config_loader.ActionBase{Name: "log1", Log: &config_loader.LogAction{Message: "msg1"}}},
-				{ActionBase: config_loader.ActionBase{Name: "log2", Log: &config_loader.LogAction{Message: "msg2"}}},
-				{ActionBase: config_loader.ActionBase{Name: "log3", Log: &config_loader.LogAction{Message: "msg3"}}},
+			postActions: []configloader.PostAction{
+				{ActionBase: configloader.ActionBase{Name: "log1", Log: &configloader.LogAction{Message: "msg1"}}},
+				{ActionBase: configloader.ActionBase{Name: "log2", Log: &configloader.LogAction{Message: "msg2"}}},
+				{ActionBase: configloader.ActionBase{Name: "log3", Log: &configloader.LogAction{Message: "msg3"}}},
 			},
 			expectedResults: 3,
 			expectError:     false,
@@ -749,12 +751,12 @@ func TestSequentialExecution_PostActions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			postConfig := &config_loader.PostConfig{
+			postConfig := &configloader.PostConfig{
 				PostActions: tt.postActions,
 			}
 
-			config := &config_loader.Config{
-				Adapter: config_loader.AdapterInfo{
+			config := &configloader.Config{
+				Adapter: configloader.AdapterInfo{
 					Name:    "test-adapter",
 					Version: "1.0.0",
 				},
@@ -770,7 +772,7 @@ func TestSequentialExecution_PostActions(t *testing.T) {
 			exec, err := NewBuilder().
 				WithConfig(config).
 				WithAPIClient(mockClient).
-				WithTransportClient(k8s_client.NewMockK8sClient()).
+				WithTransportClient(k8sclient.NewMockK8sClient()).
 				WithLogger(logger.NewTestLogger()).
 				Build()
 			if err != nil {
@@ -800,25 +802,25 @@ func TestSequentialExecution_SkipReasonCapture(t *testing.T) {
 	tests := []struct {
 		name           string
 		expectedStatus ExecutionStatus
-		preconditions  []config_loader.Precondition
+		preconditions  []configloader.Precondition
 		expectSkipped  bool
 	}{
 		{
 			name: "first precondition not met",
-			preconditions: []config_loader.Precondition{
-				{ActionBase: config_loader.ActionBase{Name: "check1"}, Expression: "false"},
-				{ActionBase: config_loader.ActionBase{Name: "check2"}, Expression: "true"},
-				{ActionBase: config_loader.ActionBase{Name: "check3"}, Expression: "true"},
+			preconditions: []configloader.Precondition{
+				{ActionBase: configloader.ActionBase{Name: "check1"}, Expression: "false"},
+				{ActionBase: configloader.ActionBase{Name: "check2"}, Expression: "true"},
+				{ActionBase: configloader.ActionBase{Name: "check3"}, Expression: "true"},
 			},
 			expectedStatus: StatusSuccess, // Successful execution, just resources skipped
 			expectSkipped:  true,
 		},
 		{
 			name: "second precondition not met",
-			preconditions: []config_loader.Precondition{
-				{ActionBase: config_loader.ActionBase{Name: "check1"}, Expression: "true"},
-				{ActionBase: config_loader.ActionBase{Name: "check2"}, Expression: "false"},
-				{ActionBase: config_loader.ActionBase{Name: "check3"}, Expression: "true"},
+			preconditions: []configloader.Precondition{
+				{ActionBase: configloader.ActionBase{Name: "check1"}, Expression: "true"},
+				{ActionBase: configloader.ActionBase{Name: "check2"}, Expression: "false"},
+				{ActionBase: configloader.ActionBase{Name: "check3"}, Expression: "true"},
 			},
 			expectedStatus: StatusSuccess, // Successful execution, just resources skipped
 			expectSkipped:  true,
@@ -827,8 +829,8 @@ func TestSequentialExecution_SkipReasonCapture(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			config := &config_loader.Config{
-				Adapter: config_loader.AdapterInfo{
+			config := &configloader.Config{
+				Adapter: configloader.AdapterInfo{
 					Name:    "test-adapter",
 					Version: "1.0.0",
 				},
@@ -838,7 +840,7 @@ func TestSequentialExecution_SkipReasonCapture(t *testing.T) {
 			exec, err := NewBuilder().
 				WithConfig(config).
 				WithAPIClient(newMockAPIClient()).
-				WithTransportClient(k8s_client.NewMockK8sClient()).
+				WithTransportClient(k8sclient.NewMockK8sClient()).
 				WithLogger(logger.NewTestLogger()).
 				Build()
 			if err != nil {
@@ -870,19 +872,19 @@ func TestSequentialExecution_SkipReasonCapture(t *testing.T) {
 func TestCreateHandler_MetricsRecording(t *testing.T) {
 	tests := []struct {
 		name           string
-		preconditions  []config_loader.Precondition
+		preconditions  []configloader.Precondition
 		expectedStatus string // "success", "skipped", or "failed"
 		expectedErrors []string
 	}{
 		{
 			name:           "success records success metric",
-			preconditions:  []config_loader.Precondition{},
+			preconditions:  []configloader.Precondition{},
 			expectedStatus: "success",
 		},
 		{
 			name: "skipped records skipped metric",
-			preconditions: []config_loader.Precondition{
-				{ActionBase: config_loader.ActionBase{Name: "check"}, Expression: "false"},
+			preconditions: []configloader.Precondition{
+				{ActionBase: configloader.ActionBase{Name: "check"}, Expression: "false"},
 			},
 			expectedStatus: "skipped",
 		},
@@ -893,15 +895,15 @@ func TestCreateHandler_MetricsRecording(t *testing.T) {
 			registry := prometheus.NewRegistry()
 			recorder := metrics.NewRecorder("test-adapter", "v0.1.0", registry)
 
-			config := &config_loader.Config{
-				Adapter:       config_loader.AdapterInfo{Name: "test-adapter", Version: "v0.1.0"},
+			config := &configloader.Config{
+				Adapter:       configloader.AdapterInfo{Name: "test-adapter", Version: "v0.1.0"},
 				Preconditions: tt.preconditions,
 			}
 
 			exec, err := NewBuilder().
 				WithConfig(config).
 				WithAPIClient(newMockAPIClient()).
-				WithTransportClient(k8s_client.NewMockK8sClient()).
+				WithTransportClient(k8sclient.NewMockK8sClient()).
 				WithLogger(logger.NewTestLogger()).
 				WithMetricsRecorder(recorder).
 				Build()
@@ -941,9 +943,9 @@ func TestCreateHandler_MetricsRecording_Failed(t *testing.T) {
 	registry := prometheus.NewRegistry()
 	recorder := metrics.NewRecorder("test-adapter", "v0.1.0", registry)
 
-	config := &config_loader.Config{
-		Adapter: config_loader.AdapterInfo{Name: "test-adapter", Version: "v0.1.0"},
-		Params: []config_loader.Parameter{
+	config := &configloader.Config{
+		Adapter: configloader.AdapterInfo{Name: "test-adapter", Version: "v0.1.0"},
+		Params: []configloader.Parameter{
 			{Name: "required", Source: "env.MISSING_VAR", Required: true},
 		},
 	}
@@ -951,7 +953,7 @@ func TestCreateHandler_MetricsRecording_Failed(t *testing.T) {
 	exec, err := NewBuilder().
 		WithConfig(config).
 		WithAPIClient(newMockAPIClient()).
-		WithTransportClient(k8s_client.NewMockK8sClient()).
+		WithTransportClient(k8sclient.NewMockK8sClient()).
 		WithLogger(logger.NewTestLogger()).
 		WithMetricsRecorder(recorder).
 		Build()
@@ -984,14 +986,14 @@ func TestCreateHandler_MetricsRecording_Failed(t *testing.T) {
 
 // TestCreateHandler_NilMetricsRecorder verifies handler works without a metrics recorder
 func TestCreateHandler_NilMetricsRecorder(t *testing.T) {
-	config := &config_loader.Config{
-		Adapter: config_loader.AdapterInfo{Name: "test-adapter", Version: "v0.1.0"},
+	config := &configloader.Config{
+		Adapter: configloader.AdapterInfo{Name: "test-adapter", Version: "v0.1.0"},
 	}
 
 	exec, err := NewBuilder().
 		WithConfig(config).
 		WithAPIClient(newMockAPIClient()).
-		WithTransportClient(k8s_client.NewMockK8sClient()).
+		WithTransportClient(k8sclient.NewMockK8sClient()).
 		WithLogger(logger.NewTestLogger()).
 		Build()
 	require.NoError(t, err)
@@ -1007,6 +1009,77 @@ func TestCreateHandler_NilMetricsRecorder(t *testing.T) {
 	assert.NotPanics(t, func() {
 		_ = handler(context.Background(), &evt)
 	}, "handler with nil MetricsRecorder should not panic")
+}
+
+// TestPreconditionAPIFailure_ExecutionStatusRemainsFailed verifies that when a precondition
+// API call fails, adapter.executionStatus stays "failed" and is not overwritten to "success".
+// This is a regression test for a bug where SetSkipped() was called after SetError(),
+// resetting executionStatus and causing Health CEL expressions to evaluate incorrectly.
+func TestPreconditionAPIFailure_ExecutionStatusRemainsFailed(t *testing.T) {
+	// Configure mock to return an error on GET (simulating precondition API failure)
+	mockClient := newMockAPIClient()
+	mockClient.GetError = fmt.Errorf("connection refused")
+	mockClient.GetResponse = nil
+
+	config := &configloader.Config{
+		Adapter: configloader.AdapterInfo{
+			Name:    "test-adapter",
+			Version: "1.0.0",
+		},
+		Clients: configloader.ClientsConfig{
+			HyperfleetAPI: configloader.HyperfleetAPIConfig{
+				BaseURL: "http://mock-api:8000",
+				Version: "v1",
+			},
+		},
+		Params: []configloader.Parameter{
+			{Name: "clusterId", Source: "event.id", Required: true},
+		},
+		Preconditions: []configloader.Precondition{
+			{
+				ActionBase: configloader.ActionBase{
+					Name: "clusterStatus",
+					APICall: &configloader.APICall{
+						Method:  "GET",
+						URL:     "/clusters/{{ .clusterId }}",
+						Timeout: "2s",
+					},
+				},
+			},
+		},
+	}
+
+	exec, err := NewBuilder().
+		WithConfig(config).
+		WithAPIClient(mockClient).
+		WithTransportClient(k8sclient.NewMockK8sClient()).
+		WithLogger(logger.NewTestLogger()).
+		Build()
+	require.NoError(t, err)
+
+	ctx := logger.WithEventID(context.Background(), "test-precond-fail")
+	result := exec.Execute(ctx, map[string]interface{}{"id": "cluster-123"})
+
+	// Verify overall result status is failed
+	assert.Equal(t, StatusFailed, result.Status, "expected overall status to be failed")
+	assert.True(t, result.ResourcesSkipped, "resources should be skipped on precondition failure")
+
+	// Critical assertion: verify adapter.executionStatus is "failed", not "success"
+	require.NotNil(t, result.ExecutionContext, "execution context should be present")
+	assert.Equal(t, string(StatusFailed), result.ExecutionContext.Adapter.ExecutionStatus,
+		"adapter.executionStatus must remain 'failed' after precondition API failure")
+
+	// Verify error information is preserved
+	assert.Equal(t, "PreconditionFailed", result.ExecutionContext.Adapter.ErrorReason,
+		"adapter.errorReason should be 'PreconditionFailed'")
+	assert.NotEmpty(t, result.ExecutionContext.Adapter.ErrorMessage,
+		"adapter.errorMessage should contain the error details")
+
+	// Verify skip metadata is also set (for CEL expressions that check resourcesSkipped)
+	assert.True(t, result.ExecutionContext.Adapter.ResourcesSkipped,
+		"adapter.resourcesSkipped should be true")
+	assert.NotEmpty(t, result.ExecutionContext.Adapter.SkipReason,
+		"adapter.skipReason should be set")
 }
 
 // helper functions for metrics assertions

@@ -1,10 +1,10 @@
-package executor_integration_test
+package executorintegrationtest
 
 import (
 	"context"
 	"testing"
 
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/k8s_client"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/k8sclient"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -14,7 +14,7 @@ import (
 
 // K8sTestEnv wraps the K8s test environment for executor tests
 type K8sTestEnv struct {
-	Client  *k8s_client.Client
+	Client  *k8sclient.Client
 	Config  *rest.Config
 	Ctx     context.Context
 	Log     logger.Logger

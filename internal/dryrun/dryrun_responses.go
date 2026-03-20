@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 )
 
 // DryrunResponsesFile represents the top-level structure of a dryrun API responses JSON file.
@@ -32,7 +33,7 @@ type DryrunResponse struct {
 
 // LoadDryrunResponses reads and parses a dryrun API responses JSON file.
 func LoadDryrunResponses(path string) (*DryrunResponsesFile, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read dryrun responses file %q: %w", path, err)
 	}

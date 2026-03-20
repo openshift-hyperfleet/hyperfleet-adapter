@@ -6,15 +6,15 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/configloader"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleet_api"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleetapi"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 )
 
 // PreconditionExecutor evaluates preconditions
 type PreconditionExecutor struct {
-	apiClient hyperfleet_api.Client
+	apiClient hyperfleetapi.Client
 	log       logger.Logger
 }
 
@@ -29,7 +29,11 @@ func newPreconditionExecutor(config *ExecutorConfig) *PreconditionExecutor {
 
 // ExecuteAll executes all preconditions in sequence
 // Returns a high-level outcome with match status and individual results
-func (pe *PreconditionExecutor) ExecuteAll(ctx context.Context, preconditions []config_loader.Precondition, execCtx *ExecutionContext) *PreconditionsOutcome {
+func (pe *PreconditionExecutor) ExecuteAll(
+	ctx context.Context,
+	preconditions []configloader.Precondition,
+	execCtx *ExecutionContext,
+) *PreconditionsOutcome {
 	results := make([]PreconditionResult, 0, len(preconditions))
 
 	for _, precond := range preconditions {
@@ -70,7 +74,11 @@ func (pe *PreconditionExecutor) ExecuteAll(ctx context.Context, preconditions []
 }
 
 // executePrecondition executes a single precondition
-func (pe *PreconditionExecutor) executePrecondition(ctx context.Context, precond config_loader.Precondition, execCtx *ExecutionContext) (PreconditionResult, error) {
+func (pe *PreconditionExecutor) executePrecondition(
+	ctx context.Context,
+	precond configloader.Precondition,
+	execCtx *ExecutionContext,
+) (PreconditionResult, error) {
 	result := PreconditionResult{
 		Name:           precond.Name,
 		Status:         StatusSuccess,
@@ -166,7 +174,8 @@ func (pe *PreconditionExecutor) executePrecondition(ctx context.Context, precond
 	}
 
 	// Evaluate using structured conditions or CEL expression
-	if len(precond.Conditions) > 0 {
+	switch {
+	case len(precond.Conditions) > 0:
 		pe.log.Debugf(ctx, "Evaluating %d structured conditions", len(precond.Conditions))
 		condDefs := ToConditionDefs(precond.Conditions)
 
@@ -195,7 +204,7 @@ func (pe *PreconditionExecutor) executePrecondition(ctx context.Context, precond
 			fieldResults[cr.Field] = cr
 		}
 		execCtx.AddConditionsEvaluation(PhasePreconditions, precond.Name, condResult.Matched, fieldResults)
-	} else if precond.Expression != "" {
+	case precond.Expression != "":
 		// Evaluate CEL expression
 		pe.log.Debugf(ctx, "Evaluating CEL expression: %s", strings.TrimSpace(precond.Expression))
 		celResult, err := evaluator.EvaluateCEL(strings.TrimSpace(precond.Expression))
@@ -211,7 +220,7 @@ func (pe *PreconditionExecutor) executePrecondition(ctx context.Context, precond
 
 		// Record CEL evaluation in execution context
 		execCtx.AddCELEvaluation(PhasePreconditions, precond.Name, precond.Expression, celResult.Matched)
-	} else {
+	default:
 		// No conditions specified - consider it matched
 		pe.log.Debugf(ctx, "No conditions specified, auto-matched")
 		result.Matched = true
@@ -221,7 +230,11 @@ func (pe *PreconditionExecutor) executePrecondition(ctx context.Context, precond
 }
 
 // executeAPICall executes an API call and returns the response body for field capture
-func (pe *PreconditionExecutor) executeAPICall(ctx context.Context, apiCall *config_loader.APICall, execCtx *ExecutionContext) ([]byte, error) {
+func (pe *PreconditionExecutor) executeAPICall(
+	ctx context.Context,
+	apiCall *configloader.APICall,
+	execCtx *ExecutionContext,
+) ([]byte, error) {
 	resp, url, err := ExecuteAPICall(ctx, apiCall, execCtx, pe.apiClient, pe.log)
 
 	// Validate response - returns APIError with full metadata if validation fails

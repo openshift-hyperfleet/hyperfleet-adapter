@@ -20,7 +20,8 @@ func writeEventFile(t *testing.T, dir, name, content string) string {
 func TestLoadCloudEvent_ValidFile(t *testing.T) {
 	t.Run("loads a valid CloudEvent from file", func(t *testing.T) {
 		dir := t.TempDir()
-		path := writeEventFile(t, dir, "event.json", `{"specversion":"1.0","id":"test-123","type":"com.example.test","source":"/test"}`)
+		eventJSON := `{"specversion":"1.0","id":"test-123","type":"com.example.test","source":"/test"}`
+		path := writeEventFile(t, dir, "event.json", eventJSON)
 
 		evt, err := LoadCloudEvent(path)
 
