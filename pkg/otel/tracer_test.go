@@ -36,8 +36,14 @@ func TestGetTraceSampleRatio(t *testing.T) {
 		assert.Equal(t, DefaultTraceSampleRatio, ratio)
 	})
 
-	t.Run("out of range", func(t *testing.T) {
+	t.Run("out of range positive", func(t *testing.T) {
 		t.Setenv(EnvTraceSampleRatio, "2.0")
+		ratio := GetTraceSampleRatio(log, ctx)
+		assert.Equal(t, DefaultTraceSampleRatio, ratio)
+	})
+
+	t.Run("out of range negative", func(t *testing.T) {
+		t.Setenv(EnvTraceSampleRatio, "-0.5")
 		ratio := GetTraceSampleRatio(log, ctx)
 		assert.Equal(t, DefaultTraceSampleRatio, ratio)
 	})
@@ -59,8 +65,73 @@ func TestCreateExporter(t *testing.T) {
 	log := testLogger()
 	ctx := context.Background()
 
-	t.Run("nil exporter when no endpoint set", func(t *testing.T) {
+	// clearOtelEnv ensures all 4 OTel env vars are cleared to prevent
+	// interference from the local shell environment.
+	clearOtelEnv := func(t *testing.T) {
 		t.Setenv(envOtelExporterOtlpEndpoint, "")
+		t.Setenv(envOtelExporterOtlpTracesEndpoint, "")
+		t.Setenv(envOtelExporterOtlpProtocol, "")
+		t.Setenv(envOtelExporterOtlpTracesProtocol, "")
+	}
+
+	t.Run("nil exporter when no endpoint set", func(t *testing.T) {
+		clearOtelEnv(t)
+		exporter, err := createExporter(ctx, log)
+		require.NoError(t, err)
+		assert.Nil(t, exporter)
+	})
+
+	t.Run("http exporter when endpoint set with default protocol", func(t *testing.T) {
+		clearOtelEnv(t)
+		t.Setenv(envOtelExporterOtlpEndpoint, "http://localhost:4318")
+		exporter, err := createExporter(ctx, log)
+		require.NoError(t, err)
+		assert.NotNil(t, exporter)
+		assert.NoError(t, exporter.Shutdown(ctx))
+	})
+
+	t.Run("grpc exporter when protocol is grpc", func(t *testing.T) {
+		clearOtelEnv(t)
+		t.Setenv(envOtelExporterOtlpEndpoint, "localhost:4317")
+		t.Setenv(envOtelExporterOtlpProtocol, "grpc")
+		exporter, err := createExporter(ctx, log)
+		require.NoError(t, err)
+		assert.NotNil(t, exporter)
+		assert.NoError(t, exporter.Shutdown(ctx))
+	})
+
+	t.Run("falls back to http/protobuf for unrecognized protocol", func(t *testing.T) {
+		clearOtelEnv(t)
+		t.Setenv(envOtelExporterOtlpEndpoint, "http://localhost:4318")
+		t.Setenv(envOtelExporterOtlpProtocol, "unknown-protocol")
+		exporter, err := createExporter(ctx, log)
+		require.NoError(t, err)
+		assert.NotNil(t, exporter)
+		assert.NoError(t, exporter.Shutdown(ctx))
+	})
+
+	t.Run("traces-specific endpoint takes precedence", func(t *testing.T) {
+		clearOtelEnv(t)
+		t.Setenv(envOtelExporterOtlpTracesEndpoint, "http://localhost:4318")
+		exporter, err := createExporter(ctx, log)
+		require.NoError(t, err)
+		assert.NotNil(t, exporter)
+		assert.NoError(t, exporter.Shutdown(ctx))
+	})
+
+	t.Run("traces-specific protocol takes precedence", func(t *testing.T) {
+		clearOtelEnv(t)
+		t.Setenv(envOtelExporterOtlpEndpoint, "http://localhost:4318")
+		t.Setenv(envOtelExporterOtlpProtocol, "grpc")
+		t.Setenv(envOtelExporterOtlpTracesProtocol, "http/protobuf")
+		exporter, err := createExporter(ctx, log)
+		require.NoError(t, err)
+		assert.NotNil(t, exporter)
+		assert.NoError(t, exporter.Shutdown(ctx))
+	})
+
+	t.Run("nil when neither endpoint is set", func(t *testing.T) {
+		clearOtelEnv(t)
 		exporter, err := createExporter(ctx, log)
 		require.NoError(t, err)
 		assert.Nil(t, exporter)
@@ -70,8 +141,24 @@ func TestCreateExporter(t *testing.T) {
 func TestInitTracer(t *testing.T) {
 	log := testLogger()
 
-	t.Run("initializes without exporter when no endpoint", func(t *testing.T) {
+	clearOtelEnv := func(t *testing.T) {
 		t.Setenv(envOtelExporterOtlpEndpoint, "")
+		t.Setenv(envOtelExporterOtlpTracesEndpoint, "")
+		t.Setenv(envOtelExporterOtlpProtocol, "")
+		t.Setenv(envOtelExporterOtlpTracesProtocol, "")
+	}
+
+	t.Run("initializes without exporter when no endpoint", func(t *testing.T) {
+		clearOtelEnv(t)
+		tp, err := InitTracer(log, "test-service", "0.0.1", 1.0)
+		require.NoError(t, err)
+		require.NotNil(t, tp)
+		assert.NoError(t, tp.Shutdown(context.Background()))
+	})
+
+	t.Run("initializes with exporter when endpoint is set", func(t *testing.T) {
+		clearOtelEnv(t)
+		t.Setenv(envOtelExporterOtlpEndpoint, "http://localhost:4318")
 		tp, err := InitTracer(log, "test-service", "0.0.1", 1.0)
 		require.NoError(t, err)
 		require.NotNil(t, tp)

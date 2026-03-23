@@ -30,11 +30,19 @@ const (
 	// envOtelExporterOtlpEndpoint is the standard OTel env var for the OTLP endpoint
 	envOtelExporterOtlpEndpoint = "OTEL_EXPORTER_OTLP_ENDPOINT"
 
+	// envOtelExporterOtlpTracesEndpoint is the signal-specific OTel env var for the traces endpoint
+	envOtelExporterOtlpTracesEndpoint = "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"
+
 	// envOtelExporterOtlpProtocol is the standard OTel env var for the OTLP protocol
 	envOtelExporterOtlpProtocol = "OTEL_EXPORTER_OTLP_PROTOCOL"
 
-	// defaultOtlpProtocol is the default OTLP protocol when none is specified
-	defaultOtlpProtocol = "grpc"
+	// envOtelExporterOtlpTracesProtocol is the signal-specific OTel env var for the traces protocol
+	envOtelExporterOtlpTracesProtocol = "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL"
+
+	// defaultOtlpProtocol is the default OTLP protocol when none is specified.
+	// Per OTel spec, the default SHOULD be "http/protobuf".
+	// See: https://opentelemetry.io/docs/specs/otel/protocol/exporter/
+	defaultOtlpProtocol = "http/protobuf"
 )
 
 // GetTraceSampleRatio reads the trace sample ratio from TRACE_SAMPLE_RATIO env var.
@@ -79,30 +87,42 @@ func GetTraceSampleRatio(log logger.Logger, ctx context.Context) float64 {
 
 // createExporter creates an OTLP SpanExporter when OTEL_EXPORTER_OTLP_ENDPOINT is set.
 // Returns nil when no endpoint is configured (spans remain local-only for trace ID generation).
-// The protocol defaults to gRPC, configurable via OTEL_EXPORTER_OTLP_PROTOCOL.
+// The protocol defaults to http/protobuf (per OTel spec), configurable via OTEL_EXPORTER_OTLP_PROTOCOL.
 func createExporter(ctx context.Context, log logger.Logger) (sdktrace.SpanExporter, error) {
-	otlpEndpoint := os.Getenv(envOtelExporterOtlpEndpoint)
+	// Check if an OTLP endpoint is configured (presence check only).
+	// The actual endpoint value is read by the OTel SDK from env vars directly,
+	// so we don't pass otlpEndpoint to the exporter constructors.
+	otlpEndpoint := os.Getenv(envOtelExporterOtlpTracesEndpoint)
 	if otlpEndpoint == "" {
-		log.Infof(ctx, "No %s configured, traces will not be exported (trace IDs still generated for log correlation)",
-			envOtelExporterOtlpEndpoint)
+		otlpEndpoint = os.Getenv(envOtelExporterOtlpEndpoint)
+	}
+	if otlpEndpoint == "" {
+		log.Infof(ctx, "No %s or %s configured, traces will not be exported"+
+			" (trace IDs still generated for log correlation)",
+			envOtelExporterOtlpTracesEndpoint, envOtelExporterOtlpEndpoint)
 		return nil, nil
 	}
 
-	protocol := os.Getenv(envOtelExporterOtlpProtocol)
+	protocol := os.Getenv(envOtelExporterOtlpTracesProtocol)
+	protocolSource := envOtelExporterOtlpTracesProtocol
+	if protocol == "" {
+		protocol = os.Getenv(envOtelExporterOtlpProtocol)
+		protocolSource = envOtelExporterOtlpProtocol
+	}
 	var exporter sdktrace.SpanExporter
 	var err error
 
 	switch strings.ToLower(protocol) {
-	case "http", "http/protobuf":
-		exporter, err = otlptracehttp.New(ctx)
-	case defaultOtlpProtocol, "":
-		protocol = defaultOtlpProtocol
+	case "grpc":
 		exporter, err = otlptracegrpc.New(ctx)
+	case defaultOtlpProtocol, "http", "": // http/protobuf (default per OTel spec), http, or unset
+		protocol = defaultOtlpProtocol
+		exporter, err = otlptracehttp.New(ctx)
 	default:
 		log.Warnf(ctx, "Unrecognized %s value %q, using default %s",
-			envOtelExporterOtlpProtocol, protocol, defaultOtlpProtocol)
+			protocolSource, protocol, defaultOtlpProtocol)
 		protocol = defaultOtlpProtocol
-		exporter, err = otlptracegrpc.New(ctx)
+		exporter, err = otlptracehttp.New(ctx)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to create OTLP exporter (protocol=%s): %w", protocol, err)
@@ -115,7 +135,7 @@ func createExporter(ctx context.Context, log logger.Logger) (sdktrace.SpanExport
 // InitTracer initializes OpenTelemetry TracerProvider with optional span export.
 //
 // When OTEL_EXPORTER_OTLP_ENDPOINT is set, spans are batched and exported via OTLP
-// (gRPC by default, or HTTP via OTEL_EXPORTER_OTLP_PROTOCOL).
+// (http/protobuf by default, or gRPC via OTEL_EXPORTER_OTLP_PROTOCOL).
 // When no endpoint is configured, the TracerProvider still generates trace IDs and span IDs
 // for log correlation and W3C context propagation, but spans are not exported.
 //
