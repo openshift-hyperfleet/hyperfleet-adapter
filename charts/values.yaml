@@ -130,7 +130,7 @@ image:
   pullPolicy: Always
   registry: CHANGE_ME # e.g. quay.io
   repository: CHANGE_ME # e.g. openshift-hyperfleet/hyperfleet-adapter
-  tag: "" # defaults to Chart.AppVersion
+  tag: "" # Required — no default. Set via --set image.tag=<version>
 imagePullSecrets: []
 # Init containers
 initContainers: []

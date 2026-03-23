@@ -98,12 +98,14 @@ test-helm: ## Test Helm charts (lint, template, validate)
 	@echo "Linting Helm chart..."
 	helm lint charts/ \
 		--set image.registry=quay.io \
-		--set image.repository=openshift-hyperfleet/hyperfleet-adapter
+		--set image.repository=openshift-hyperfleet/hyperfleet-adapter \
+		--set image.tag=test
 	@echo ""
 	@echo "Testing template rendering with minimal required values..."
 	helm template test-release charts/ \
 		--set image.registry=quay.io \
 		--set image.repository=openshift-hyperfleet/hyperfleet-adapter \
+		--set image.tag=test \
 		--set adapterConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
 		--set adapterTaskConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" > /dev/null
 	@echo "Minimal required values template OK"
@@ -112,6 +114,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 	helm template test-release charts/ \
 		--set image.registry=quay.io \
 		--set image.repository=openshift-hyperfleet/hyperfleet-adapter \
+		--set image.tag=test \
 		--set adapterConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
 		--set adapterTaskConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
 		--set broker.create=true \
@@ -124,6 +127,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 	helm template test-release charts/ \
 		--set image.registry=quay.io \
 		--set image.repository=openshift-hyperfleet/hyperfleet-adapter \
+		--set image.tag=test \
 		--set adapterConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
 		--set adapterTaskConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
 		--set adapterConfig.hyperfleetApi.baseUrl=http://localhost:8000 \
@@ -134,6 +138,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 	helm template test-release charts/ \
 		--set image.registry=quay.io \
 		--set image.repository=openshift-hyperfleet/hyperfleet-adapter \
+		--set image.tag=test \
 		--set adapterConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
 		--set adapterTaskConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
 		--set podDisruptionBudget.enabled=true \
@@ -145,6 +150,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 	helm template test-release charts/ \
 		--set image.registry=quay.io \
 		--set image.repository=openshift-hyperfleet/hyperfleet-adapter \
+		--set image.tag=test \
 		--set adapterConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
 		--set adapterTaskConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
 		--set autoscaling.enabled=true \
@@ -156,6 +162,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 	helm template test-release charts/ \
 		--set image.registry=quay.io \
 		--set image.repository=openshift-hyperfleet/hyperfleet-adapter \
+		--set image.tag=test \
 		--set adapterConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
 		--set adapterTaskConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
 		--set livenessProbe.enabled=true \
@@ -167,6 +174,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 	@helm template test-release charts/ \
 		--set image.registry=quay.io \
 		--set image.repository=openshift-hyperfleet/hyperfleet-adapter \
+		--set image.tag=test \
 		--set adapterConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
 		--set adapterTaskConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
 		--set serviceMonitor.enabled=true \
@@ -178,6 +186,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 	@output=$$(helm template test-release charts/ \
 		--set image.registry=quay.io \
 		--set image.repository=openshift-hyperfleet/hyperfleet-adapter \
+		--set image.tag=test \
 		--set adapterConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
 		--set adapterTaskConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
 		--set serviceMonitor.enabled=true) \
@@ -189,6 +198,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 	@output=$$(helm template test-release charts/ \
 		--set image.registry=quay.io \
 		--set image.repository=openshift-hyperfleet/hyperfleet-adapter \
+		--set image.tag=test \
 		--set adapterConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
 		--set adapterTaskConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
 		--set serviceMonitor.enabled=false \

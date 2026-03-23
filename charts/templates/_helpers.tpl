@@ -36,9 +36,7 @@ Common labels
 {{- define "hyperfleet-adapter.labels" -}}
 helm.sh/chart: {{ include "hyperfleet-adapter.chart" . }}
 {{ include "hyperfleet-adapter.selectorLabels" . }}
-{{- if .Chart.AppVersion }}
-app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
-{{- end }}
+app.kubernetes.io/version: {{ .Values.image.tag | default .Chart.AppVersion | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
@@ -221,11 +219,16 @@ rbac.authorization.k8s.io
 Validate required values that must not remain as placeholders.
 */}}
 {{- define "hyperfleet-adapter.validateValues" -}}
-{{- if eq .Values.image.registry "CHANGE_ME" -}}
+{{- $registry := trim (toString .Values.image.registry) -}}
+{{- if or (not $registry) (eq $registry "CHANGE_ME") -}}
 {{- fail "image.registry must be set (e.g. --set image.registry=quay.io)" -}}
 {{- end -}}
-{{- if eq .Values.image.repository "CHANGE_ME" -}}
+{{- $repository := trim (toString .Values.image.repository) -}}
+{{- if or (not $repository) (eq $repository "CHANGE_ME") -}}
 {{- fail "image.repository must be set (e.g. --set image.repository=openshift-hyperfleet/hyperfleet-adapter)" -}}
+{{- end -}}
+{{- if not (trim (toString .Values.image.tag)) -}}
+{{- fail "image.tag must be set (e.g. --set image.tag=abc1234)" -}}
 {{- end -}}
 {{- end }}
 
