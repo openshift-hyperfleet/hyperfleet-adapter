@@ -4,7 +4,7 @@ This file provides AI agent context for working with the HyperFleet Adapter code
 
 ## Quick Reference
 
-**Language:** Go 1.24.6+
+**Language:** Go 1.25.0+
 **Build System:** Make
 **Test Framework:** Go testing + Testcontainers
 **Linter:** golangci-lint (managed via bingo)
