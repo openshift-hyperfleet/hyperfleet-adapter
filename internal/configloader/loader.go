@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/utils"
-	"gopkg.in/yaml.v3"
 )
 
 // -----------------------------------------------------------------------------
@@ -204,7 +203,9 @@ func loadTaskConfigFileReferences(config *AdapterTaskConfig, baseDir string) err
 	return nil
 }
 
-// loadYAMLFile loads and parses a YAML file
+// loadYAMLFile loads a YAML file and returns it as a raw template marker
+// YAML parsing is deferred until execution time (after template rendering)
+// This allows templates to control YAML structure, not just values
 func loadYAMLFile(baseDir, refPath string) (map[string]interface{}, error) {
 	fullPath, err := resolvePath(baseDir, refPath)
 	if err != nil {
@@ -216,12 +217,12 @@ func loadYAMLFile(baseDir, refPath string) (map[string]interface{}, error) {
 		return nil, fmt.Errorf("failed to read file %q: %w", fullPath, err)
 	}
 
-	var content map[string]interface{}
-	if err := yaml.Unmarshal(data, &content); err != nil {
-		return nil, fmt.Errorf("failed to parse YAML file %q: %w", fullPath, err)
-	}
-
-	return content, nil
+	// Always defer YAML parsing until execution time
+	// This enables structural templates (templates that control YAML structure)
+	return map[string]interface{}{
+		"__raw_template__": string(data),
+		"__source_path__":  fullPath,
+	}, nil
 }
 
 // resolvePath resolves a relative path against the base directory and validates

@@ -572,6 +572,12 @@ func (v *TaskConfigValidator) validateK8sManifests() {
 }
 
 func (v *TaskConfigValidator) validateK8sManifest(manifest map[string]interface{}, path string) {
+	// Skip validation for raw template markers (structural templates)
+	// These will be rendered at execution time before YAML parsing
+	if _, hasRaw := manifest["__raw_template__"]; hasRaw {
+		return
+	}
+
 	requiredFields := []string{FieldAPIVersion, FieldKind, "metadata"}
 
 	for _, field := range requiredFields {

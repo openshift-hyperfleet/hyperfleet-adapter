@@ -11,6 +11,8 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transportclient"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/utils"
+	"gopkg.in/yaml.v3"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -203,6 +205,8 @@ func (re *ResourceExecutor) executeResource(
 
 // renderToBytes renders the resource's manifest template to JSON bytes.
 // The manifest holds either a K8s resource or a ManifestWork depending on transport type.
+// If the manifest is a raw template (detected during config load), it is rendered first
+// before YAML parsing, allowing templates to control YAML structure.
 func (re *ResourceExecutor) renderToBytes(
 	ctx context.Context,
 	resource configloader.Resource,
@@ -218,7 +222,34 @@ func (re *ResourceExecutor) renderToBytes(
 	var manifestData map[string]interface{}
 	switch m := manifestSource.(type) {
 	case map[string]interface{}:
-		manifestData = m
+		// Check if this is a raw template marker from config loader
+		if rawTemplate, hasRaw := m["__raw_template__"]; hasRaw {
+			// This manifest contains structural templates - render before YAML parsing
+			templateStr, ok := rawTemplate.(string)
+			if !ok {
+				return nil, fmt.Errorf("invalid raw template type: %T", rawTemplate)
+			}
+
+			sourcePath := m["__source_path__"]
+
+			// Render template with execution context parameters
+			renderedYAML, err := utils.RenderTemplate(templateStr, execCtx.Params)
+			if err != nil {
+				return nil, fmt.Errorf("failed to render structural template from %v: %w", sourcePath, err)
+			}
+
+			// Parse the rendered YAML
+			var parsedManifest map[string]interface{}
+			if err := yaml.Unmarshal([]byte(renderedYAML), &parsedManifest); err != nil {
+				return nil, fmt.Errorf("failed to parse rendered YAML from %v: %w", sourcePath, err)
+			}
+
+			// Use the parsed manifest for subsequent processing
+			manifestData = parsedManifest
+		} else {
+			// Normal manifest (no structural templates)
+			manifestData = m
+		}
 	case map[interface{}]interface{}:
 		manifestData = convertToStringKeyMap(m)
 	default:
@@ -228,7 +259,8 @@ func (re *ResourceExecutor) renderToBytes(
 	// Deep copy to avoid modifying the original
 	manifestData = deepCopyMap(ctx, manifestData, re.log)
 
-	// Render all template strings in the manifest
+	// Render remaining template strings in the manifest
+	// (for templates in string values that weren't part of structural rendering)
 	renderedData, err := renderManifestTemplates(manifestData, execCtx.Params)
 	if err != nil {
 		return nil, fmt.Errorf("failed to render manifest templates: %w", err)
