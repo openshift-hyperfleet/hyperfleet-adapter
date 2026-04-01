@@ -38,18 +38,12 @@ echo "   Checking integration image configuration..."
 
 # Check and set integration image
 if [ -z "$INTEGRATION_ENVTEST_IMAGE" ]; then
-    echo "   INTEGRATION_ENVTEST_IMAGE not set, using local image"
-    
-    if ! $CONTAINER_RUNTIME images | grep -q "hyperfleet-integration-test"; then
-        echo "   ⚠️  Local integration image not found. Building it..."
-        echo ""
-        cd "$PROJECT_ROOT"
-        make image-integration-test
-        echo ""
-    else
-        echo "   ✅ Local integration image found"
-    fi
-    
+    echo "   INTEGRATION_ENVTEST_IMAGE not set, building local image"
+    echo ""
+    cd "$PROJECT_ROOT"
+    make image-integration-test
+    echo ""
+
     INTEGRATION_ENVTEST_IMAGE="localhost/hyperfleet-integration-test:latest"
 fi
 
