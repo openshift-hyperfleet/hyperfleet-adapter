@@ -349,6 +349,59 @@ func TestValidateK8sManifests(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "manifest ref cannot be empty")
 	})
+
+	t.Run("string manifest skips K8s validation", func(t *testing.T) {
+		// String manifests contain raw Go templates that can't be validated
+		// until template rendering at execution time
+		cfg := baseTaskConfig()
+		cfg.Params = []Parameter{
+			{Name: "name", Source: "event.name", Type: "string"},
+			{Name: "addLabels", Source: "event.addLabels", Type: "bool"},
+			{Name: "appName", Source: "event.appName", Type: "string"},
+		}
+		cfg.Resources = []Resource{{
+			Name: "testResource",
+			Manifest: `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "{{ .name }}"
+{{ if .addLabels }}
+  labels:
+    app: "{{ .appName }}"
+{{ end }}`,
+			Discovery: &DiscoveryConfig{Namespace: "*", ByName: "test"},
+		}}
+		v := newTaskValidator(cfg)
+		require.NoError(t, v.ValidateStructure())
+		require.NoError(t, v.ValidateSemantic())
+	})
+
+	t.Run("string manifest without K8s fields passes validation", func(t *testing.T) {
+		// Even a string manifest missing apiVersion/kind should pass validation
+		// because validation is deferred to execution time
+		cfg := baseTaskConfig()
+		cfg.Resources = []Resource{{
+			Name:      "testResource",
+			Manifest:  `{{ if .condition }}full: template{{ end }}`,
+			Discovery: &DiscoveryConfig{Namespace: "*", ByName: "test"},
+		}}
+		v := newTaskValidator(cfg)
+		require.NoError(t, v.ValidateStructure())
+		require.NoError(t, v.ValidateSemantic())
+	})
+
+	t.Run("map manifest still validates K8s fields", func(t *testing.T) {
+		// Ensure backward compatibility: map manifests are still validated
+		cfg := withResource(map[string]interface{}{
+			"kind": "Namespace",
+			// missing apiVersion and metadata
+		})
+		v := newTaskValidator(cfg)
+		_ = v.ValidateStructure()
+		err := v.ValidateSemantic()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "missing required Kubernetes field")
+	})
 }
 
 func TestValidOperators(t *testing.T) {

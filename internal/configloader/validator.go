@@ -370,8 +370,11 @@ func (v *TaskConfigValidator) validateTemplateVariables() {
 	// Validate resource manifests and transport config templates
 	for i, resource := range v.config.Resources {
 		resourcePath := fmt.Sprintf("%s[%d]", FieldResources, i)
-		if manifest, ok := resource.Manifest.(map[string]interface{}); ok {
+		switch manifest := resource.Manifest.(type) {
+		case map[string]interface{}:
 			v.validateTemplateMap(manifest, resourcePath+"."+FieldManifest)
+		case string:
+			v.validateTemplateString(manifest, resourcePath+"."+FieldManifest)
 		}
 		// NOTE: For maestro transport, we skip template variable validation for manifest content.
 		// ManifestWork templates may use variables provided at runtime by the framework
@@ -558,6 +561,13 @@ func (v *TaskConfigValidator) validateK8sManifests() {
 		}
 
 		path := fmt.Sprintf("%s[%d].%s", FieldResources, i, FieldManifest)
+
+		// Skip validation for string manifests — these contain raw Go templates
+		// that will be rendered at execution time before YAML parsing.
+		// Validation cannot be performed until template parameters are available.
+		if _, isString := resource.Manifest.(string); isString {
+			continue
+		}
 
 		if manifest, ok := resource.Manifest.(map[string]interface{}); ok {
 			if ref, hasRef := manifest[FieldRef].(string); hasRef {

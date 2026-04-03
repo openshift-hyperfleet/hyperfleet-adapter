@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/mitchellh/copystructure"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/configloader"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/maestroclient"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transportclient"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/utils"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -77,7 +77,7 @@ func (re *ResourceExecutor) executeResource(
 
 	// Step 1: Render the manifest/manifestWork to bytes
 	re.log.Debugf(ctx, "Rendering manifest template for resource %s", resource.Name)
-	renderedBytes, err := re.renderToBytes(ctx, resource, execCtx)
+	renderedBytes, err := re.renderToBytes(resource, execCtx)
 	if err != nil {
 		result.Status = StatusFailed
 		result.Error = err
@@ -101,7 +101,7 @@ func (re *ResourceExecutor) executeResource(
 	// Step 4: Build transport context (nil for k8s, *maestroclient.TransportContext for maestro)
 	var transportTarget transportclient.TransportContext
 	if resource.IsMaestroTransport() && resource.Transport.Maestro != nil {
-		targetCluster, tplErr := renderTemplate(resource.Transport.Maestro.TargetCluster, execCtx.Params)
+		targetCluster, tplErr := utils.RenderTemplate(resource.Transport.Maestro.TargetCluster, execCtx.Params)
 		if tplErr != nil {
 			result.Status = StatusFailed
 			result.Error = tplErr
@@ -203,8 +203,11 @@ func (re *ResourceExecutor) executeResource(
 
 // renderToBytes renders the resource's manifest template to JSON bytes.
 // The manifest holds either a K8s resource or a ManifestWork depending on transport type.
+// Supports two manifest formats:
+//   - map (inline YAML): template strings within values are rendered recursively
+//   - string (raw template from ref file or YAML multiline): the entire string is rendered
+//     as a Go template first, then parsed as YAML
 func (re *ResourceExecutor) renderToBytes(
-	ctx context.Context,
 	resource configloader.Resource,
 	execCtx *ExecutionContext,
 ) ([]byte, error) {
@@ -214,22 +217,28 @@ func (re *ResourceExecutor) renderToBytes(
 
 	manifestSource := resource.Manifest
 
-	// Convert to map[string]interface{}
+	// String manifests: render Go templates first, then parse YAML.
+	// This supports structural templates ({{ if }}, {{ range }}, etc.) that produce
+	// YAML keys, list items, or entire blocks conditionally.
+	if manifestStr, ok := manifestSource.(string); ok {
+		return manifest.RenderStringManifest(manifestStr, execCtx.Params)
+	}
+
+	// Map manifests: render template strings within values recursively
 	var manifestData map[string]interface{}
 	switch m := manifestSource.(type) {
 	case map[string]interface{}:
 		manifestData = m
 	case map[interface{}]interface{}:
-		manifestData = convertToStringKeyMap(m)
+		manifestData = utils.ConvertToStringKeyMap(m)
 	default:
 		return nil, fmt.Errorf("unsupported manifest type: %T", manifestSource)
 	}
 
-	// Deep copy to avoid modifying the original
-	manifestData = deepCopyMap(ctx, manifestData, re.log)
-
 	// Render all template strings in the manifest
-	renderedData, err := renderManifestTemplates(manifestData, execCtx.Params)
+	// Note: RenderManifestData creates new maps/slices at every level,
+	// so the original manifestData is never mutated.
+	renderedData, err := manifest.RenderManifestData(manifestData, execCtx.Params)
 	if err != nil {
 		return nil, fmt.Errorf("failed to render manifest templates: %w", err)
 	}
@@ -259,14 +268,14 @@ func (re *ResourceExecutor) discoverResource(
 	}
 
 	// Render discovery namespace template
-	namespace, err := renderTemplate(discovery.Namespace, execCtx.Params)
+	namespace, err := utils.RenderTemplate(discovery.Namespace, execCtx.Params)
 	if err != nil {
 		return nil, fmt.Errorf("failed to render namespace template: %w", err)
 	}
 
 	// Discover by name
 	if discovery.ByName != "" {
-		name, err := renderTemplate(discovery.ByName, execCtx.Params)
+		name, err := utils.RenderTemplate(discovery.ByName, execCtx.Params)
 		if err != nil {
 			return nil, fmt.Errorf("failed to render byName template: %w", err)
 		}
@@ -282,11 +291,11 @@ func (re *ResourceExecutor) discoverResource(
 	if discovery.BySelectors != nil && len(discovery.BySelectors.LabelSelector) > 0 {
 		renderedLabels := make(map[string]string)
 		for k, v := range discovery.BySelectors.LabelSelector {
-			renderedK, err := renderTemplate(k, execCtx.Params)
+			renderedK, err := utils.RenderTemplate(k, execCtx.Params)
 			if err != nil {
 				return nil, fmt.Errorf("failed to render label key template: %w", err)
 			}
-			renderedV, err := renderTemplate(v, execCtx.Params)
+			renderedV, err := utils.RenderTemplate(v, execCtx.Params)
 			if err != nil {
 				return nil, fmt.Errorf("failed to render label value template: %w", err)
 			}
@@ -371,13 +380,13 @@ func (re *ResourceExecutor) buildNestedDiscoveryConfig(
 	discovery *configloader.DiscoveryConfig,
 	params map[string]interface{},
 ) (*manifest.DiscoveryConfig, error) {
-	namespace, err := renderTemplate(discovery.Namespace, params)
+	namespace, err := utils.RenderTemplate(discovery.Namespace, params)
 	if err != nil {
 		return nil, fmt.Errorf("failed to render namespace template: %w", err)
 	}
 
 	if discovery.ByName != "" {
-		name, err := renderTemplate(discovery.ByName, params)
+		name, err := utils.RenderTemplate(discovery.ByName, params)
 		if err != nil {
 			return nil, fmt.Errorf("failed to render byName template: %w", err)
 		}
@@ -390,11 +399,11 @@ func (re *ResourceExecutor) buildNestedDiscoveryConfig(
 	if discovery.BySelectors != nil && len(discovery.BySelectors.LabelSelector) > 0 {
 		renderedLabels := make(map[string]string)
 		for k, v := range discovery.BySelectors.LabelSelector {
-			renderedK, err := renderTemplate(k, params)
+			renderedK, err := utils.RenderTemplate(k, params)
 			if err != nil {
 				return nil, fmt.Errorf("failed to render label key template: %w", err)
 			}
-			renderedV, err := renderTemplate(v, params)
+			renderedV, err := utils.RenderTemplate(v, params)
 			if err != nil {
 				return nil, fmt.Errorf("failed to render label value template: %w", err)
 			}
@@ -412,10 +421,20 @@ func (re *ResourceExecutor) buildNestedDiscoveryConfig(
 // resolveGVK extracts the GVK from the resource's manifest.
 // Works for both K8s resources and ManifestWorks since both have apiVersion and kind.
 func (re *ResourceExecutor) resolveGVK(resource configloader.Resource) schema.GroupVersionKind {
-	manifestData, ok := resource.Manifest.(map[string]interface{})
-	if !ok {
+	var manifestData map[string]interface{}
+
+	switch m := resource.Manifest.(type) {
+	case map[string]interface{}:
+		manifestData = m
+	case string:
+		// String manifests may contain Go template directives ({{ if }}, {{ range }})
+		// that make them invalid YAML. Extract apiVersion and kind by scanning lines
+		// instead of full YAML parsing.
+		return manifest.ExtractGVKFromString(m)
+	default:
 		return schema.GroupVersionKind{}
 	}
+
 	apiVersion, ok1 := manifestData["apiVersion"].(string)
 	kind, ok2 := manifestData["kind"].(string)
 	if !ok1 || !ok2 {
@@ -426,123 +445,6 @@ func (re *ResourceExecutor) resolveGVK(resource configloader.Resource) schema.Gr
 		return schema.GroupVersionKind{}
 	}
 	return gv.WithKind(kind)
-}
-
-// convertToStringKeyMap converts map[interface{}]interface{} to map[string]interface{}
-func convertToStringKeyMap(m map[interface{}]interface{}) map[string]interface{} {
-	result := make(map[string]interface{})
-	for k, v := range m {
-		strKey := fmt.Sprintf("%v", k)
-		switch val := v.(type) {
-		case map[interface{}]interface{}:
-			result[strKey] = convertToStringKeyMap(val)
-		case []interface{}:
-			result[strKey] = convertSlice(val)
-		default:
-			result[strKey] = v
-		}
-	}
-	return result
-}
-
-// convertSlice converts slice elements recursively
-func convertSlice(s []interface{}) []interface{} {
-	result := make([]interface{}, len(s))
-	for i, v := range s {
-		switch val := v.(type) {
-		case map[interface{}]interface{}:
-			result[i] = convertToStringKeyMap(val)
-		case []interface{}:
-			result[i] = convertSlice(val)
-		default:
-			result[i] = v
-		}
-	}
-	return result
-}
-
-// deepCopyMap creates a deep copy of a map using github.com/mitchellh/copystructure.
-// This handles non-JSON-serializable types (channels, functions, time.Time, etc.)
-// and preserves type information (e.g., int64 stays int64, not float64).
-// If deep copy fails, it falls back to a shallow copy and logs a warning.
-// WARNING: Shallow copy means nested maps/slices will share references with the original,
-// which could lead to unexpected mutations.
-func deepCopyMap(ctx context.Context, m map[string]interface{}, log logger.Logger) map[string]interface{} {
-	if m == nil {
-		return nil
-	}
-
-	copied, err := copystructure.Copy(m)
-	if err != nil {
-		// Fallback to shallow copy if deep copy fails
-		log.Warnf(ctx, "Failed to deep copy map: %v. Falling back to shallow copy.", err)
-		fallback := make(map[string]interface{})
-		for k, v := range m {
-			fallback[k] = v
-		}
-		return fallback
-	}
-
-	result, ok := copied.(map[string]interface{})
-	if !ok {
-		// Should not happen, but handle gracefully
-		fallback := make(map[string]interface{})
-		for k, v := range m {
-			fallback[k] = v
-		}
-		return fallback
-	}
-
-	return result
-}
-
-// renderManifestTemplates recursively renders all template strings in a manifest
-func renderManifestTemplates(
-	data map[string]interface{},
-	params map[string]interface{},
-) (map[string]interface{}, error) {
-	result := make(map[string]interface{})
-
-	for k, v := range data {
-		renderedKey, err := renderTemplate(k, params)
-		if err != nil {
-			return nil, fmt.Errorf("failed to render key '%s': %w", k, err)
-		}
-
-		renderedValue, err := renderValue(v, params)
-		if err != nil {
-			return nil, fmt.Errorf("failed to render value for key '%s': %w", k, err)
-		}
-
-		result[renderedKey] = renderedValue
-	}
-
-	return result, nil
-}
-
-// renderValue renders a value recursively
-func renderValue(v interface{}, params map[string]interface{}) (interface{}, error) {
-	switch val := v.(type) {
-	case string:
-		return renderTemplate(val, params)
-	case map[string]interface{}:
-		return renderManifestTemplates(val, params)
-	case map[interface{}]interface{}:
-		converted := convertToStringKeyMap(val)
-		return renderManifestTemplates(converted, params)
-	case []interface{}:
-		result := make([]interface{}, len(val))
-		for i, item := range val {
-			rendered, err := renderValue(item, params)
-			if err != nil {
-				return nil, err
-			}
-			result[i] = rendered
-		}
-		return result, nil
-	default:
-		return v, nil
-	}
 }
 
 // GetResourceAsMap converts an unstructured resource to a map for CEL evaluation
