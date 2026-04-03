@@ -21,17 +21,20 @@ This project follows the [Contributor Covenant Code of Conduct](https://www.cont
 
 1. **Fork the repository** on GitHub
 2. **Clone your fork** locally:
+
    ```bash
    git clone https://github.com/YOUR_USERNAME/hyperfleet-adapter.git
    cd hyperfleet-adapter
    ```
 
 3. **Add the upstream remote**:
+
    ```bash
    git remote add upstream https://github.com/openshift-hyperfleet/hyperfleet-adapter.git
    ```
 
 4. **Create a branch** for your changes:
+
    ```bash
    git checkout -b your-feature-branch
    ```
@@ -48,11 +51,13 @@ This project follows the [Contributor Covenant Code of Conduct](https://www.cont
 ### Installing Dependencies
 
 1. **Install Go dependencies**:
+
    ```bash
    make tidy
    ```
 
 2. **Install golangci-lint** (if not already installed):
+
    ```bash
    go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
    ```
@@ -105,31 +110,7 @@ Use descriptive branch names that indicate the type of change:
 
 ### Commit Messages
 
-Follow these guidelines for commit messages:
-
-1. **Use the present tense** ("Add feature" not "Added feature")
-2. **Use the imperative mood** ("Move cursor to..." not "Moves cursor to...")
-3. **Limit the first line to 72 characters or less**
-4. **Reference issues and pull requests** liberally after the first line
-5. **Consider starting the commit message with an applicable emoji**:
-   - 🎨 `:art:` - Improving structure / format of the code
-   - 🐛 `:bug:` - Fixing a bug
-   - 📝 `:memo:` - Writing docs
-   - ✨ `:sparkles:` - Introducing new features
-   - ♻️ `:recycle:` - Refactoring code
-   - ✅ `:white_check_mark:` - Adding tests
-   - 🔧 `:wrench:` - Changing configuration
-
-Example:
-```
-✨ Add operation ID middleware for request tracing
-
-- Implement OperationIDMiddleware to generate unique operation IDs
-- Add GetOperationID and WithOpID helper functions
-- Update logger to include operation ID in log context
-
-Fixes #123
-```
+Follow the [commit standard](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/commit-standard.md) in our architecture repository.
 
 ## Code Style
 
@@ -173,6 +154,7 @@ Fixes #123
 
 1. **Test names should be descriptive**: `TestFunctionName_Scenario_ExpectedBehavior`
 2. **Use subtests** for multiple test cases:
+
    ```go
    func TestFunction(t *testing.T) {
        tests := []struct {
@@ -189,6 +171,7 @@ Fixes #123
        }
    }
    ```
+
 3. **Clean up resources** in tests (use `defer` or `t.Cleanup()`)
 
 ## Submitting Changes
@@ -196,27 +179,32 @@ Fixes #123
 ### Before Submitting
 
 1. **Update your branch** with the latest changes from upstream:
+
    ```bash
    git fetch upstream
    git rebase upstream/main
    ```
 
 2. **Run all checks**:
+
    ```bash
    make verify  # Runs fmt-check and vet
    ```
 
 3. **Ensure all tests pass**:
+
    ```bash
    make test-all
    ```
 
 4. **Check for linting errors**:
+
    ```bash
    make lint
    ```
 
 5. **Format your code**:
+
    ```bash
    make fmt
    ```
@@ -224,6 +212,7 @@ Fixes #123
 ### Pull Request Process
 
 1. **Push your changes** to your fork:
+
    ```bash
    git push origin your-feature-branch
    ```
