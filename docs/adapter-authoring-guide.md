@@ -1326,12 +1326,53 @@ has(resources.namespace0) && has(resources.configmap0)
 
 ## Appendix B: Go Template Quick Reference
 
+### Variable interpolation
+
 ```
 {{ .variableName }}                              Variable interpolation
 {{ .clusterId | lower }}                         Lowercase filter
 {{ now | date "2006-01-02T15:04:05Z07:00" }}     Current timestamp (RFC 3339)
 {{ .adapter.name }}                              Adapter name from config
 ```
+
+### Structural syntax
+
+Go templates support conditional logic and iteration, which is useful in manifest refs for producing dynamic YAML based on captured values.
+
+**Conditionals (`if` / `else`)**
+
+```yaml
+{{ if .platformType }}
+    hyperfleet.io/platform-type: "{{ .platformType }}"
+{{ end }}
+
+{{ if eq .environment "production" }}
+    tier: "critical"
+{{ else }}
+    tier: "standard"
+{{ end }}
+```
+
+**Iteration (`range`)**
+
+Use `range` to iterate over list-type values captured via CEL expressions:
+
+```yaml
+{{ range $i, $subnet := .subnets }}
+    subnet_{{ $subnet.id }}_name: "{{ $subnet.name }}"
+    subnet_{{ $subnet.id }}_cidr: "{{ $subnet.cidr }}"
+{{ end }}
+```
+
+> **Note:** To iterate over a list, the corresponding precondition capture must use a CEL expression that returns the list directly (not a string). For example:
+> ```yaml
+> captures:
+>   - name: "subnets"
+>     expression: |
+>       has(spec.platform) && has(spec.platform.gcp) && has(spec.platform.gcp.subnets)
+>         ? spec.platform.gcp.subnets
+>         : []
+> ```
 
 Go Templates are used in: URLs, manifest field values, direct string values in payloads, and external template files.
 
