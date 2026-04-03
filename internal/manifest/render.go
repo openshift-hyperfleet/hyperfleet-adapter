@@ -2,9 +2,12 @@
 package manifest
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/utils"
+	"gopkg.in/yaml.v3"
 )
 
 // RenderManifestData recursively renders all template strings in a manifest data map.
@@ -33,6 +36,38 @@ func RenderManifestData(data map[string]interface{}, params map[string]interface
 	}
 
 	return result, nil
+}
+
+// RenderStringManifest renders a raw string manifest by executing Go templates,
+// then parsing the result as YAML and marshaling to JSON bytes.
+func RenderStringManifest(manifestStr string, params map[string]interface{}) ([]byte, error) {
+	if strings.TrimSpace(manifestStr) == "" {
+		return nil, fmt.Errorf("empty manifest: string manifest cannot be empty")
+	}
+
+	rendered, err := utils.RenderTemplate(manifestStr, params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to render manifest template: %w", err)
+	}
+
+	if strings.TrimSpace(rendered) == "" {
+		return nil, fmt.Errorf("empty manifest: template rendered to an empty document")
+	}
+
+	var manifestData map[string]interface{}
+	if unmarshalErr := yaml.Unmarshal([]byte(rendered), &manifestData); unmarshalErr != nil {
+		return nil, fmt.Errorf("failed to parse rendered manifest as YAML: %w", unmarshalErr)
+	}
+	if len(manifestData) == 0 {
+		return nil, fmt.Errorf("empty manifest: rendered YAML did not contain an object")
+	}
+
+	data, err := json.Marshal(manifestData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal rendered manifest: %w", err)
+	}
+
+	return data, nil
 }
 
 // renderValue renders a value recursively, handling maps, slices, and strings.

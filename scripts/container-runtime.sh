@@ -57,6 +57,19 @@ display_container_info() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }
 
+# Detect the container platform (e.g., linux/arm64, linux/amd64)
+# Maps host architecture to the corresponding container platform string.
+detect_container_platform() {
+    local arch
+    arch=$(uname -m)
+    case "$arch" in
+        x86_64)  echo "linux/amd64" ;;
+        aarch64) echo "linux/arm64" ;;
+        arm64)   echo "linux/arm64" ;;
+        *)       echo "linux/amd64" ;;
+    esac
+}
+
 # Display error for missing container runtime
 display_runtime_error() {
     echo "❌ ERROR: Neither Docker nor Podman is running"
