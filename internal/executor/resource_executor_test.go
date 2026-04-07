@@ -15,239 +15,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-const (
-	testStringModified = "modified"
-)
-
-func TestDeepCopyMap_BasicTypes(t *testing.T) {
-	original := map[string]interface{}{
-		"string": "hello",
-		"int":    42,
-		"float":  3.14,
-		"bool":   true,
-		"null":   nil,
-	}
-
-	copied := deepCopyMap(context.Background(), original, logger.NewTestLogger())
-
-	// Verify values are copied correctly
-	assert.Equal(t, "hello", copied["string"])
-	assert.Equal(t, 42, copied["int"]) // copystructure preserves int (unlike JSON which converts to float64)
-	assert.Equal(t, 3.14, copied["float"])
-	assert.Equal(t, true, copied["bool"])
-	assert.Nil(t, copied["null"])
-
-	// Verify no warnings logged
-
-	// Verify mutation doesn't affect original
-	copied["string"] = testStringModified
-	assert.Equal(t, "hello", original["string"], "Original should not be modified")
-}
-
-func TestDeepCopyMap_NestedMaps(t *testing.T) {
-
-	original := map[string]interface{}{
-		"level1": map[string]interface{}{
-			"level2": map[string]interface{}{
-				"value": "deep",
-			},
-		},
-	}
-
-	copied := deepCopyMap(context.Background(), original, logger.NewTestLogger())
-
-	// Verify deep copy works
-
-	// Modify the copied nested map
-	level1 := copied["level1"].(map[string]interface{})
-	level2 := level1["level2"].(map[string]interface{})
-	level2["value"] = testStringModified
-
-	// Verify original is NOT modified (deep copy worked)
-	originalLevel1 := original["level1"].(map[string]interface{})
-	originalLevel2 := originalLevel1["level2"].(map[string]interface{})
-	assert.Equal(t, "deep", originalLevel2["value"], "Original nested value should not be modified")
-}
-
-func TestDeepCopyMap_Slices(t *testing.T) {
-
-	original := map[string]interface{}{
-		"items": []interface{}{"a", "b", "c"},
-		"nested": []interface{}{
-			map[string]interface{}{"key": "value"},
-		},
-	}
-
-	copied := deepCopyMap(context.Background(), original, logger.NewTestLogger())
-
-	// Modify copied slice
-	copiedItems := copied["items"].([]interface{})
-	copiedItems[0] = testStringModified
-
-	// Verify original is NOT modified
-	originalItems := original["items"].([]interface{})
-	assert.Equal(t, "a", originalItems[0], "Original slice should not be modified")
-}
-
-func TestDeepCopyMap_Channel(t *testing.T) {
-	// copystructure handles channels properly (creates new channel)
-
-	ch := make(chan int, 5)
-	original := map[string]interface{}{
-		"channel": ch,
-		"normal":  "value",
-	}
-
-	copied := deepCopyMap(context.Background(), original, logger.NewTestLogger())
-
-	// copystructure handles channels - no warning expected
-
-	// Normal values are copied
-	assert.Equal(t, "value", copied["normal"])
-
-	// Verify channel exists in copied map
-	copiedCh, ok := copied["channel"].(chan int)
-	assert.True(t, ok, "Channel should be present in copied map")
-	assert.NotNil(t, copiedCh, "Copied channel should not be nil")
-}
-
-func TestDeepCopyMap_Function(t *testing.T) {
-	// copystructure handles functions (copies the function pointer)
-
-	fn := func() string { return "hello" }
-	original := map[string]interface{}{
-		"func":   fn,
-		"normal": "value",
-	}
-
-	copied := deepCopyMap(context.Background(), original, logger.NewTestLogger())
-
-	// copystructure handles functions - no warning expected
-
-	// Normal values are copied
-	assert.Equal(t, "value", copied["normal"])
-
-	// Function is preserved
-	copiedFn := copied["func"].(func() string)
-	assert.Equal(t, "hello", copiedFn(), "Copied function should work")
-}
-
-func TestDeepCopyMap_NestedWithChannel(t *testing.T) {
-	// Test that nested maps are deep copied even when channels are present
-
-	ch := make(chan int)
-	nested := map[string]interface{}{"mutable": "original"}
-	original := map[string]interface{}{
-		"channel": ch,
-		"nested":  nested,
-	}
-
-	copied := deepCopyMap(context.Background(), original, logger.NewTestLogger())
-
-	// copystructure handles this properly - no warning expected
-
-	// Modify the copied nested map
-	copiedNested := copied["nested"].(map[string]interface{})
-	copiedNested["mutable"] = "MUTATED"
-
-	// Original should NOT be affected (deep copy works with copystructure)
-	assert.Equal(t, "original", nested["mutable"],
-		"Deep copy: original nested map should NOT be affected by mutation")
-}
-
-func TestDeepCopyMap_EmptyMap(t *testing.T) {
-
-	original := map[string]interface{}{}
-	copied := deepCopyMap(context.Background(), original, logger.NewTestLogger())
-
-	assert.NotNil(t, copied)
-	assert.Empty(t, copied)
-}
-
-func TestDeepCopyMap_DeepCopyVerification(t *testing.T) {
-	// Verify deep copy works correctly
-	original := map[string]interface{}{
-		"string": "value",
-		"nested": map[string]interface{}{
-			"key": "nested_value",
-		},
-	}
-
-	// Should not panic
-	copied := deepCopyMap(context.Background(), original, logger.NewTestLogger())
-
-	assert.Equal(t, "value", copied["string"])
-
-	// Verify deep copy works
-	copiedNested := copied["nested"].(map[string]interface{})
-	copiedNested["key"] = testStringModified
-
-	originalNested := original["nested"].(map[string]interface{})
-	assert.Equal(t, "nested_value", originalNested["key"], "Original should not be modified")
-}
-
-func TestDeepCopyMap_NilMap(t *testing.T) {
-
-	copied := deepCopyMap(context.Background(), nil, logger.NewTestLogger())
-
-	assert.Nil(t, copied)
-}
-
-func TestDeepCopyMap_KubernetesManifest(t *testing.T) {
-	// Test with a realistic Kubernetes manifest structure
-
-	original := map[string]interface{}{
-		"apiVersion": "v1",
-		"kind":       "ConfigMap",
-		"metadata": map[string]interface{}{
-			"name":      "test-config",
-			"namespace": "default",
-			"labels": map[string]interface{}{
-				"app": "test",
-			},
-		},
-		"data": map[string]interface{}{
-			"key1": "value1",
-			"key2": "value2",
-		},
-	}
-
-	copied := deepCopyMap(context.Background(), original, logger.NewTestLogger())
-
-	// Modify copied manifest
-	copiedMetadata := copied["metadata"].(map[string]interface{})
-	copiedLabels := copiedMetadata["labels"].(map[string]interface{})
-	copiedLabels["app"] = testStringModified
-
-	// Verify original is NOT modified
-	originalMetadata := original["metadata"].(map[string]interface{})
-	originalLabels := originalMetadata["labels"].(map[string]interface{})
-	assert.Equal(t, "test", originalLabels["app"], "Original manifest should not be modified")
-}
-
-// TestDeepCopyMap_Context ensures the function is used correctly in context
-func TestDeepCopyMap_RealWorldContext(t *testing.T) {
-	// This simulates how deepCopyMap is used in executeResource
-	manifest := map[string]interface{}{
-		"apiVersion": "v1",
-		"kind":       "Namespace",
-		"metadata": map[string]interface{}{
-			"name": "{{ .namespace }}",
-		},
-	}
-
-	// Deep copy before template rendering
-	copied := deepCopyMap(context.Background(), manifest, logger.NewTestLogger())
-
-	// Simulate template rendering modifying the copy
-	copiedMetadata := copied["metadata"].(map[string]interface{})
-	copiedMetadata["name"] = "rendered-namespace"
-
-	// Original template should remain unchanged for next iteration
-	originalMetadata := manifest["metadata"].(map[string]interface{})
-	assert.Equal(t, "{{ .namespace }}", originalMetadata["name"])
-}
-
 // TestResourceExecutor_ExecuteAll_DiscoveryFailure verifies that when discovery fails after a successful apply,
 // the error is logged and notified: ExecuteAll returns an error, result is failed,
 // and execCtx.Adapter.ExecutionError is set.
@@ -424,4 +191,422 @@ func TestResourceExecutor_ExecuteAll_StoresNestedDiscoveriesByName(t *testing.T)
 	assert.Len(t, values, 1)
 	v0 := values[0].(map[string]interface{})
 	assert.Equal(t, "data", v0["name"])
+}
+
+func TestRenderToBytes_StringManifest(t *testing.T) {
+	re := newResourceExecutor(&ExecutorConfig{
+		Logger: logger.NewTestLogger(),
+	})
+
+	tests := []struct {
+		name         string
+		manifest     string
+		params       map[string]interface{}
+		wantContains []string
+		wantErr      bool
+	}{
+		{
+			name: "simple string manifest with template values",
+			manifest: `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "{{ .name }}"
+  namespace: "{{ .namespace }}"
+data:
+  key: value`,
+			params: map[string]interface{}{
+				"name":      "my-config",
+				"namespace": "default",
+			},
+			wantContains: []string{`"name":"my-config"`, `"namespace":"default"`},
+		},
+		{
+			name: "structural if template",
+			manifest: `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "test"
+{{ if .addLabels }}
+  labels:
+    app: "myapp"
+{{ end }}
+data:
+  key: value`,
+			params: map[string]interface{}{
+				"addLabels": true,
+			},
+			wantContains: []string{`"labels"`, `"app":"myapp"`},
+		},
+		{
+			name: "structural if template - false branch",
+			manifest: `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "test"
+{{ if .addLabels }}
+  labels:
+    app: "myapp"
+{{ end }}
+data:
+  key: value`,
+			params: map[string]interface{}{
+				"addLabels": false,
+			},
+			wantContains: []string{`"name":"test"`, `"key":"value"`},
+		},
+		{
+			name: "range template for list generation",
+			manifest: `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "test"
+data:
+{{ range $k, $v := .items }}
+  {{ $k }}: "{{ $v }}"
+{{ end }}`,
+			params: map[string]interface{}{
+				"items": map[string]interface{}{
+					"key1": "val1",
+					"key2": "val2",
+				},
+			},
+			wantContains: []string{`"key1":"val1"`, `"key2":"val2"`},
+		},
+		{
+			name: "if-else template for conditional properties",
+			manifest: `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "test"
+  labels:
+{{ if .isGood }}
+    status: "good"
+{{ else }}
+    status: "bad"
+{{ end }}`,
+			params: map[string]interface{}{
+				"isGood": true,
+			},
+			wantContains: []string{`"status":"good"`},
+		},
+		{
+			name:     "invalid template syntax",
+			manifest: `apiVersion: v1{{ if }}`,
+			params:   map[string]interface{}{},
+			wantErr:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resource := configloader.Resource{
+				Name:     "test",
+				Manifest: tt.manifest,
+			}
+			execCtx := NewExecutionContext(context.Background(), nil, nil)
+			execCtx.Params = tt.params
+
+			data, err := re.renderToBytes(resource, execCtx)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			for _, want := range tt.wantContains {
+				assert.Contains(t, string(data), want)
+			}
+		})
+	}
+}
+
+func TestRenderToBytes_StringManifestWithSubnetList(t *testing.T) {
+	// Test the customer's original use case: generating a list of subnets
+	re := newResourceExecutor(&ExecutorConfig{
+		Logger: logger.NewTestLogger(),
+	})
+
+	manifest := `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "subnet-config"
+data:
+  subnets: |
+{{ range .subnetIds }}
+    - id: {{ . }}
+{{ end }}`
+
+	params := map[string]interface{}{
+		"subnetIds": []interface{}{"sub1", "sub2", "sub3"},
+	}
+
+	resource := configloader.Resource{
+		Name:     "subnets",
+		Manifest: manifest,
+	}
+	execCtx := NewExecutionContext(context.Background(), nil, nil)
+	execCtx.Params = params
+
+	data, err := re.renderToBytes(resource, execCtx)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "sub1")
+	assert.Contains(t, string(data), "sub2")
+	assert.Contains(t, string(data), "sub3")
+}
+
+func TestRenderToBytes_StringManifestEdgeCases(t *testing.T) {
+	re := newResourceExecutor(&ExecutorConfig{
+		Logger: logger.NewTestLogger(),
+	})
+
+	t.Run("plain YAML string without templates", func(t *testing.T) {
+		// Backward compatibility: plain YAML ref files (no templates) still work
+		manifest := `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "static-config"
+data:
+  key: value`
+		resource := configloader.Resource{
+			Name:     "test",
+			Manifest: manifest,
+		}
+		execCtx := NewExecutionContext(context.Background(), nil, nil)
+		execCtx.Params = map[string]interface{}{}
+
+		data, err := re.renderToBytes(resource, execCtx)
+		require.NoError(t, err)
+		assert.Contains(t, string(data), `"name":"static-config"`)
+		assert.Contains(t, string(data), `"key":"value"`)
+	})
+
+	t.Run("empty string manifest", func(t *testing.T) {
+		resource := configloader.Resource{
+			Name:     "test",
+			Manifest: "",
+		}
+		execCtx := NewExecutionContext(context.Background(), nil, nil)
+		execCtx.Params = map[string]interface{}{}
+
+		_, err := re.renderToBytes(resource, execCtx)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "empty manifest")
+	})
+
+	t.Run("template rendering produces invalid YAML", func(t *testing.T) {
+		manifest := `{{ .content }}`
+		resource := configloader.Resource{
+			Name:     "test",
+			Manifest: manifest,
+		}
+		execCtx := NewExecutionContext(context.Background(), nil, nil)
+		execCtx.Params = map[string]interface{}{
+			"content": "not: valid: yaml: [broken",
+		}
+
+		_, err := re.renderToBytes(resource, execCtx)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to parse rendered manifest as YAML")
+	})
+
+	t.Run("missing template variable errors", func(t *testing.T) {
+		manifest := `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "{{ .missingVar }}"`
+		resource := configloader.Resource{
+			Name:     "test",
+			Manifest: manifest,
+		}
+		execCtx := NewExecutionContext(context.Background(), nil, nil)
+		execCtx.Params = map[string]interface{}{} // missingVar not provided
+
+		_, err := re.renderToBytes(resource, execCtx)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "missingVar")
+	})
+
+	t.Run("nil manifest", func(t *testing.T) {
+		resource := configloader.Resource{
+			Name:     "test",
+			Manifest: nil,
+		}
+		execCtx := NewExecutionContext(context.Background(), nil, nil)
+
+		_, err := re.renderToBytes(resource, execCtx)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no manifest specified")
+	})
+
+	t.Run("map manifest still works (backward compatibility)", func(t *testing.T) {
+		resource := configloader.Resource{
+			Name: "test",
+			Manifest: map[string]interface{}{
+				"apiVersion": "v1",
+				"kind":       "ConfigMap",
+				"metadata": map[string]interface{}{
+					"name":      "{{ .name }}",
+					"namespace": "default",
+				},
+			},
+		}
+		execCtx := NewExecutionContext(context.Background(), nil, nil)
+		execCtx.Params = map[string]interface{}{
+			"name": "rendered-name",
+		}
+
+		data, err := re.renderToBytes(resource, execCtx)
+		require.NoError(t, err)
+		assert.Contains(t, string(data), `"name":"rendered-name"`)
+		assert.Contains(t, string(data), `"namespace":"default"`)
+	})
+}
+
+func TestResourceExecutor_ExecuteAll_StringManifest(t *testing.T) {
+	// End-to-end test: string manifest through the full executor flow
+	mock := k8sclient.NewMockK8sClient()
+	// Don't set ApplyResourceResult — use default behavior which parses and stores the resource
+	mock.GetResourceResult = &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "v1",
+			"kind":       "ConfigMap",
+			"metadata": map[string]interface{}{
+				"name":      "test-config",
+				"namespace": "default",
+			},
+		},
+	}
+
+	re := newResourceExecutor(&ExecutorConfig{
+		TransportClient: mock,
+		Logger:          logger.NewTestLogger(),
+	})
+
+	// Use a string manifest with structural Go templates
+	manifestStr := `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "{{ .configName }}"
+  namespace: "{{ .namespace }}"
+{{ if .addLabels }}
+  labels:
+    managed-by: "adapter"
+{{ end }}
+data:
+  cluster: "{{ .clusterId }}"`
+
+	resource := configloader.Resource{
+		Name:     "testConfig",
+		Manifest: manifestStr,
+		Discovery: &configloader.DiscoveryConfig{
+			Namespace: "default",
+			ByName:    "test-config",
+		},
+	}
+
+	execCtx := NewExecutionContext(context.Background(), nil, nil)
+	execCtx.Params = map[string]interface{}{
+		"configName": "test-config",
+		"namespace":  "default",
+		"addLabels":  true,
+		"clusterId":  "cluster-1",
+	}
+
+	results, err := re.ExecuteAll(context.Background(), []configloader.Resource{resource}, execCtx)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, StatusSuccess, results[0].Status)
+	assert.Equal(t, "ConfigMap", results[0].Kind)
+	assert.Equal(t, "test-config", results[0].ResourceName)
+
+	// Verify the mock stored the rendered resource correctly
+	stored, ok := mock.Resources["default/test-config"]
+	require.True(t, ok, "Resource should be stored in mock")
+	assert.Equal(t, "ConfigMap", stored.GetKind())
+	assert.Equal(t, "test-config", stored.GetName())
+
+	// Verify labels were rendered (addLabels=true)
+	labels := stored.GetLabels()
+	assert.Equal(t, "adapter", labels["managed-by"])
+
+	// Verify data was rendered
+	data, found, _ := unstructured.NestedString(stored.Object, "data", "cluster")
+	assert.True(t, found)
+	assert.Equal(t, "cluster-1", data)
+}
+
+func TestResolveGVK_StringManifest(t *testing.T) {
+	re := &ResourceExecutor{}
+
+	tests := []struct {
+		name        string
+		manifest    interface{}
+		wantGroup   string
+		wantVersion string
+		wantKind    string
+		wantEmpty   bool
+	}{
+		{
+			name: "map manifest",
+			manifest: map[string]interface{}{
+				"apiVersion": "v1",
+				"kind":       "ConfigMap",
+			},
+			wantVersion: "v1",
+			wantKind:    "ConfigMap",
+		},
+		{
+			name:        "string manifest with Go templates",
+			manifest:    "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: \"{{ .clusterId }}\"\n",
+			wantVersion: "v1",
+			wantKind:    "ConfigMap",
+		},
+		{
+			name: "string manifest with structural Go template directives",
+			manifest: "apiVersion: v1\nkind: ConfigMap\nmetadata:\n" +
+				"  name: \"test-{{ .clusterId }}\"\n  labels:\n    app: test\n" +
+				"{{ if .testRunId }}\n    run-id: \"{{ .testRunId }}\"\n{{ end }}\n" +
+				"data:\n  key: value\n",
+			wantVersion: "v1",
+			wantKind:    "ConfigMap",
+		},
+		{
+			name:        "string manifest with apps/v1",
+			manifest:    "apiVersion: apps/v1\nkind: Deployment\n",
+			wantGroup:   "apps",
+			wantVersion: "v1",
+			wantKind:    "Deployment",
+		},
+		{
+			name:      "nil manifest",
+			manifest:  nil,
+			wantEmpty: true,
+		},
+		{
+			name:      "invalid string YAML",
+			manifest:  "not: valid: yaml: {{{}",
+			wantEmpty: true,
+		},
+		{
+			name:      "string manifest missing kind",
+			manifest:  "apiVersion: v1\nmetadata:\n  name: test\n",
+			wantEmpty: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resource := configloader.Resource{
+				Manifest: tt.manifest,
+			}
+			gvk := re.resolveGVK(resource)
+
+			if tt.wantEmpty {
+				assert.True(t, gvk.Empty(), "expected empty GVK")
+			} else {
+				assert.Equal(t, tt.wantGroup, gvk.Group)
+				assert.Equal(t, tt.wantVersion, gvk.Version)
+				assert.Equal(t, tt.wantKind, gvk.Kind)
+			}
+		})
+	}
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleetapi"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/utils"
 )
 
 // PostActionExecutor executes post-processing actions
@@ -141,7 +142,7 @@ func (pae *PostActionExecutor) buildPayload(
 	case map[string]any:
 		return pae.buildMapPayload(ctx, v, evaluator, params)
 	case map[any]any:
-		converted := convertToStringKeyMap(v)
+		converted := utils.ConvertToStringKeyMap(v)
 		return pae.buildMapPayload(ctx, converted, evaluator, params)
 	default:
 		return build, nil
@@ -159,7 +160,7 @@ func (pae *PostActionExecutor) buildMapPayload(
 
 	for k, v := range m {
 		// Render the key
-		renderedKey, err := renderTemplate(k, params)
+		renderedKey, err := utils.RenderTemplate(k, params)
 		if err != nil {
 			return nil, fmt.Errorf("failed to render key '%s': %w", k, err)
 		}
@@ -206,7 +207,7 @@ func (pae *PostActionExecutor) processValue(
 		return pae.buildMapPayload(ctx, val, evaluator, params)
 
 	case map[any]any:
-		converted := convertToStringKeyMap(val)
+		converted := utils.ConvertToStringKeyMap(val)
 		return pae.processValue(ctx, converted, evaluator, params)
 
 	case []any:
@@ -221,7 +222,7 @@ func (pae *PostActionExecutor) processValue(
 		return result, nil
 
 	case string:
-		return renderTemplate(val, params)
+		return utils.RenderTemplate(val, params)
 
 	default:
 		return v, nil

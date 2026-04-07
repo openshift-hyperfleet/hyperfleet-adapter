@@ -12,6 +12,7 @@ import (
 	"github.com/google/cel-go/cel"
 
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
 )
 
 // templateVarRegex matches Go template variables like {{ .varName }} or {{ .nested.var }}
@@ -368,10 +369,13 @@ func (v *TaskConfigValidator) validateTemplateVariables() {
 	}
 
 	// Validate resource manifests and transport config templates
+	// All manifests are validated as template strings — map manifests are serialized
+	// to YAML first since they are rendered as Go templates at execution time.
 	for i, resource := range v.config.Resources {
 		resourcePath := fmt.Sprintf("%s[%d]", FieldResources, i)
-		if manifest, ok := resource.Manifest.(map[string]interface{}); ok {
-			v.validateTemplateMap(manifest, resourcePath+"."+FieldManifest)
+		manifestStr, err := manifest.ToYAMLString(resource.Manifest)
+		if err == nil && manifestStr != "" {
+			v.validateTemplateString(manifestStr, resourcePath+"."+FieldManifest)
 		}
 		// NOTE: For maestro transport, we skip template variable validation for manifest content.
 		// ManifestWork templates may use variables provided at runtime by the framework
@@ -548,53 +552,22 @@ func (v *TaskConfigValidator) validateBuildExpressions(m map[string]interface{},
 
 func (v *TaskConfigValidator) validateK8sManifests() {
 	for i, resource := range v.config.Resources {
-		// Skip K8s manifest validation for maestro transport — manifest holds ManifestWork content
-		if resource.IsMaestroTransport() {
-			continue
-		}
-
 		if resource.Manifest == nil {
 			continue
 		}
 
 		path := fmt.Sprintf("%s[%d].%s", FieldResources, i, FieldManifest)
 
-		if manifest, ok := resource.Manifest.(map[string]interface{}); ok {
-			if ref, hasRef := manifest[FieldRef].(string); hasRef {
+		// All manifests are rendered as Go templates at execution time.
+		// K8s structural validation is deferred to execution time since
+		// template parameters are not available at config load time.
+		// Only validate manifest ref is not empty.
+		if m, ok := resource.Manifest.(map[string]interface{}); ok {
+			if ref, hasRef := m[FieldRef].(string); hasRef {
 				if ref == "" {
 					v.errors.Add(path+"."+FieldRef, "manifest ref cannot be empty")
 				}
-			} else {
-				v.validateK8sManifest(manifest, path)
 			}
-		}
-	}
-}
-
-func (v *TaskConfigValidator) validateK8sManifest(manifest map[string]interface{}, path string) {
-	requiredFields := []string{FieldAPIVersion, FieldKind, "metadata"}
-
-	for _, field := range requiredFields {
-		if _, ok := manifest[field]; !ok {
-			v.errors.Add(path, fmt.Sprintf("missing required Kubernetes field %q", field))
-		}
-	}
-
-	if metadata, ok := manifest["metadata"].(map[string]interface{}); ok {
-		if _, hasName := metadata[FieldName]; !hasName {
-			v.errors.Add(path+"."+"metadata", fmt.Sprintf("missing required field %q", FieldName))
-		}
-	}
-
-	if apiVersion, ok := manifest[FieldAPIVersion].(string); ok {
-		if apiVersion == "" {
-			v.errors.Add(path+"."+FieldAPIVersion, "apiVersion cannot be empty")
-		}
-	}
-
-	if kind, ok := manifest[FieldKind].(string); ok {
-		if kind == "" {
-			v.errors.Add(path+"."+FieldKind, "kind cannot be empty")
 		}
 	}
 }

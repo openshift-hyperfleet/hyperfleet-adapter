@@ -865,15 +865,14 @@ post:
 	require.NoError(t, err)
 	require.NotNil(t, config)
 
-	// Verify manifest.ref was loaded and replaced
+	// Verify manifest.ref was loaded as raw string (for Go template support)
 	require.Len(t, config.Resources, 1)
-	manifest, ok := config.Resources[0].Manifest.(map[string]interface{})
-	require.True(t, ok, "Manifest should be a map after loading ref")
-	assert.Equal(t, "apps/v1", manifest["apiVersion"])
-	assert.Equal(t, "Deployment", manifest["kind"])
-	// Verify ref is no longer present (replaced with actual content)
-	_, hasRef := manifest["ref"]
-	assert.False(t, hasRef, "ref should be replaced with actual content")
+	manifestStr, ok := config.Resources[0].Manifest.(string)
+	require.True(t, ok, "Manifest should be a raw string after loading ref")
+	assert.Contains(t, manifestStr, "apiVersion: apps/v1")
+	assert.Contains(t, manifestStr, "kind: Deployment")
+	assert.Contains(t, manifestStr, "{{ .name }}")
+	assert.Contains(t, manifestStr, "{{ .namespace }}")
 
 	// Verify buildRef content was loaded into BuildRefContent
 	require.NotNil(t, config.Post)
@@ -1330,18 +1329,14 @@ resources:
 	require.NoError(t, err)
 	require.NotNil(t, config)
 
-	// Verify manifest ref was loaded and replaced with ManifestWork content
+	// Verify manifest ref was loaded as raw string (for Go template support)
 	require.Len(t, config.Resources, 1)
 	resource := config.Resources[0]
 
-	mw, ok := resource.Manifest.(map[string]interface{})
-	require.True(t, ok, "Manifest should be a map after loading ref")
-	assert.Equal(t, "work.open-cluster-management.io/v1", mw["apiVersion"])
-	assert.Equal(t, "ManifestWork", mw["kind"])
-
-	// Verify ref is no longer present
-	_, hasRef := mw["ref"]
-	assert.False(t, hasRef, "ref should be replaced with actual content")
+	mw, ok := resource.Manifest.(string)
+	require.True(t, ok, "Manifest should be a raw string after loading ref")
+	assert.Contains(t, mw, "apiVersion: work.open-cluster-management.io/v1")
+	assert.Contains(t, mw, "kind: ManifestWork")
 }
 
 func TestLoadConfigWithManifestWorkRefNotFound(t *testing.T) {
@@ -1423,4 +1418,222 @@ resources:
 	require.True(t, ok, "Manifest should be a map")
 	assert.Equal(t, "work.open-cluster-management.io/v1", mw["apiVersion"])
 	assert.Equal(t, "ManifestWork", mw["kind"])
+}
+
+func TestLoadConfigWithManifestRefGoTemplates(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a manifest file with structural Go templates ({{ if }}, {{ range }})
+	manifestFile := filepath.Join(tmpDir, "manifest-with-templates.yaml")
+	require.NoError(t, os.WriteFile(manifestFile, []byte(`apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "{{ .name }}"
+  namespace: "{{ .namespace }}"
+{{ if .addLabels }}
+  labels:
+    app: "{{ .appName }}"
+{{ end }}
+data:
+  key: value
+`), 0644))
+
+	adapterYAML := testAdapterConfigYAML
+	adapterPath := filepath.Join(tmpDir, "adapter-config.yaml")
+	require.NoError(t, os.WriteFile(adapterPath, []byte(adapterYAML), 0644))
+
+	taskYAML := `
+params:
+  - name: "name"
+    source: "event.name"
+resources:
+  - name: "configMap"
+    manifest:
+      ref: "manifest-with-templates.yaml"
+    discovery:
+      namespace: "*"
+      by_name: "test"
+`
+	taskPath := filepath.Join(tmpDir, "task-config.yaml")
+	require.NoError(t, os.WriteFile(taskPath, []byte(taskYAML), 0644))
+
+	config, err := LoadConfig(
+		WithAdapterConfigPath(adapterPath),
+		WithTaskConfigPath(taskPath),
+		WithSkipSemanticValidation(),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, config)
+
+	// Manifest ref with Go templates should be stored as raw string
+	require.Len(t, config.Resources, 1)
+	manifestStr, ok := config.Resources[0].Manifest.(string)
+	require.True(t, ok, "Manifest should be a raw string")
+	assert.Contains(t, manifestStr, "{{ if .addLabels }}")
+	assert.Contains(t, manifestStr, "{{ .name }}")
+	assert.Contains(t, manifestStr, "{{ end }}")
+}
+
+func TestLoadConfigWithInlineStringManifest(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	adapterYAML := testAdapterConfigYAML
+	adapterPath := filepath.Join(tmpDir, "adapter-config.yaml")
+	require.NoError(t, os.WriteFile(adapterPath, []byte(adapterYAML), 0644))
+
+	// Inline manifest using YAML multiline string syntax for Go templates
+	taskYAML := `
+params:
+  - name: "name"
+    source: "event.name"
+resources:
+  - name: "configMap"
+    manifest: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: "{{ .name }}"
+      {{ if .addLabels }}
+        labels:
+          app: "{{ .appName }}"
+      {{ end }}
+    discovery:
+      namespace: "*"
+      by_name: "test"
+`
+	taskPath := filepath.Join(tmpDir, "task-config.yaml")
+	require.NoError(t, os.WriteFile(taskPath, []byte(taskYAML), 0644))
+
+	config, err := LoadConfig(
+		WithAdapterConfigPath(adapterPath),
+		WithTaskConfigPath(taskPath),
+		WithSkipSemanticValidation(),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, config)
+
+	// Inline manifest with YAML multiline string should be stored as string
+	require.Len(t, config.Resources, 1)
+	manifestStr, ok := config.Resources[0].Manifest.(string)
+	require.True(t, ok, "Inline manifest with multiline string should be stored as string")
+	assert.Contains(t, manifestStr, "{{ if .addLabels }}")
+	assert.Contains(t, manifestStr, "{{ .name }}")
+}
+
+func TestLoadRawFile(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	t.Run("loads file as raw string preserving template syntax", func(t *testing.T) {
+		content := `apiVersion: v1
+kind: ConfigMap
+{{ if .condition }}
+metadata:
+  name: "{{ .name }}"
+{{ end }}`
+		filePath := filepath.Join(tmpDir, "template.yaml")
+		require.NoError(t, os.WriteFile(filePath, []byte(content), 0644))
+
+		result, err := loadRawFile(tmpDir, "template.yaml")
+		require.NoError(t, err)
+		assert.Equal(t, content, result)
+	})
+
+	t.Run("file not found", func(t *testing.T) {
+		_, err := loadRawFile(tmpDir, "nonexistent.yaml")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to read file")
+	})
+
+	t.Run("path traversal blocked", func(t *testing.T) {
+		_, err := loadRawFile(tmpDir, "../../../etc/passwd")
+		require.Error(t, err)
+	})
+}
+
+func TestAccessorsWithStringManifest(t *testing.T) {
+	t.Run("HasManifestRef returns false for string manifest", func(t *testing.T) {
+		r := &Resource{
+			Name:     "test",
+			Manifest: "apiVersion: v1\nkind: ConfigMap",
+		}
+		assert.False(t, r.HasManifestRef())
+	})
+
+	t.Run("GetManifestRef returns empty for string manifest", func(t *testing.T) {
+		r := &Resource{
+			Name:     "test",
+			Manifest: "apiVersion: v1\nkind: ConfigMap",
+		}
+		assert.Equal(t, "", r.GetManifestRef())
+	})
+
+	t.Run("UnmarshalManifest returns error for string manifest", func(t *testing.T) {
+		r := &Resource{
+			Name:     "test",
+			Manifest: "apiVersion: v1\nkind: ConfigMap",
+		}
+		result, err := r.UnmarshalManifest()
+		assert.Nil(t, result)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "manifest is not a map")
+	})
+
+	t.Run("HasManifestRef still works for map manifest", func(t *testing.T) {
+		r := &Resource{
+			Name:     "test",
+			Manifest: map[string]interface{}{"ref": "templates/test.yaml"},
+		}
+		assert.True(t, r.HasManifestRef())
+		assert.Equal(t, "templates/test.yaml", r.GetManifestRef())
+	})
+}
+
+func TestLoadConfigManifestRefPlainYAML(t *testing.T) {
+	// Verify backward compatibility: ref files with plain YAML (no templates)
+	// still work correctly when loaded as raw strings
+	tmpDir := t.TempDir()
+
+	manifestFile := filepath.Join(tmpDir, "plain-manifest.yaml")
+	require.NoError(t, os.WriteFile(manifestFile, []byte(`apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "my-config"
+  namespace: "default"
+data:
+  key: value
+`), 0644))
+
+	adapterYAML := testAdapterConfigYAML
+	adapterPath := filepath.Join(tmpDir, "adapter-config.yaml")
+	require.NoError(t, os.WriteFile(adapterPath, []byte(adapterYAML), 0644))
+
+	taskYAML := `
+params:
+  - name: "clusterId"
+    source: "event.id"
+resources:
+  - name: "configMap"
+    manifest:
+      ref: "plain-manifest.yaml"
+    discovery:
+      namespace: "*"
+      by_name: "my-config"
+`
+	taskPath := filepath.Join(tmpDir, "task-config.yaml")
+	require.NoError(t, os.WriteFile(taskPath, []byte(taskYAML), 0644))
+
+	config, err := LoadConfig(
+		WithAdapterConfigPath(adapterPath),
+		WithTaskConfigPath(taskPath),
+		WithSkipSemanticValidation(),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, config)
+
+	// Plain YAML ref is now stored as string (not map)
+	require.Len(t, config.Resources, 1)
+	manifestStr, ok := config.Resources[0].Manifest.(string)
+	require.True(t, ok, "Manifest ref should be stored as raw string")
+	assert.Contains(t, manifestStr, "apiVersion: v1")
+	assert.Contains(t, manifestStr, "name: \"my-config\"")
 }
