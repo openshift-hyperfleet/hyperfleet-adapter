@@ -8,7 +8,7 @@ FROM golang:1.25-alpine
 RUN apk add --no-cache curl tar openssl bash
 
 # Install setup-envtest
-RUN go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+RUN go install sigs.k8s.io/controller-runtime/tools/setup-envtest@f9589b9
 
 # Download and extract Kubernetes binaries (etcd, kube-apiserver, kubectl)
 # Using 1.30.x for stability and active support
