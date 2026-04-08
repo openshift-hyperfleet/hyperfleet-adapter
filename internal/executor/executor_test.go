@@ -416,60 +416,6 @@ func TestParamExtractor(t *testing.T) {
 	}
 }
 
-func TestRenderTemplate(t *testing.T) {
-	tests := []struct {
-		name        string
-		template    string
-		data        map[string]interface{}
-		expected    string
-		expectError bool
-	}{
-		{
-			name:     "simple variable",
-			template: "Hello {{ .name }}!",
-			data:     map[string]interface{}{"name": "World"},
-			expected: "Hello World!",
-		},
-		{
-			name:     "no template",
-			template: "plain text",
-			data:     map[string]interface{}{},
-			expected: "plain text",
-		},
-		{
-			name:     "nested variable",
-			template: "{{ .cluster.id }}",
-			data: map[string]interface{}{
-				"cluster": map[string]interface{}{"id": "test-123"},
-			},
-			expected: "test-123",
-		},
-		{
-			name:        "missing variable",
-			template:    "{{ .missing }}",
-			data:        map[string]interface{}{},
-			expectError: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := renderTemplate(tt.template, tt.data)
-
-			if tt.expectError {
-				assert.Error(t, err)
-				return
-			}
-
-			require.NoError(t, err)
-
-			if result != tt.expected {
-				t.Errorf("expected '%s', got '%s'", tt.expected, result)
-			}
-		})
-	}
-}
-
 // TestSequentialExecution_Preconditions tests that preconditions stop on first failure
 func TestSequentialExecution_Preconditions(t *testing.T) {
 	tests := []struct {

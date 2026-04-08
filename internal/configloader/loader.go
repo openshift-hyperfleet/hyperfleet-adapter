@@ -170,7 +170,9 @@ func LoadConfig(opts ...LoadOption) (*Config, error) {
 
 // loadTaskConfigFileReferences loads content from file references into the task config
 func loadTaskConfigFileReferences(config *AdapterTaskConfig, baseDir string) error {
-	// Load manifest.ref in resources
+	// Load manifest.ref in resources as raw strings to support Go template syntax.
+	// Files are stored as raw strings so that structural Go templates ({{ if }}, {{ range }}, etc.)
+	// are preserved and rendered at execution time before YAML parsing.
 	for i := range config.Resources {
 		resource := &config.Resources[i]
 		ref := resource.GetManifestRef()
@@ -178,12 +180,12 @@ func loadTaskConfigFileReferences(config *AdapterTaskConfig, baseDir string) err
 			continue
 		}
 
-		content, err := loadYAMLFile(baseDir, ref)
+		content, err := loadRawFile(baseDir, ref)
 		if err != nil {
 			return fmt.Errorf("%s[%d].%s.%s: %w", FieldResources, i, FieldManifest, FieldRef, err)
 		}
 
-		// Replace manifest with loaded content
+		// Replace manifest with raw string content for template rendering at execution time
 		resource.Manifest = content
 	}
 
@@ -202,6 +204,22 @@ func loadTaskConfigFileReferences(config *AdapterTaskConfig, baseDir string) err
 	}
 
 	return nil
+}
+
+// loadRawFile reads a file and returns its content as a raw string.
+// Used for manifest ref files to preserve Go template syntax for later rendering.
+func loadRawFile(baseDir, refPath string) (string, error) {
+	fullPath, err := resolvePath(baseDir, refPath)
+	if err != nil {
+		return "", err
+	}
+
+	data, err := os.ReadFile(filepath.Clean(fullPath))
+	if err != nil {
+		return "", fmt.Errorf("failed to read file %q: %w", fullPath, err)
+	}
+
+	return string(data), nil
 }
 
 // loadYAMLFile loads and parses a YAML file

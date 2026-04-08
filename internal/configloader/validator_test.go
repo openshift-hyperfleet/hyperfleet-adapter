@@ -283,55 +283,16 @@ func TestValidateK8sManifests(t *testing.T) {
 		require.NoError(t, v.ValidateSemantic())
 	})
 
-	t.Run("missing apiVersion in manifest", func(t *testing.T) {
+	t.Run("map manifest without apiVersion defers validation to execution", func(t *testing.T) {
+		// K8s structural validation is deferred to execution time since
+		// all manifests are rendered as Go templates
 		cfg := withResource(map[string]interface{}{
 			"kind":     "Namespace",
 			"metadata": map[string]interface{}{"name": "test"},
 		})
 		v := newTaskValidator(cfg)
-		_ = v.ValidateStructure()
-		err := v.ValidateSemantic()
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "missing required Kubernetes field \"apiVersion\"")
-	})
-
-	t.Run("missing kind in manifest", func(t *testing.T) {
-		cfg := withResource(map[string]interface{}{
-			"apiVersion": "v1",
-			"metadata":   map[string]interface{}{"name": "test"},
-		})
-		v := newTaskValidator(cfg)
-		_ = v.ValidateStructure()
-		err := v.ValidateSemantic()
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "missing required Kubernetes field \"kind\"")
-	})
-
-	t.Run("missing metadata in manifest", func(t *testing.T) {
-		cfg := withResource(map[string]interface{}{
-			"apiVersion": "v1",
-			"kind":       "Namespace",
-		})
-		v := newTaskValidator(cfg)
-		_ = v.ValidateStructure()
-		err := v.ValidateSemantic()
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "missing required Kubernetes field \"metadata\"")
-	})
-
-	t.Run("missing name in metadata", func(t *testing.T) {
-		cfg := withResource(map[string]interface{}{
-			"apiVersion": "v1",
-			"kind":       "Namespace",
-			"metadata": map[string]interface{}{
-				"labels": map[string]interface{}{"app": "test"},
-			},
-		})
-		v := newTaskValidator(cfg)
-		_ = v.ValidateStructure()
-		err := v.ValidateSemantic()
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "missing required field \"name\"")
+		require.NoError(t, v.ValidateStructure())
+		require.NoError(t, v.ValidateSemantic())
 	})
 
 	t.Run("valid manifest ref", func(t *testing.T) {
@@ -348,6 +309,58 @@ func TestValidateK8sManifests(t *testing.T) {
 		err := v.ValidateSemantic()
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "manifest ref cannot be empty")
+	})
+
+	t.Run("string manifest skips K8s validation", func(t *testing.T) {
+		// String manifests contain raw Go templates that can't be validated
+		// until template rendering at execution time
+		cfg := baseTaskConfig()
+		cfg.Params = []Parameter{
+			{Name: "name", Source: "event.name", Type: "string"},
+			{Name: "addLabels", Source: "event.addLabels", Type: "bool"},
+			{Name: "appName", Source: "event.appName", Type: "string"},
+		}
+		cfg.Resources = []Resource{{
+			Name: "testResource",
+			Manifest: `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "{{ .name }}"
+{{ if .addLabels }}
+  labels:
+    app: "{{ .appName }}"
+{{ end }}`,
+			Discovery: &DiscoveryConfig{Namespace: "*", ByName: "test"},
+		}}
+		v := newTaskValidator(cfg)
+		require.NoError(t, v.ValidateStructure())
+		require.NoError(t, v.ValidateSemantic())
+	})
+
+	t.Run("string manifest without K8s fields passes validation", func(t *testing.T) {
+		// Even a string manifest missing apiVersion/kind should pass validation
+		// because validation is deferred to execution time
+		cfg := baseTaskConfig()
+		cfg.Resources = []Resource{{
+			Name:      "testResource",
+			Manifest:  `{{ if .condition }}full: template{{ end }}`,
+			Discovery: &DiscoveryConfig{Namespace: "*", ByName: "test"},
+		}}
+		v := newTaskValidator(cfg)
+		require.NoError(t, v.ValidateStructure())
+		require.NoError(t, v.ValidateSemantic())
+	})
+
+	t.Run("map manifest defers K8s validation to execution", func(t *testing.T) {
+		// All manifests are rendered as Go templates — K8s structural
+		// validation is deferred to execution time
+		cfg := withResource(map[string]interface{}{
+			"kind": "Namespace",
+			// missing apiVersion and metadata — caught at execution time, not load time
+		})
+		v := newTaskValidator(cfg)
+		require.NoError(t, v.ValidateStructure())
+		require.NoError(t, v.ValidateSemantic())
 	})
 }
 

@@ -447,6 +447,31 @@ resources:
       by_name: "{{ .clusterId }}"
 ```
 
+Inline manifests are parsed as YAML before template rendering, so they support `{{ .var }}` substitution in values but **not** structural directives (`{{ if }}`, `{{ range }}`). To use structural Go templates inline, use a YAML block scalar (`|`):
+
+```yaml
+resources:
+  - name: "clusterConfig"
+    transport:
+      client: "kubernetes"
+    manifest: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: "{{ .clusterId }}-config"
+      data:
+        cluster_id: "{{ .clusterId }}"
+      {{ if eq .platformType "gcp" }}
+        platform_tier: "cloud"
+      {{ else }}
+        platform_tier: "onprem"
+      {{ end }}
+    discovery:
+      by_name: "{{ .clusterId }}-config"
+```
+
+The `|` block scalar tells YAML to treat the content as a raw string, which preserves Go template directives for rendering at execution time.
+
 ### External manifest files
 
 For larger manifests, reference an external YAML file:
@@ -1179,8 +1204,9 @@ The framework validates your config at load time in two passes:
 
 - CEL expressions parse without errors
 - Go template variables reference defined params or captures
-- K8s manifests have required fields (`apiVersion`, `kind`, `metadata.name`)
 - `in`/`notIn` operators have array values
+
+> **Note:** K8s structural validation (required fields like `apiVersion`, `kind`, `metadata.name`) is deferred to execution time since all manifests are rendered as Go templates. Invalid manifests will be caught when the adapter applies them.
 
 ### No-op adapter pattern
 
@@ -1326,6 +1352,8 @@ has(resources.namespace0) && has(resources.configmap0)
 
 ## Appendix B: Go Template Quick Reference
 
+### Variable interpolation
+
 ```
 {{ .variableName }}                              Variable interpolation
 {{ .clusterId | lower }}                         Lowercase filter
@@ -1333,7 +1361,51 @@ has(resources.namespace0) && has(resources.configmap0)
 {{ .adapter.name }}                              Adapter name from config
 ```
 
-Go Templates are used in: URLs, manifest field values, direct string values in payloads, and external template files.
+### Structural syntax
+
+Go templates support conditional logic and iteration for producing dynamic YAML based on captured values. Structural directives work in:
+
+- **External manifest files** (`manifest.ref`) — always treated as raw Go templates
+- **Inline block scalars** (`manifest: |`) — the `|` preserves raw text for template rendering
+
+Structural directives do **not** work in plain inline manifests (without `|`) because YAML parsing runs before template rendering.
+
+**Conditionals (`if` / `else`)**
+
+```yaml
+{{ if .platformType }}
+    hyperfleet.io/platform-type: "{{ .platformType }}"
+{{ end }}
+
+{{ if eq .environment "production" }}
+    tier: "critical"
+{{ else }}
+    tier: "standard"
+{{ end }}
+```
+
+**Iteration (`range`)**
+
+Use `range` to iterate over list-type values captured via CEL expressions:
+
+```yaml
+{{ range $i, $subnet := .subnets }}
+    subnet_{{ $subnet.id }}_name: "{{ $subnet.name }}"
+    subnet_{{ $subnet.id }}_cidr: "{{ $subnet.cidr }}"
+{{ end }}
+```
+
+> **Note:** To iterate over a list, the corresponding precondition capture must use a CEL expression that returns the list directly (not a string). For example:
+> ```yaml
+> captures:
+>   - name: "subnets"
+>     expression: |
+>       has(spec.platform) && has(spec.platform.gcp) && has(spec.platform.gcp.subnets)
+>         ? spec.platform.gcp.subnets
+>         : []
+> ```
+
+Go Templates are used in: URLs, manifest field values, direct string values in payloads, external template files (`manifest.ref`), and inline block scalars (`manifest: |`).
 
 > **Tip:** Go date format uses the reference time `Mon Jan 2 15:04:05 MST 2006` as the layout. The digits are not arbitrary — `2006` is the year, `01` is the month, etc.
 
