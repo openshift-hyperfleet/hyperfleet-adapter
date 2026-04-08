@@ -443,7 +443,7 @@ func runServe(flags *pflag.FlagSet) error {
 
 	// Initialize OpenTelemetry
 	sampleRatio := otel.GetTraceSampleRatio(log, ctx)
-	tp, err := otel.InitTracer(config.Adapter.Name, version.Version, sampleRatio)
+	tp, err := otel.InitTracer(log, config.Adapter.Name, version.Version, sampleRatio)
 	if err != nil {
 		errCtx := logger.WithErrorField(ctx, err)
 		log.Errorf(errCtx, "Failed to initialize OpenTelemetry")
