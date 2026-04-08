@@ -151,10 +151,9 @@ Priority order (lowest to highest): config file < env vars < CLI flags`,
 		Short: "Print version information",
 		Run: func(cmd *cobra.Command, args []string) {
 			info := version.Info()
-			fmt.Printf("HyperFleet Adapter\n")
-			fmt.Printf("  Version:    %s\n", info.Version)
-			fmt.Printf("  Commit:     %s\n", info.Commit)
-			fmt.Printf("  Built:      %s\n", info.BuildDate)
+			fmt.Printf("Version:    %s\n", info.Version)
+			fmt.Printf("Commit:     %s\n", info.Commit)
+			fmt.Printf("Build Date: %s\n", info.BuildDate)
 		},
 	}
 
