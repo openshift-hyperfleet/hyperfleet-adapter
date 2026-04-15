@@ -207,6 +207,13 @@ func TestInitTraceProvider_SamplerEnvironmentVariables(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			prevTP := otel.GetTracerProvider()
+			prevProp := otel.GetTextMapPropagator()
+			t.Cleanup(func() {
+				otel.SetTracerProvider(prevTP)
+				otel.SetTextMapPropagator(prevProp)
+			})
+
 			clearOtelEnv(t)
 
 			t.Setenv(envOtelTracesSampler, tt.samplerType)

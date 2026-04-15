@@ -473,11 +473,10 @@ func runServe(flags *pflag.FlagSet) error {
 	}
 	defer func() {
 		if tp != nil {
-			var shutdownCtx context.Context
-			shutdownCtx, cancel = context.WithTimeout(context.Background(), OTelShutdownTimeout)
-			defer cancel()
-			if err = tp.Shutdown(shutdownCtx); err != nil {
-				log.Warnf(ctx, "Failed to shutdown OpenTelemetry: %v", err)
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), OTelShutdownTimeout)
+			defer shutdownCancel()
+			if shutdownErr := tp.Shutdown(shutdownCtx); shutdownErr != nil {
+				log.Warnf(ctx, "Failed to shutdown OpenTelemetry: %v", shutdownErr)
 			}
 		}
 	}()
