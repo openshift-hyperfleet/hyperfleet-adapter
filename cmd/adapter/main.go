@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -20,11 +21,12 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/health"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/metrics"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/otel"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/telemetry"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/version"
 	"github.com/openshift-hyperfleet/hyperfleet-broker/broker"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"gopkg.in/yaml.v3"
 )
 
@@ -440,19 +442,40 @@ func runServe(flags *pflag.FlagSet) error {
 	}
 
 	// Initialize OpenTelemetry
-	sampleRatio := otel.GetTraceSampleRatio(log, ctx)
-	tp, err := otel.InitTracer(log, config.Adapter.Name, version.Version, sampleRatio)
-	if err != nil {
-		errCtx := logger.WithErrorField(ctx, err)
-		log.Errorf(errCtx, "Failed to initialize OpenTelemetry")
-		return fmt.Errorf("failed to initialize OpenTelemetry: %w", err)
+	tracingEnabled := true
+	if tracingEnv := os.Getenv("HYPERFLEET_TRACING_ENABLED"); tracingEnv != "" {
+		if enabled, err := strconv.ParseBool(tracingEnv); err == nil {
+			tracingEnabled = enabled
+		} else {
+			log.Warnf(ctx, "Invalid HYPERFLEET_TRACING_ENABLED value %q, defaulting to true", tracingEnv)
+		}
+	}
+
+	var tp *sdktrace.TracerProvider
+	if tracingEnabled {
+		serviceName := config.Adapter.Name
+		if svcName := os.Getenv("OTEL_SERVICE_NAME"); svcName != "" {
+			serviceName = svcName
+		}
+
+		traceProvider, err := telemetry.InitTraceProvider(ctx, log, serviceName, version.Version)
+		if err != nil {
+			errCtx := logger.WithErrorField(ctx, err)
+			log.Errorf(errCtx, "Failed to initialize OpenTelemetry")
+			return fmt.Errorf("failed to initialize OpenTelemetry: %w", err)
+		}
+		tp = traceProvider
+		log.Infof(ctx, "OpenTelemetry initialized: service_name=%s", serviceName)
+	} else {
+		log.Infof(ctx, "OpenTelemetry tracing disabled")
 	}
 	defer func() {
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), OTelShutdownTimeout)
-		defer shutdownCancel()
-		if shutdownErr := tp.Shutdown(shutdownCtx); shutdownErr != nil {
-			errCtx := logger.WithErrorField(shutdownCtx, shutdownErr)
-			log.Warnf(errCtx, "Failed to shutdown TracerProvider")
+		if tp != nil {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), OTelShutdownTimeout)
+			defer cancel()
+			if err := tp.Shutdown(shutdownCtx); err != nil {
+				log.Warnf(ctx, "Failed to shutdown OpenTelemetry: %v", err)
+			}
 		}
 	}()
 

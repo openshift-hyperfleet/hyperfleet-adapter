@@ -12,7 +12,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleetapi"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transportclient"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
-	pkgotel "github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/otel"
+	pkgotel "github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/telemetry"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 )
