@@ -444,7 +444,8 @@ func runServe(flags *pflag.FlagSet) error {
 	// Initialize OpenTelemetry
 	tracingEnabled := true
 	if tracingEnv := os.Getenv("HYPERFLEET_TRACING_ENABLED"); tracingEnv != "" {
-		if enabled, err := strconv.ParseBool(tracingEnv); err == nil {
+		var enabled bool
+		if enabled, err = strconv.ParseBool(tracingEnv); err == nil {
 			tracingEnabled = enabled
 		} else {
 			log.Warnf(ctx, "Invalid HYPERFLEET_TRACING_ENABLED value %q, defaulting to true", tracingEnv)
@@ -458,7 +459,8 @@ func runServe(flags *pflag.FlagSet) error {
 			serviceName = svcName
 		}
 
-		traceProvider, err := telemetry.InitTraceProvider(ctx, log, serviceName, version.Version)
+		var traceProvider *sdktrace.TracerProvider
+		traceProvider, err = telemetry.InitTraceProvider(ctx, log, serviceName, version.Version)
 		if err != nil {
 			errCtx := logger.WithErrorField(ctx, err)
 			log.Errorf(errCtx, "Failed to initialize OpenTelemetry")
@@ -471,9 +473,10 @@ func runServe(flags *pflag.FlagSet) error {
 	}
 	defer func() {
 		if tp != nil {
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), OTelShutdownTimeout)
+			var shutdownCtx context.Context
+			shutdownCtx, cancel = context.WithTimeout(context.Background(), OTelShutdownTimeout)
 			defer cancel()
-			if err := tp.Shutdown(shutdownCtx); err != nil {
+			if err = tp.Shutdown(shutdownCtx); err != nil {
 				log.Warnf(ctx, "Failed to shutdown OpenTelemetry: %v", err)
 			}
 		}

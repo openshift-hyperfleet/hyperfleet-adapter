@@ -92,14 +92,25 @@ func TestInitTraceProvider(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("initializes with stdout exporter when no endpoint", func(t *testing.T) {
+		prevTP := otel.GetTracerProvider()
+		prevProp := otel.GetTextMapPropagator()
+		t.Cleanup(func() {
+			otel.SetTracerProvider(prevTP)
+			otel.SetTextMapPropagator(prevProp)
+		})
 		clearOtelEnv(t)
 		tp, err := InitTraceProvider(ctx, log, "test-service", "0.0.1")
 		require.NoError(t, err)
 		require.NotNil(t, tp)
 		assert.NoError(t, tp.Shutdown(ctx))
 	})
-
 	t.Run("initializes with OTLP exporter when endpoint is set", func(t *testing.T) {
+		prevTP := otel.GetTracerProvider()
+		prevProp := otel.GetTextMapPropagator()
+		t.Cleanup(func() {
+			otel.SetTracerProvider(prevTP)
+			otel.SetTextMapPropagator(prevProp)
+		})
 		clearOtelEnv(t)
 		t.Setenv(envOtelExporterOtlpEndpoint, "http://localhost:4318")
 		tp, err := InitTraceProvider(ctx, log, "test-service", "0.0.1")

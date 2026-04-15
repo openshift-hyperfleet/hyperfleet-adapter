@@ -60,7 +60,7 @@ const (
 
 // createExporter creates a SpanExporter based on OTLP environment variables.
 // When no endpoint is configured, returns a stdout exporter for local development.
-// The protocol defaults to http/protobuf (per OTel spec), configurable via OTEL_EXPORTER_OTLP_PROTOCOL.
+// The protocol defaults to grpc (per HyperFleet tracing standard), configurable via OTEL_EXPORTER_OTLP_PROTOCOL.
 func createExporter(ctx context.Context, log logger.Logger) (sdktrace.SpanExporter, error) {
 	// Check if an OTLP endpoint is configured (presence check only).
 	// The actual endpoint value is read by the OTel SDK from env vars directly,
@@ -108,10 +108,9 @@ func createExporter(ctx context.Context, log logger.Logger) (sdktrace.SpanExport
 //
 // Configuration is driven by standard OpenTelemetry environment variables:
 //   - OTEL_EXPORTER_OTLP_ENDPOINT / OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: OTLP endpoint (stdout if unset)
-//   - OTEL_EXPORTER_OTLP_PROTOCOL / OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: "grpc" or "http/protobuf" (default)
+//   - OTEL_EXPORTER_OTLP_PROTOCOL / OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: "grpc" (default) or "http/protobuf"
 //   - OTEL_TRACES_SAMPLER: sampler type (default: "parentbased_traceidratio")
 //   - OTEL_TRACES_SAMPLER_ARG: sampling rate 0.0-1.0 (default: 1.0)
-//   - OTEL_RESOURCE_ATTRIBUTES: additional resource attributes (k=v,k2=v2 format)
 func InitTraceProvider(
 	ctx context.Context, log logger.Logger, serviceName, serviceVersion string,
 ) (*sdktrace.TracerProvider, error) {
