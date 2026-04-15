@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/docker/go-connections/nat"
 	"github.com/openshift-online/maestro/pkg/api/openapi"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -43,7 +42,7 @@ func setupMaestroTestEnv() (*MaestroTestEnv, error) {
 	}
 	env.PostgresHost = host
 
-	port, err := pgContainer.MappedPort(ctx, nat.Port(PostgresPort))
+	port, err := pgContainer.MappedPort(ctx, PostgresPort)
 	if err != nil {
 		_ = pgContainer.Terminate(ctx)
 		return nil, fmt.Errorf("failed to get PostgreSQL port: %w", err)
@@ -75,21 +74,21 @@ func setupMaestroTestEnv() (*MaestroTestEnv, error) {
 		return nil, fmt.Errorf("failed to get Maestro host: %w", err)
 	}
 
-	httpPort, err := maestroContainer.MappedPort(ctx, nat.Port(MaestroHTTPPort))
+	httpPort, err := maestroContainer.MappedPort(ctx, MaestroHTTPPort)
 	if err != nil {
 		cleanupMaestroTestEnv(env)
 		return nil, fmt.Errorf("failed to get Maestro HTTP port: %w", err)
 	}
 	env.MaestroHTTPPort = httpPort.Port()
 
-	grpcPort, err := maestroContainer.MappedPort(ctx, nat.Port(MaestroGRPCPort))
+	grpcPort, err := maestroContainer.MappedPort(ctx, MaestroGRPCPort)
 	if err != nil {
 		cleanupMaestroTestEnv(env)
 		return nil, fmt.Errorf("failed to get Maestro gRPC port: %w", err)
 	}
 	env.MaestroGRPCPort = grpcPort.Port()
 
-	healthPort, err := maestroContainer.MappedPort(ctx, nat.Port(MaestroHealthPort))
+	healthPort, err := maestroContainer.MappedPort(ctx, MaestroHealthPort)
 	if err != nil {
 		cleanupMaestroTestEnv(env)
 		return nil, fmt.Errorf("failed to get Maestro health port: %w", err)
@@ -123,7 +122,7 @@ func startPostgresContainer(ctx context.Context) (testcontainers.Container, erro
 			"POSTGRESQL_USER":     dbUser,
 			"POSTGRESQL_PASSWORD": dbPassword,
 		},
-		WaitingFor: wait.ForListeningPort(nat.Port(PostgresPort)).
+		WaitingFor: wait.ForListeningPort(PostgresPort).
 			WithStartupTimeout(60 * time.Second),
 	}
 
@@ -147,8 +146,8 @@ func getPostgresIP(ctx context.Context, container testcontainers.Container) (str
 
 	// Try to get the container IP from any network
 	for _, network := range pgInspect.NetworkSettings.Networks {
-		if network.IPAddress != "" {
-			return network.IPAddress, nil
+		if network.IPAddress.IsValid() {
+			return network.IPAddress.String(), nil
 		}
 	}
 
@@ -258,8 +257,8 @@ exec /usr/local/bin/maestro server \
 		ExposedPorts: []string{MaestroHTTPPort, MaestroGRPCPort, MaestroHealthPort},
 		Entrypoint:   []string{"/bin/sh", "-c", setupScript},
 		WaitingFor: wait.ForAll(
-			wait.ForListeningPort(nat.Port(MaestroHTTPPort)).WithStartupTimeout(120*time.Second),
-			wait.ForListeningPort(nat.Port(MaestroGRPCPort)).WithStartupTimeout(120*time.Second),
+			wait.ForListeningPort(MaestroHTTPPort).WithStartupTimeout(120*time.Second),
+			wait.ForListeningPort(MaestroGRPCPort).WithStartupTimeout(120*time.Second),
 		),
 	}
 
@@ -335,13 +334,13 @@ func setupTLSMaestroEnv(env *MaestroTestEnv) error {
 		return fmt.Errorf("failed to get TLS Maestro host: %w", err)
 	}
 
-	httpPort, err := container.MappedPort(ctx, nat.Port(MaestroHTTPPort))
+	httpPort, err := container.MappedPort(ctx, MaestroHTTPPort)
 	if err != nil {
 		return fmt.Errorf("failed to get TLS Maestro HTTP port: %w", err)
 	}
 	env.TLSMaestroHTTPPort = httpPort.Port()
 
-	grpcPort, err := container.MappedPort(ctx, nat.Port(MaestroGRPCPort))
+	grpcPort, err := container.MappedPort(ctx, MaestroGRPCPort)
 	if err != nil {
 		return fmt.Errorf("failed to get TLS Maestro gRPC port: %w", err)
 	}
@@ -422,8 +421,8 @@ exec /usr/local/bin/maestro server \
 			},
 		},
 		WaitingFor: wait.ForAll(
-			wait.ForListeningPort(nat.Port(MaestroHTTPPort)).WithStartupTimeout(120*time.Second),
-			wait.ForListeningPort(nat.Port(MaestroGRPCPort)).WithStartupTimeout(120*time.Second),
+			wait.ForListeningPort(MaestroHTTPPort).WithStartupTimeout(120*time.Second),
+			wait.ForListeningPort(MaestroGRPCPort).WithStartupTimeout(120*time.Second),
 		),
 	}
 

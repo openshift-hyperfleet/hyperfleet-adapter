@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/go-connections/nat"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
@@ -215,7 +214,7 @@ func StartContainer(t *testing.T, config ContainerConfig) (*ContainerResult, err
 	// Get all mapped ports
 	ports := make(map[string]string)
 	for _, portSpec := range config.ExposedPorts {
-		port, err := container.MappedPort(ctx, nat.Port(portSpec))
+		port, err := container.MappedPort(ctx, portSpec)
 		if err != nil {
 			return nil, fmt.Errorf(
 				"failed to get mapped port %s for %s container: %w", portSpec, config.Name, err,
@@ -341,18 +340,18 @@ var WaitStrategies = struct {
 	ForLogAndPort: func(logMessage string, portSpec string, timeout time.Duration) wait.Strategy {
 		return wait.ForAll(
 			wait.ForLog(logMessage).WithStartupTimeout(timeout),
-			wait.ForListeningPort(nat.Port(portSpec)).WithStartupTimeout(timeout),
+			wait.ForListeningPort(portSpec).WithStartupTimeout(timeout),
 		)
 	},
 	ForPort: func(portSpec string, timeout time.Duration) wait.Strategy {
-		return wait.ForListeningPort(nat.Port(portSpec)).WithStartupTimeout(timeout)
+		return wait.ForListeningPort(portSpec).WithStartupTimeout(timeout)
 	},
 	ForLog: func(logMessage string, timeout time.Duration) wait.Strategy {
 		return wait.ForLog(logMessage).WithStartupTimeout(timeout)
 	},
 	ForHTTP: func(path string, portSpec string, timeout time.Duration) wait.Strategy {
 		return wait.ForHTTP(path).
-			WithPort(nat.Port(portSpec)).
+			WithPort(portSpec).
 			WithStartupTimeout(timeout)
 	},
 }
@@ -514,7 +513,7 @@ func StartSharedContainer(config ContainerConfig) (*SharedContainer, error) {
 	// Get all mapped ports
 	ports := make(map[string]string)
 	for _, portSpec := range config.ExposedPorts {
-		port, err := container.MappedPort(ctx, nat.Port(portSpec))
+		port, err := container.MappedPort(ctx, portSpec)
 		if err != nil {
 			terminateCtx, tCancel := context.WithTimeout(
 				context.Background(), 60*time.Second)
