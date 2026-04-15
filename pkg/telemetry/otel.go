@@ -72,7 +72,7 @@ func createExporter(ctx context.Context, log logger.Logger) (sdktrace.SpanExport
 	if otlpEndpoint == "" {
 		log.Infof(ctx, "No %s or %s configured, using stdout exporter",
 			envOtelExporterOtlpTracesEndpoint, envOtelExporterOtlpEndpoint)
-		return stdouttrace.New(stdouttrace.WithPrettyPrint())
+		return stdouttrace.New()
 	}
 
 	protocol := os.Getenv(envOtelExporterOtlpTracesProtocol)
