@@ -227,13 +227,11 @@ func TestInitTraceProvider_SamplerEnvironmentVariables(t *testing.T) {
 
 			tracer := otel.Tracer("test")
 			_, span := tracer.Start(ctx, "test-span")
+			sc := span.SpanContext()
 
-			if tt.expectedSample {
-				assert.True(t, span.SpanContext().IsValid())
-				assert.True(t, span.SpanContext().TraceFlags().IsSampled())
-			} else if span.SpanContext().IsValid() {
-				assert.False(t, span.SpanContext().TraceFlags().IsSampled())
-			}
+			require.True(t, sc.IsValid(), "expected a valid SpanContext from initialized tracer provider")
+			assert.Equal(t, tt.expectedSample, sc.TraceFlags().IsSampled())
+
 			span.End()
 		})
 	}
