@@ -50,7 +50,7 @@ require (
 	github.com/ThreeDotsLabs/watermill v1.5.1 // indirect
 	github.com/ThreeDotsLabs/watermill-amqp/v3 v3.0.2 // indirect
 	github.com/ThreeDotsLabs/watermill-googlecloud/v2 v2.0.0 // indirect
-	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
+	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bwmarrin/snowflake v0.3.0 // indirect
 	github.com/cenkalti/backoff/v3 v3.2.2 // indirect
