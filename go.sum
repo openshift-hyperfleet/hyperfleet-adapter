@@ -253,8 +253,8 @@ github.com/opencontainers/go-digest v1.0.0 h1:apOUWs51W5PlhuyGyz9FCeeBIOUDA/6nW8
 github.com/opencontainers/go-digest v1.0.0/go.mod h1:0JzlMkj0TRzQZfJkVvzbP0HBR3IKzErnv2BNG4W4MAM=
 github.com/opencontainers/image-spec v1.1.1 h1:y0fUlFfIZhPF1W537XOLg0/fcx6zcHCJwooC2xJA040=
 github.com/opencontainers/image-spec v1.1.1/go.mod h1:qpqAh3Dmcf36wStyyWU+kCeDgrGnAve2nCC8+7h8Q0M=
-github.com/openshift-hyperfleet/hyperfleet-broker v1.1.0 h1:Shn6ga4PlR5M5K/Pr5O7v7YDjjl1svwwLe48XK10yhI=
-github.com/openshift-hyperfleet/hyperfleet-broker v1.1.0/go.mod h1:Wor2yIw6yE4umDFfWKuI8H4glEC7dOEFdbWBoYjU7Nw=
+github.com/openshift-hyperfleet/hyperfleet-broker v1.1.1 h1:3zbpNuFL+OEvKl6a/KJAlHFcYR4QqQBoGkf35higypU=
+github.com/openshift-hyperfleet/hyperfleet-broker v1.1.1/go.mod h1:E7Br4NnsaTTfWR2fEqHAtvFXUAgzFpksF+G5qTBMmy0=
 github.com/openshift-online/maestro v0.0.0-20260202062555-48b47506a254 h1:v/jYqdzZpzB/bscVpajlbcKgCNeV4tx4fkm5m2JR8Ug=
 github.com/openshift-online/maestro v0.0.0-20260202062555-48b47506a254/go.mod h1:cyeif610uObNrbcyn5s1fZg7OWseVjaMAqgrEDA2Aec=
 github.com/openshift-online/ocm-sdk-go v0.1.493 h1:+889zmbwN0guA8LFRr5WHpH2+VJNq8+r0fvrXY+x/6E=

@@ -9,7 +9,7 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/google/cel-go v0.26.1
 	github.com/mitchellh/copystructure v1.2.0
-	github.com/openshift-hyperfleet/hyperfleet-broker v1.1.0
+	github.com/openshift-hyperfleet/hyperfleet-broker v1.1.1
 	github.com/openshift-online/maestro v0.0.0-20260202062555-48b47506a254
 	github.com/openshift-online/ocm-sdk-go v0.1.493
 	github.com/prometheus/client_golang v1.23.2
