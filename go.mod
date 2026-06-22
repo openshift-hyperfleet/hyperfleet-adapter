@@ -53,7 +53,7 @@ require (
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bwmarrin/snowflake v0.3.0 // indirect
-	github.com/cenkalti/backoff/v3 v3.2.2 // indirect
+	github.com/cenkalti/backoff/v6 v6.0.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
