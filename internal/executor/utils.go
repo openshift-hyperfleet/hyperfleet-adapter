@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/auth"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/configloader"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleetapi"
@@ -111,6 +112,25 @@ func ExecuteAPICall(
 		}
 		headers[h.Name] = headerValue
 	}
+
+	// Resolve authorization token — per-call config wins; falls back to the global default.
+	// Always overrides any manually set Authorization header.
+	authCfg := apiCall.Authorization
+	if authCfg == nil && execCtx.Config != nil {
+		authCfg = execCtx.Config.Authorization
+	}
+	if authCfg != nil {
+		provider, authErr := auth.NewTokenProvider(authCfg, execCtx.Config.Clients.Kubernetes, execCtx.Params)
+		if authErr != nil {
+			return nil, url, fmt.Errorf("failed to build authorization token provider: %w", authErr)
+		}
+		token, authErr := provider.GetToken(ctx)
+		if authErr != nil {
+			return nil, url, fmt.Errorf("failed to get authorization token: %w", authErr)
+		}
+		headers["Authorization"] = "Bearer " + token
+	}
+
 	if len(headers) > 0 {
 		opts = append(opts, hyperfleetapi.WithHeaders(headers))
 	}

@@ -12,6 +12,7 @@ import (
 // Created by merging AdapterConfig (deployment) and AdapterTaskConfig (task).
 type Config struct {
 	Post          *PostConfig    `yaml:"post,omitempty"`
+	Authorization *APICallAuth   `yaml:"authorization,omitempty"`
 	Log           LogConfig      `yaml:"log,omitempty"`
 	Adapter       AdapterInfo    `yaml:"adapter"`
 	Params        []Parameter    `yaml:"params,omitempty"`
@@ -32,6 +33,7 @@ func Merge(adapterCfg *AdapterConfig, taskCfg *AdapterTaskConfig) *Config {
 	return &Config{
 		Adapter:       adapterCfg.Adapter,
 		Clients:       adapterCfg.Clients,
+		Authorization: adapterCfg.Authorization,
 		DebugConfig:   adapterCfg.DebugConfig,
 		Log:           adapterCfg.Log,
 		Params:        taskCfg.Params,
@@ -50,6 +52,11 @@ func (c *Config) Redacted() *Config {
 	}
 	copy := *c
 	copy.Clients = redactedClients(c.Clients)
+	if c.Authorization != nil && c.Authorization.Token != "" {
+		authCopy := *c.Authorization
+		authCopy.Token = redactedValue
+		copy.Authorization = &authCopy
+	}
 	return &copy
 }
 
@@ -237,19 +244,32 @@ type Precondition struct {
 
 // APICall represents an API call configuration
 type APICall struct {
-	Method        string   `yaml:"method" validate:"required,oneof=GET POST PUT PATCH DELETE"`
-	URL           string   `yaml:"url" validate:"required"`
-	Timeout       string   `yaml:"timeout,omitempty"`
-	RetryBackoff  string   `yaml:"retry_backoff,omitempty"`
-	Body          string   `yaml:"body,omitempty"`
-	Headers       []Header `yaml:"headers,omitempty"`
-	RetryAttempts int      `yaml:"retry_attempts,omitempty"`
+	Authorization *APICallAuth `yaml:"authorization,omitempty"`
+	Method        string       `yaml:"method" validate:"required,oneof=GET POST PUT PATCH DELETE"`
+	URL           string       `yaml:"url" validate:"required"`
+	Timeout       string       `yaml:"timeout,omitempty"`
+	RetryBackoff  string       `yaml:"retry_backoff,omitempty"`
+	Body          string       `yaml:"body,omitempty"`
+	Headers       []Header     `yaml:"headers,omitempty"`
+	RetryAttempts int          `yaml:"retry_attempts,omitempty"`
 }
 
 // Header represents an HTTP header
 type Header struct {
 	Name  string `yaml:"name"`
 	Value string `yaml:"value"`
+}
+
+// APICallAuth configures bearer token generation for the Authorization header of an api_call.
+// The generated token is set as "Authorization: Bearer <token>", overriding any Authorization
+// header specified in the headers list.
+type APICallAuth struct {
+	ExpirationSeconds *int64 `yaml:"expiration_seconds,omitempty"`
+	Type              string `yaml:"type" validate:"required,oneof=static kubernetes"`
+	Token             string `yaml:"token,omitempty"`
+	Audience          string `yaml:"audience,omitempty"`
+	ServiceAccount    string `yaml:"service_account,omitempty"`
+	Namespace         string `yaml:"namespace,omitempty"`
 }
 
 // CaptureField represents a field capture configuration from API response.
@@ -398,11 +418,8 @@ type PostConfig struct {
 //
 //nolint:govet // fieldalignment: see doc comment above
 type PostAction struct {
+	When       *PostActionWhen `yaml:"when,omitempty"`
 	ActionBase `yaml:",inline"`
-	// When defines a CEL expression that gates execution of this post-action.
-	// If the expression evaluates to false, the action is skipped (not failed).
-	// Follows the same nested pattern as lifecycle.delete.when for consistency.
-	When *PostActionWhen `yaml:"when,omitempty"`
 }
 
 // PostActionWhen defines the condition for when a post-action should execute.
@@ -487,10 +504,13 @@ func (ve *ValidationErrors) HasErrors() bool {
 // Contains infrastructure settings that can be overridden via environment variables
 // and CLI flags using Viper.
 type AdapterConfig struct {
-	Adapter     AdapterInfo   `yaml:"adapter" mapstructure:"adapter"`
-	Log         LogConfig     `yaml:"log,omitempty" mapstructure:"log"`
-	Clients     ClientsConfig `yaml:"clients" mapstructure:"clients"`
-	DebugConfig bool          `yaml:"debug_config,omitempty" mapstructure:"debug_config"`
+	// Authorization is the fallback authorization applied to all api_call requests
+	// that do not have their own authorization block. Omit to send no Authorization header.
+	Authorization *APICallAuth  `yaml:"authorization,omitempty" mapstructure:"authorization"`
+	Adapter       AdapterInfo   `yaml:"adapter" mapstructure:"adapter"`
+	Log           LogConfig     `yaml:"log,omitempty" mapstructure:"log"`
+	Clients       ClientsConfig `yaml:"clients" mapstructure:"clients"`
+	DebugConfig   bool          `yaml:"debug_config,omitempty" mapstructure:"debug_config"`
 }
 
 // ClientsConfig contains configuration for all external clients

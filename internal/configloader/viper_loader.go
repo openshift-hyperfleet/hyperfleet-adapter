@@ -48,6 +48,8 @@ var viperKeyMappings = map[string]string{
 	"clients::kubernetes::api_version":                 "KUBERNETES_API_VERSION",
 	"clients::kubernetes::qps":                         "KUBERNETES_QPS",
 	"clients::kubernetes::burst":                       "KUBERNETES_BURST",
+	"authorization::type":                              "DEFAULT_API_CALL_AUTH_TYPE",
+	"authorization::token":                             "DEFAULT_API_CALL_AUTH_TOKEN",
 }
 
 // cliFlags defines mappings from CLI flag names to config paths

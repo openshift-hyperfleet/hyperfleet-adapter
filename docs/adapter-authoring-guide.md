@@ -244,7 +244,84 @@ preconditions:
       retry_backoff: "exponential"    # also: linear, constant
 ```
 
-URLs are **relative** — the base URL comes from the `AdapterConfig` `clients.hyperfleet_api.base_url` setting. You only write the path.
+URLs are **relative** — the base URL comes from the `AdapterConfig` `clients.hyperfleet_api.base_url` setting. You only write the path. Absolute URLs are also accepted and bypass the base URL.
+
+**`api_call` fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `method` | string | HTTP method: `GET`, `POST`, `PUT`, `PATCH`, `DELETE` |
+| `url` | string | URL or path. Supports Go template rendering against params. |
+| `body` | string | Request body for `POST`/`PUT`/`PATCH`. Supports Go template rendering. |
+| `headers` | list | Additional HTTP headers. Each entry has `name` and `value` (value supports Go templates). |
+| `authorization` | object | Bearer token injected as `Authorization: Bearer <token>`. See [Authenticating API calls](#authenticating-api-calls). Overrides any `Authorization` entry in `headers`. |
+| `timeout` | duration | Per-request timeout (e.g. `10s`, `30s`). Overrides the client default. |
+| `retry_attempts` | int | Number of retry attempts on failure. |
+| `retry_backoff` | string | Backoff strategy: `exponential` (default), `linear`, `constant`. |
+
+### Authenticating API calls
+
+Use the `authorization` block to inject a `Bearer` token into the `Authorization` header. Two sources are supported:
+
+#### Static token
+
+The token value is a Go template rendered against the current params. Use a param sourced from an environment variable to avoid hardcoding secrets:
+
+```yaml
+# In params config — source the token from an env var
+params:
+  - name: "apiToken"
+    source: "env.MY_API_TOKEN"
+
+# In the api_call
+preconditions:
+  - name: "fetchData"
+    api_call:
+      method: "GET"
+      url: "https://external-service/api/resource"
+      authorization:
+        type: static
+        token: "{{ .apiToken }}"
+```
+
+#### Kubernetes ServiceAccount token
+
+When the adapter runs inside a Kubernetes cluster, it can use the pod's ServiceAccount identity.
+
+**Mounted token (no audience)** — reads the token file projected into every pod at `/var/run/secrets/kubernetes.io/serviceaccount/token`. Simple and always available in-cluster:
+
+```yaml
+api_call:
+  method: "GET"
+  url: "https://internal-service/api/data"
+  authorization:
+    type: kubernetes
+```
+
+**TokenRequest (with audience)** — calls the Kubernetes TokenRequest API to create a short-lived bound token for a specific audience. Requires RBAC permission to create tokens for the ServiceAccount:
+
+```yaml
+api_call:
+  method: "GET"
+  url: "https://internal-service/api/data"
+  authorization:
+    type: kubernetes
+    audience: "internal-service"
+    service_account: "hyperfleet-adapter"   # SA to bind the token to
+    namespace: "hyperfleet"                 # defaults to pod's own namespace
+    expiration_seconds: 1800                # defaults to 3600
+```
+
+**`authorization` fields:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | yes | `static` or `kubernetes` |
+| `token` | string | if `type=static` | Bearer token value. Supports Go template rendering. |
+| `audience` | string | no | For `type=kubernetes`: triggers TokenRequest API for this audience. When omitted, reads the mounted SA token file. |
+| `service_account` | string | if `audience` set | ServiceAccount name to create the TokenRequest for. |
+| `namespace` | string | no | Namespace of the ServiceAccount. Defaults to the pod's own namespace. |
+| `expiration_seconds` | int | no | Token lifetime in seconds (default: 3600). Only applies to TokenRequest. |
 
 ### Capturing fields
 
@@ -785,29 +862,24 @@ The resource executor treats apply and delete operations differently when they f
 
 This means a list containing both apply and delete operations behaves predictably: a delete failure does not prevent the next resource from being deleted, but an apply failure stops further processing.
 
-### Resource not found (404 handling)
+### Force-deleted resources (404 handling)
 
-When a precondition API call returns `404 Not Found`, it can mean the resource no longer exists (e.g., deleted externally, incorrect ID in the event, direct DB removal) or that the precondition URL itself is misconfigured. The adapter distinguishes between two types of 404:
-
-- **Resource not found** (default): any 404 is treated as a legitimate "resource does not exist" unless proven otherwise. This includes responses with specific error codes (`HYPERFLEET-NTF-001`, `HYPERFLEET-NTF-002`, `HYPERFLEET-NTF-003`), as well as 404s where the response body was stripped by a proxy or gateway. The adapter handles this gracefully — resources are skipped and post-actions still execute.
-- **Broken endpoint** (error code `HYPERFLEET-NTF-000`): the catch-all 404 handler confirms no route matched the URL. The adapter treats this as a configuration error and reports failure status.
-
-When the adapter detects a resource-not-found 404:
+When a resource is force-deleted externally (e.g., removed from the HyperFleet API while the adapter is running), the precondition API call returns a `404 Not Found`. Instead of treating this as a hard failure, the adapter handles it gracefully:
 
 - `adapter.resourcesSkipped` is set to `true`
 - `adapter.skipReason` is set to `"ResourceNotFound"`
 - The resources phase is skipped entirely
 - Post-actions still execute, so the adapter can report the skip back to the API
 
-This means your post-action CEL expressions can detect the missing resource and report an appropriate status:
+This means your post-action CEL expressions can detect force-deletion and report an appropriate status:
 
 ```cel
 adapter.?skipReason.orValue("") == "ResourceNotFound"
-  ? "Resource does not exist"
+  ? "Resource was deleted externally"
   : adapter.?skipReason.orValue("unknown reason")
 ```
 
-The same 404 handling applies during post-action execution: a post-action 404 is treated as resource-not-found and remaining post-actions are skipped gracefully, unless the response contains error code `HYPERFLEET-NTF-000` indicating a misconfigured URL.
+The same 404 handling applies during post-action execution: if a post-action API call returns 404, remaining post-actions are skipped gracefully rather than failed.
 
 ### Partial delete failures
 
@@ -1758,4 +1830,4 @@ See also [Preconditions — Supported operators](#supported-operators).
 | `CEL expression parse error` | Invalid CEL syntax | Verify parentheses, string quoting, and optional chaining syntax (`?.` for safe field access). |
 | Discovery returns empty | Labels don't match or wrong namespace | Verify `discovery.namespace` is correct. Use `by_name` for a simpler lookup. Check resource labels match the selector exactly. |
 | `observed_generation` is a string | Using Go Template instead of CEL expression | Use `expression: "generation"` instead of `"{{ .generation }}"`. |
-| Post-action API call returns 404 with error status | Wrong status endpoint path (error code `HYPERFLEET-NTF-000`) | Cluster statuses: `/clusters/{id}/statuses`. NodePool statuses: `/clusters/{id}/nodepools/{id}/statuses`. |
+| Post-action API call returns 404 | Wrong status endpoint path | Cluster statuses: `/clusters/{id}/statuses`. NodePool statuses: `/clusters/{id}/nodepools/{id}/statuses`. |

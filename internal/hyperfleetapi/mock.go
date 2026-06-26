@@ -66,9 +66,17 @@ func (m *MockClient) Do(ctx context.Context, req *Request) (*Response, error) {
 	return m.DoResponse, nil
 }
 
+// applyOpts applies RequestOptions to a Request.
+func applyOpts(req *Request, opts []RequestOption) {
+	for _, opt := range opts {
+		opt(req)
+	}
+}
+
 // Get implements Client.Get
 func (m *MockClient) Get(ctx context.Context, url string, opts ...RequestOption) (*Response, error) {
 	req := &Request{Method: "GET", URL: url}
+	applyOpts(req, opts)
 	m.Requests = append(m.Requests, req)
 	if m.GetError != nil {
 		return nil, m.GetError
@@ -79,6 +87,7 @@ func (m *MockClient) Get(ctx context.Context, url string, opts ...RequestOption)
 // Post implements Client.Post
 func (m *MockClient) Post(ctx context.Context, url string, body []byte, opts ...RequestOption) (*Response, error) {
 	req := &Request{Method: "POST", URL: url, Body: body}
+	applyOpts(req, opts)
 	m.Requests = append(m.Requests, req)
 	if m.PostError != nil {
 		return nil, m.PostError
@@ -89,6 +98,7 @@ func (m *MockClient) Post(ctx context.Context, url string, body []byte, opts ...
 // Put implements Client.Put
 func (m *MockClient) Put(ctx context.Context, url string, body []byte, opts ...RequestOption) (*Response, error) {
 	req := &Request{Method: "PUT", URL: url, Body: body}
+	applyOpts(req, opts)
 	m.Requests = append(m.Requests, req)
 	if m.PutError != nil {
 		return nil, m.PutError
@@ -99,6 +109,7 @@ func (m *MockClient) Put(ctx context.Context, url string, body []byte, opts ...R
 // Patch implements Client.Patch
 func (m *MockClient) Patch(ctx context.Context, url string, body []byte, opts ...RequestOption) (*Response, error) {
 	req := &Request{Method: "PATCH", URL: url, Body: body}
+	applyOpts(req, opts)
 	m.Requests = append(m.Requests, req)
 	if m.PatchError != nil {
 		return nil, m.PatchError
@@ -109,6 +120,7 @@ func (m *MockClient) Patch(ctx context.Context, url string, body []byte, opts ..
 // Delete implements Client.Delete
 func (m *MockClient) Delete(ctx context.Context, url string, opts ...RequestOption) (*Response, error) {
 	req := &Request{Method: "DELETE", URL: url}
+	applyOpts(req, opts)
 	m.Requests = append(m.Requests, req)
 	if m.DeleteError != nil {
 		return nil, m.DeleteError

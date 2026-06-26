@@ -51,6 +51,21 @@ func (v *AdapterConfigValidator) ValidateStructure() error {
 		return fmt.Errorf("%s", errs.First())
 	}
 
+	if auth := v.config.Authorization; auth != nil {
+		switch auth.Type {
+		case "static":
+			if auth.Token == "" {
+				return fmt.Errorf("authorization: static authorization requires token to be set")
+			}
+		case "kubernetes":
+			if auth.Audience != "" && auth.ServiceAccount == "" {
+				return fmt.Errorf("authorization: kubernetes authorization with audience requires service_account")
+			}
+		default:
+			return fmt.Errorf("authorization: unsupported type %q (must be static or kubernetes)", auth.Type)
+		}
+	}
+
 	return nil
 }
 
@@ -368,6 +383,7 @@ func (v *TaskConfigValidator) validateTemplateVariables() {
 				v.validateTemplateString(header.Value,
 					fmt.Sprintf("%s.%s[%d].%s", basePath, FieldHeaders, j, FieldHeaderValue))
 			}
+			v.validateAPICallAuth(precond.APICall.Authorization, basePath+".authorization")
 		}
 	}
 
@@ -421,6 +437,7 @@ func (v *TaskConfigValidator) validateTemplateVariables() {
 					v.validateTemplateString(header.Value,
 						fmt.Sprintf("%s.%s[%d].%s", basePath, FieldHeaders, j, FieldHeaderValue))
 				}
+				v.validateAPICallAuth(action.APICall.Authorization, basePath+".authorization")
 			}
 		}
 
@@ -431,6 +448,26 @@ func (v *TaskConfigValidator) validateTemplateVariables() {
 					v.validateTemplateMap(buildMap, fmt.Sprintf("%s.%s[%d].%s", FieldPost, FieldPayloads, i, FieldBuild))
 				}
 			}
+		}
+	}
+}
+
+// validateAPICallAuth validates an APICallAuth config block.
+// Checks cross-field constraints that cannot be expressed with struct tags.
+func (v *TaskConfigValidator) validateAPICallAuth(auth *APICallAuth, path string) {
+	if auth == nil {
+		return
+	}
+	switch auth.Type {
+	case "static":
+		if auth.Token == "" {
+			v.errors.Add(path, "static authorization requires token to be set")
+		} else {
+			v.validateTemplateString(auth.Token, path+".token")
+		}
+	case "kubernetes":
+		if auth.Audience != "" && auth.ServiceAccount == "" {
+			v.errors.Add(path, "kubernetes authorization with audience requires service_account to be set")
 		}
 	}
 }
