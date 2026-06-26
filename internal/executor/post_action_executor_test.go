@@ -661,6 +661,102 @@ func TestExecuteAPICall(t *testing.T) {
 	}
 }
 
+func TestExecuteAPICall_Authorization(t *testing.T) {
+	okResponse := &hyperfleetapi.Response{StatusCode: http.StatusOK, Status: "200 OK"}
+
+	tests := []struct {
+		authorization      *configloader.APICallAuth
+		params             map[string]interface{}
+		name               string
+		expectedAuthHeader string
+		extraHeaders       []configloader.Header
+		expectError        bool
+	}{
+		{
+			name: "static token sets Authorization header",
+			authorization: &configloader.APICallAuth{
+				Type:  "static",
+				Token: "my-secret-token",
+			},
+			params:             map[string]interface{}{},
+			expectedAuthHeader: "Bearer my-secret-token",
+		},
+		{
+			name: "static token with template rendering",
+			authorization: &configloader.APICallAuth{
+				Type:  "static",
+				Token: "{{ .apiToken }}",
+			},
+			params:             map[string]interface{}{"apiToken": "rendered-token"},
+			expectedAuthHeader: "Bearer rendered-token",
+		},
+		{
+			name: "auth header overrides explicit Authorization in headers list",
+			authorization: &configloader.APICallAuth{
+				Type:  "static",
+				Token: "auth-block-token",
+			},
+			extraHeaders: []configloader.Header{
+				{Name: "Authorization", Value: "Bearer manual-token"},
+			},
+			params:             map[string]interface{}{},
+			expectedAuthHeader: "Bearer auth-block-token",
+		},
+		{
+			name: "static token template error returns error",
+			authorization: &configloader.APICallAuth{
+				Type:  "static",
+				Token: "{{ .missing }}",
+			},
+			params:      map[string]interface{}{},
+			expectError: true,
+		},
+		{
+			name: "kubernetes type without audience fails outside cluster",
+			authorization: &configloader.APICallAuth{
+				Type: "kubernetes",
+			},
+			params:      map[string]interface{}{},
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockClient := hyperfleetapi.NewMockClient()
+			mockClient.GetResponse = okResponse
+
+			apiCall := &configloader.APICall{
+				Method:        "GET",
+				URL:           "http://api.example.com/resource",
+				Authorization: tt.authorization,
+				Headers:       tt.extraHeaders,
+			}
+
+			execCtx := NewExecutionContext(context.Background(), map[string]interface{}{}, &configloader.Config{})
+			execCtx.Params = tt.params
+
+			_, _, err := ExecuteAPICall(
+				context.Background(),
+				apiCall,
+				execCtx,
+				mockClient,
+				logger.NewTestLogger(),
+			)
+
+			if tt.expectError {
+				assert.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			lastReq := mockClient.GetLastRequest()
+			require.NotNil(t, lastReq)
+			assert.Equal(t, tt.expectedAuthHeader, lastReq.Headers["Authorization"])
+		})
+	}
+}
+
 func TestPostActionWhenCondition(t *testing.T) {
 	tests := []struct {
 		when             *configloader.PostActionWhen

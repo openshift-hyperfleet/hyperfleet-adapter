@@ -6,8 +6,6 @@ This guide explains how to configure and deploy an adapter instance using the He
 
 ## Configuration Overview
 
-The HyperFleet Adapter Helm chart is released as an OCI artifact at `oci://quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-adapter-chart`.
-
 An adapter deployment requires three pieces of configuration, all settable through Helm values:
 
 | Config | Helm value | Purpose |
@@ -203,6 +201,62 @@ gcloud projects add-iam-policy-binding MY_PROJECT \
 
 ---
 
+## API Call Authorization
+
+The adapter injects a bearer token on outbound `api_call` HTTP requests. Authorization can be configured in two places:
+
+- **Per `api_call` block** — set in the task config `authorization` field. Only applies to that call.
+- **Global default** — set in the adapter deployment config (`authorization`). Applied to any `api_call` that has no per-call authorization.
+
+Per-call authorization always takes precedence over the global default. To use the global default, omit `authorization` from the task config `api_call` block and configure `authorization` in `adapter-config.yaml`:
+
+```yaml
+authorization:
+  type: kubernetes        # or "static"
+  audience: "hyperfleet-api"            # optional: for TokenRequest API
+  service_account: "hyperfleet-adapter" # required when audience is set
+```
+
+The `token` field for `type: static` can be injected via the `HYPERFLEET_DEFAULT_API_CALL_AUTH_TOKEN` environment variable to avoid storing secrets in the config file.
+
+Deployment requirements depend on the authorization mode:
+
+### `type: static`
+
+No cluster configuration required. The token value is rendered from a Go template at runtime using the event's params. Inject secrets via environment variables and expose them as params.
+
+### `type: kubernetes` (mounted token, no `audience`)
+
+The adapter reads the pod's projected ServiceAccount token from `/var/run/secrets/kubernetes.io/serviceaccount/token`. Kubernetes mounts this automatically — no Helm changes needed unless `automountServiceAccountToken` was explicitly disabled on the pod or ServiceAccount.
+
+If it was disabled, re-enable it:
+
+```yaml
+serviceAccount:
+  automountServiceAccountToken: true
+```
+
+### `type: kubernetes` with `audience` (TokenRequest API)
+
+The adapter calls the Kubernetes TokenRequest API to create a short-lived bound token. The pod's ServiceAccount needs `create` permission on the `serviceaccounts/token` subresource.
+
+Use `rbac.rules` (not `rbac.resources`) since subresources require a separate RBAC rule:
+
+```yaml
+rbac:
+  create: true
+  rules:
+    - apiGroups: [""]
+      resources: ["serviceaccounts/token"]
+      verbs: ["create"]
+```
+
+The ClusterRole created by the chart will include this rule alongside any `rbac.resources` entries.
+
+> **Note:** The TokenRequest is scoped to the namespace where the adapter runs. If `namespace` is not set in the `authorization` block, the adapter reads it from the pod's mounted namespace file — which is the correct default for in-cluster deployments.
+
+---
+
 ## Examples
 
 ### Minimal (RabbitMQ, chart-packaged files)
@@ -210,8 +264,8 @@ gcloud projects add-iam-policy-binding MY_PROJECT \
 ```yaml
 image:
   registry: quay.io
-  repository: redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-adapter
-  tag: <version>
+  repository: openshift-hyperfleet/hyperfleet-adapter
+  tag: v0.2.0
 
 adapterConfig:
   create: true
@@ -239,15 +293,15 @@ broker:
 ```yaml
 image:
   registry: quay.io
-  repository: redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-adapter
-  tag: <version>
+  repository: openshift-hyperfleet/my-adapter
+  tag: v1.0.0
 
 adapterConfig:
   create: true
   yaml:
     adapter:
       name: my-adapter
-      version: "<version-no-v-prefix>"
+      version: "1.0.0"
     clients:
       hyperfleet_api:
         base_url: http://hyperfleet-api:8000
