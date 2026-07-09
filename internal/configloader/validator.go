@@ -58,6 +58,7 @@ func (v *AdapterConfigValidator) ValidateStructure() error {
 type TaskConfigValidator struct {
 	config      *AdapterTaskConfig
 	errors      *ValidationErrors
+	warnings    []string
 	definedVars map[string]bool
 	celEnv      *cel.Env
 	baseDir     string
@@ -70,6 +71,11 @@ func NewTaskConfigValidator(config *AdapterTaskConfig, baseDir string) *TaskConf
 		baseDir: baseDir,
 		errors:  &ValidationErrors{},
 	}
+}
+
+// Warnings returns deprecation warnings collected during validation.
+func (v *TaskConfigValidator) Warnings() []string {
+	return v.warnings
 }
 
 // ValidateStructure validates the structural requirements of AdapterTaskConfig
@@ -182,15 +188,16 @@ func (v *TaskConfigValidator) validatePreconditionAPICallForbidden() {
 	for i, precond := range v.config.Preconditions {
 		if precond.APICall != nil {
 			path := fmt.Sprintf("%s[%d].%s", FieldPreconditions, i, FieldAPICall)
-			v.errors.Add(path, fmt.Sprintf(
-				"precondition %q contains api_call. api_call is no longer valid in the precondition phase.\n"+
-					"Move the api_call block to a params entry:\n"+
+			v.warnings = append(v.warnings, fmt.Sprintf(
+				"%s: DEPRECATED: precondition %q uses api_call directly. "+
+					"Move the api_call block to a params entry with source.api_call instead. "+
+					"Direct api_call on preconditions will be removed in a future release.\n"+
 					"  params:\n"+
 					"    - name: %q\n"+
 					"      source:\n"+
 					"        api_call:\n"+
 					"          ...",
-				precond.Name, precond.Name))
+				path, precond.Name, precond.Name))
 		}
 	}
 }
