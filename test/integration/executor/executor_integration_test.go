@@ -37,6 +37,18 @@ func getK8sEnvForTest(t *testing.T) *K8sTestEnv {
 	return nil
 }
 
+// createTestEventPayload returns just the data payload bytes for a test event.
+func createTestEventPayload(clusterID string) []byte {
+	eventData := map[string]interface{}{
+		"id":            clusterID,
+		"resource_type": "cluster",
+		"generation":    int64(1),
+		"href":          "/api/v1/clusters/" + clusterID,
+	}
+	bytes, _ := json.Marshal(eventData)
+	return bytes
+}
+
 // createTestEvent creates a CloudEvent for testing
 func createTestEvent(clusterID string) *event.Event {
 	evt := event.New()
@@ -1682,4 +1694,348 @@ func TestExecutor_PayloadWhenCondition(t *testing.T) {
 	assert.Equal(t, 1, statusPUTs, "Only one status PUT should be made")
 
 	t.Logf("Payload when condition test completed: skipped payload correctly prevented post-action execution")
+}
+
+// TestExecutor_CELNamespaces_EnvAndEvent verifies that env.* and event.* are available
+// as CEL variables in every supported evaluation context:
+// precondition expression, resource lifecycle when, payload when, post_action when, post payload build.
+func TestExecutor_CELNamespaces_EnvAndEvent(t *testing.T) {
+	mockAPI := testutil.NewMockAPIServer(t)
+	defer mockAPI.Close()
+
+	t.Setenv("HYPERFLEET_API_BASE_URL", mockAPI.URL())
+	t.Setenv("HYPERFLEET_API_VERSION", "v1")
+	t.Setenv("CEL_NS_TEST_VAR", "cel-namespace-test")
+
+	k8sEnv := getK8sEnvForTest(t)
+
+	ns := "cel-ns-env"
+	k8sEnv.CreateTestNamespace(t, ns)
+	defer k8sEnv.CleanupTestNamespace(t, ns)
+
+	config := &configloader.Config{
+		Adapter: configloader.AdapterInfo{Name: "cel-ns-test", Version: "1.0.0"},
+		Clients: configloader.ClientsConfig{
+			HyperfleetAPI: configloader.HyperfleetAPIConfig{
+				Timeout: 10 * time.Second, RetryAttempts: 1, RetryBackoff: hyperfleetapi.BackoffConstant,
+			},
+		},
+		Params: []configloader.Parameter{
+			{Name: "hyperfleetApiBaseUrl", Source: configloader.StringSource("env.HYPERFLEET_API_BASE_URL"), Required: true},
+			{Name: "hyperfleetApiVersion", Default: "v1"},
+			{Name: "clusterID", Source: configloader.StringSource("event.id"), Required: true},
+		},
+		// Context: precondition expression — env.* and event.* referenced directly (no APICall)
+		Preconditions: []configloader.Precondition{
+			{
+				ActionBase: configloader.ActionBase{Name: "envAndEventCheck"},
+				Expression: `env.CEL_NS_TEST_VAR == "cel-namespace-test" && event.resource_type == "cluster"`,
+			},
+		},
+		// Context: resource lifecycle when — env.* gates resource creation
+		Resources: []configloader.Resource{
+			{
+				Name: "testConfigMap",
+				Manifest: map[string]interface{}{
+					"apiVersion": "v1",
+					"kind":       "ConfigMap",
+					"metadata": map[string]interface{}{
+						"name":      "cel-ns-test-cm",
+						"namespace": ns,
+					},
+					"data": map[string]interface{}{
+						"created-by": "cel-ns-test",
+					},
+				},
+				Lifecycle: &configloader.ResourceLifecycle{
+					Create: &configloader.LifecycleCreate{
+						When: &configloader.LifecycleWhen{
+							Expression: `env.CEL_NS_TEST_VAR == "cel-namespace-test"`,
+						},
+					},
+				},
+			},
+		},
+		Post: &configloader.PostConfig{
+			Payloads: []configloader.Payload{
+				{
+					// Context: payload when — env.* gates payload construction
+					Name: "envGatedPayload",
+					When: &configloader.PostActionWhen{
+						Expression: `env.CEL_NS_TEST_VAR == "cel-namespace-test"`,
+					},
+					// Context: post payload build — env.* and event.* in expression fields
+					Build: map[string]interface{}{
+						"envValue": map[string]interface{}{
+							"expression": `env.CEL_NS_TEST_VAR`,
+						},
+						"eventResourceType": map[string]interface{}{
+							"expression": `event.resource_type`,
+						},
+						"clusterID": map[string]interface{}{
+							"value": "{{ .clusterID }}",
+						},
+					},
+				},
+			},
+			PostActions: []configloader.PostAction{
+				{
+					ActionBase: configloader.ActionBase{
+						Name: "reportStatus",
+						APICall: &configloader.APICall{
+							Method:  "PUT",
+							URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterID }}/statuses",
+							Body:    "{{ .envGatedPayload }}",
+							Timeout: "5s",
+						},
+					},
+					// Context: post_action when — event.* gates execution
+					When: &configloader.PostActionWhen{
+						Expression: `event.resource_type == "cluster"`,
+					},
+				},
+			},
+		},
+	}
+
+	apiClient, err := hyperfleetapi.NewClient(testLog(), hyperfleetapi.WithRetryAttempts(1))
+	require.NoError(t, err)
+
+	exec, err := executor.NewBuilder().
+		WithConfig(config).
+		WithAPIClient(apiClient).
+		WithLogger(k8sEnv.Log).
+		WithTransportClient(k8sEnv.Client).
+		Build()
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	result := exec.Execute(ctx, createTestEventPayload("cel-ns-cluster"))
+
+	require.Equal(t, executor.StatusSuccess, result.Status,
+		"Expected success; errors=%v", result.Errors)
+
+	require.Len(t, result.PreconditionResults, 1)
+	assert.True(t, result.PreconditionResults[0].Matched,
+		"Precondition using env.* and event.* should match")
+
+	require.Len(t, result.ResourceResults, 1)
+	assert.NotEqual(t, executor.StatusFailed, result.ResourceResults[0].Status,
+		"Resource with env.* lifecycle create.when should not fail")
+
+	require.Len(t, result.PostActionResults, 1)
+	assert.Equal(t, executor.StatusSuccess, result.PostActionResults[0].Status,
+		"Post-action gated on event.* should execute")
+	assert.True(t, result.PostActionResults[0].APICallMade,
+		"Post-action should make API call when event.* when condition is true")
+
+	// Payload was built (payload when using env.* evaluated to true)
+	requests := mockAPI.GetRequests()
+	var statusPUT map[string]interface{}
+	for _, req := range requests {
+		if req.Method == http.MethodPut {
+			_ = json.Unmarshal([]byte(req.Body), &statusPUT)
+		}
+	}
+	require.NotNil(t, statusPUT, "Expected a PUT request with the built payload")
+	assert.Equal(t, "cel-namespace-test", statusPUT["envValue"],
+		"Payload build expression using env.* should resolve correctly")
+	assert.Equal(t, "cluster", statusPUT["eventResourceType"],
+		"Payload build expression using event.* should resolve correctly")
+
+	t.Logf("CEL namespace test completed: env.* and event.* verified in " +
+		"precondition, lifecycle when, payload when, payload build, post_action when")
+}
+
+// TestExecutor_CELNamespaces_ResourcesAdapterCaptures verifies that resources.*, adapter.*,
+// and precondition capture names are available as CEL variables in every supported post-phase context:
+// resource lifecycle when, payload when, post_action when, post payload build.
+func TestExecutor_CELNamespaces_ResourcesAdapterCaptures(t *testing.T) {
+	mockAPI := testutil.NewMockAPIServer(t)
+	defer mockAPI.Close()
+
+	t.Setenv("HYPERFLEET_API_BASE_URL", mockAPI.URL())
+	t.Setenv("HYPERFLEET_API_VERSION", "v1")
+
+	k8sEnv := getK8sEnvForTest(t)
+
+	const ns = "cel-ns-rac"
+	k8sEnv.CreateTestNamespace(t, ns)
+	defer k8sEnv.CleanupTestNamespace(t, ns)
+
+	config := &configloader.Config{
+		Adapter: configloader.AdapterInfo{Name: "cel-ns-rac-test", Version: "1.0.0"},
+		Clients: configloader.ClientsConfig{
+			HyperfleetAPI: configloader.HyperfleetAPIConfig{
+				Timeout: 10 * time.Second, RetryAttempts: 1, RetryBackoff: hyperfleetapi.BackoffConstant,
+			},
+		},
+		Params: []configloader.Parameter{
+			{Name: "hyperfleetApiBaseUrl", Source: configloader.StringSource("env.HYPERFLEET_API_BASE_URL"), Required: true},
+			{Name: "hyperfleetApiVersion", Default: "v1"},
+			{Name: "clusterID", Source: configloader.StringSource("event.id"), Required: true},
+		},
+		Preconditions: []configloader.Precondition{
+			{
+				ActionBase: configloader.ActionBase{
+					Name: "clusterStatus",
+					APICall: &configloader.APICall{
+						Method:  "GET",
+						URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterID }}",
+						Timeout: "5s",
+					},
+				},
+				// Capture clusterName for use in post-phase CEL expressions
+				Capture: []configloader.CaptureField{
+					{Name: "clusterName", FieldExpressionDef: configloader.FieldExpressionDef{Field: "name"}},
+				},
+				Conditions: []configloader.Condition{
+					{Field: "clusterName", Operator: "equals", Value: "test-cluster"},
+				},
+			},
+		},
+		Resources: []configloader.Resource{
+			{
+				Name: "racConfigMap",
+				Manifest: map[string]interface{}{
+					"apiVersion": "v1",
+					"kind":       "ConfigMap",
+					"metadata": map[string]interface{}{
+						"name":      "cel-ns-rac-cm",
+						"namespace": ns,
+					},
+					"data": map[string]interface{}{"created-by": "cel-ns-rac-test"},
+				},
+				// Context: resource lifecycle when — event.* gates resource creation
+				Lifecycle: &configloader.ResourceLifecycle{
+					Create: &configloader.LifecycleCreate{
+						When: &configloader.LifecycleWhen{
+							Expression: `event.resource_type == "cluster"`,
+						},
+					},
+				},
+				Discovery: &configloader.DiscoveryConfig{
+					Namespace: ns,
+					ByName:    "cel-ns-rac-cm",
+				},
+			},
+		},
+		Post: &configloader.PostConfig{
+			Payloads: []configloader.Payload{
+				{
+					Name: "racPayload",
+					// Context: payload when — captures gate payload construction
+					When: &configloader.PostActionWhen{
+						Expression: `clusterName == "test-cluster"`,
+					},
+					Build: map[string]interface{}{
+						// Context: post payload build — capture name in CEL expression
+						"capturedClusterName": map[string]interface{}{
+							"expression": `clusterName`,
+						},
+						// Context: post payload build — resources.* in CEL expression
+						"k8sResourceName": map[string]interface{}{
+							"expression": `resources.?racConfigMap.?metadata.?name.orValue("")`,
+						},
+						// Context: post payload build — adapter.* in CEL expression
+						"executionOk": map[string]interface{}{
+							"expression": `adapter.executionStatus == "success"`,
+						},
+					},
+				},
+			},
+			PostActions: []configloader.PostAction{
+				{
+					ActionBase: configloader.ActionBase{
+						Name: "reportViaResources",
+						APICall: &configloader.APICall{
+							Method:  "PUT",
+							URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterID }}/statuses",
+							Body:    "{{ .racPayload }}",
+							Timeout: "5s",
+						},
+					},
+					// Context: post_action when — resources.* gates execution
+					When: &configloader.PostActionWhen{
+						Expression: `resources.?racConfigMap.hasValue()`,
+					},
+				},
+				{
+					ActionBase: configloader.ActionBase{
+						Name: "reportViaAdapter",
+						APICall: &configloader.APICall{
+							Method:  "PUT",
+							URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterID }}/statuses",
+							Body:    `{"adapterGated":true}`,
+							Timeout: "5s",
+						},
+					},
+					// Context: post_action when — adapter.* gates execution
+					When: &configloader.PostActionWhen{
+						Expression: `adapter.executionStatus == "success"`,
+					},
+				},
+			},
+		},
+	}
+
+	apiClient, err := hyperfleetapi.NewClient(testLog(), hyperfleetapi.WithRetryAttempts(1))
+	require.NoError(t, err)
+
+	exec, err := executor.NewBuilder().
+		WithConfig(config).
+		WithAPIClient(apiClient).
+		WithLogger(k8sEnv.Log).
+		WithTransportClient(k8sEnv.Client).
+		Build()
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	result := exec.Execute(ctx, createTestEventPayload("cel-rac-cluster"))
+
+	require.Equal(t, executor.StatusSuccess, result.Status,
+		"Expected success; errors=%v", result.Errors)
+
+	require.Len(t, result.PreconditionResults, 1)
+	assert.True(t, result.PreconditionResults[0].Matched, "Precondition should match")
+	assert.Equal(t, "test-cluster", result.PreconditionResults[0].CapturedFields["clusterName"],
+		"clusterName capture should contain API response value")
+
+	require.Len(t, result.ResourceResults, 1)
+	assert.NotEqual(t, executor.StatusFailed, result.ResourceResults[0].Status,
+		"Resource with event.* lifecycle create.when should not fail")
+
+	// Both post-actions ran
+	require.Len(t, result.PostActionResults, 2)
+
+	assert.Equal(t, executor.StatusSuccess, result.PostActionResults[0].Status,
+		"post_action when using resources.* should execute")
+	assert.True(t, result.PostActionResults[0].APICallMade)
+
+	assert.Equal(t, executor.StatusSuccess, result.PostActionResults[1].Status,
+		"post_action when using adapter.* should execute")
+	assert.True(t, result.PostActionResults[1].APICallMade)
+
+	// Verify payload contents: captures, resources.*, adapter.* resolved correctly in build expressions
+	requests := mockAPI.GetRequests()
+	var racPayload map[string]interface{}
+	for _, req := range requests {
+		if req.Method == http.MethodPut && strings.Contains(req.Body, "capturedClusterName") {
+			_ = json.Unmarshal([]byte(req.Body), &racPayload)
+		}
+	}
+	require.NotNil(t, racPayload, "Expected PUT request containing racPayload")
+	assert.Equal(t, "test-cluster", racPayload["capturedClusterName"],
+		"Payload build CEL expression using capture name should resolve correctly")
+	assert.Equal(t, "cel-ns-rac-cm", racPayload["k8sResourceName"],
+		"Payload build CEL expression using resources.* should resolve correctly")
+	assert.Equal(t, true, racPayload["executionOk"],
+		"Payload build CEL expression using adapter.* should resolve correctly")
+
+	t.Logf("CEL namespace test completed: resources.*, adapter.*, and captures verified in " +
+		"resource lifecycle when, payload when, post_action when, post payload build")
 }

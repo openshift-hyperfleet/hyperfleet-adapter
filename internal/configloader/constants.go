@@ -13,6 +13,8 @@ const (
 	FieldPreconditions = "preconditions"
 	FieldResources     = "resources"
 	FieldPost          = "post"
+	FieldEnv           = "env"
+	FieldEvent         = "event"
 )
 
 // Adapter field names

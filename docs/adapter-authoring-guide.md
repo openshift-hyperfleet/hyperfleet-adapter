@@ -1790,6 +1790,19 @@ More information about deployment can be found in [Architecture repository - Hyp
 
 > For the full CEL reference including implementation details, see [CEL Conventions](conventions/cel.md).
 
+### Available namespaces
+
+| Namespace | Description | Example |
+|---|---|---|
+| _(param names)_ | Extracted params as top-level names — write `clusterID`, not `params.clusterID` | `clusterID`, `region` |
+| `resources.*` | Discovered K8s resources by alias (empty during precondition phase) | `resources.managedCluster.status` |
+| `adapter.*` | Adapter execution metadata; meaningful values only in post-phase expressions | `adapter.executionStatus`, `adapter.errorMessage` |
+| `env.*` | OS environment variables accessible to the process | `env.REGION`, `env.NAMESPACE` |
+| `event.*` | Triggering CloudEvent payload fields | `event.id`, `event.kind` |
+| `config.*` | Full adapter deployment config as a nested map | `config.clients.hyperfleetApi.baseUrl` |
+
+See [CEL Conventions — Variable Reference](conventions/cel.md#variable-reference) for per-context availability and reserved name rules.
+
 ```cel
 # Optional chaining — safe access to fields that may not exist
 resources.?clusterNamespace.?status.?phase.orValue("")

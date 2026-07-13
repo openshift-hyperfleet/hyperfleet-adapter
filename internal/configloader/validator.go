@@ -379,6 +379,14 @@ func (v *TaskConfigValidator) initCELEnv() error {
 		options = append(options, cel.Variable(FieldAdapter, cel.MapType(cel.StringType, cel.DynType)))
 	}
 
+	if !addedRoots[FieldEnv] {
+		options = append(options, cel.Variable(FieldEnv, cel.MapType(cel.StringType, cel.DynType)))
+	}
+
+	if !addedRoots[FieldEvent] {
+		options = append(options, cel.Variable(FieldEvent, cel.MapType(cel.StringType, cel.DynType)))
+	}
+
 	env, err := cel.NewEnv(options...)
 	if err != nil {
 		return err

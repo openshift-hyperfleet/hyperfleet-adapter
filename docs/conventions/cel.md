@@ -6,10 +6,37 @@ Used in precondition expressions, lifecycle delete conditions, and post-action `
 
 ## Variables
 
-Extracted params are injected as **top-level** names — write `clusterID`, not `params.clusterID`.
+### Namespace availability by evaluation context
 
-- `resources.*` — discovered resources by alias (e.g., `resources.myCluster`)
-- `adapter.*` — adapter metadata (executionStatus, resourcesSkipped, skipReason, errorReason, errorMessage, executionError, resourceErrors). See `adapterMetadataToMap()` in `internal/executor/utils.go` for current fields.
+| Variable | Type | Available in | Description |
+|---|---|---|---|
+| _(param names)_ | any | all contexts[¹](#footnotes) | Extracted params injected as **top-level names** (eg. `clusterID`). Includes api_call result maps, event-derived values, env-derived values, and expression results. |
+| _(capture names)_ | any | resources, post payloads, post_action when, payload when | Named captures from `precondition.capture` are stored in params and promoted to top-level names in all downstream contexts. |
+| `resources.*` | map | resources (pre-discovery state), post payloads, post_action when, payload when | Discovered resources by alias. Empty during precondition phase. Deleted resources are absent (use optional access: `resources.?name.hasValue()`). |
+| `adapter.*` | map | all contexts[¹](#footnotes) | Adapter execution metadata. See fields below. Values are only meaningful in post-phase expressions - during params and preconditions `executionStatus` is always `"success"` and error fields are empty. |
+| `env.*` | map | all contexts[¹](#footnotes) | All OS environment variables accessible to the process (`env.MY_VAR`). No declaration needed. |
+| `event.*` | map | all contexts[¹](#footnotes) | Full triggering event payload (`event.id`, `event.kind`, etc.). No declaration needed. |
+| `config.*` | map | all contexts[¹](#footnotes) | Full adapter deployment config as a nested map. |
+
+#### Footnotes
+
+¹ "All contexts" means: param CEL expressions, precondition expressions/conditions, lifecycle create/delete when, payload when, payload build expressions, post_action when.
+
+#### adapter.* fields
+
+| Field | Type | Description |
+|---|---|---|
+| `adapter.executionStatus` | string | `"success"` or `"failed"` |
+| `adapter.resourcesSkipped` | bool | `true` when resources were intentionally skipped |
+| `adapter.skipReason` | string | why resources were skipped |
+| `adapter.errorReason` | string | error category if failed |
+| `adapter.errorMessage` | string | error message if failed |
+| `adapter.executionError` | map or null | `{phase, step, message}` for the first failure, nil otherwise |
+| `adapter.resourceErrors` | map | per-resource error maps keyed by resource name |
+
+#### Reserved names
+
+`adapter`, `resources`, `env`, and `event` are **reserved** — they are overwritten by the runtime at evaluation time regardless of any param with the same name. `config` is also set by the runtime but a param named `config` would take precedence in earlier phases.
 
 ## Custom Functions
 

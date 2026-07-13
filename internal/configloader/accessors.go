@@ -10,7 +10,7 @@ import (
 
 // builtinVariables is the list of built-in variables always available in templates/CEL
 var builtinVariables = []string{
-	"adapter", "config", "now", "date",
+	"adapter", "config", "env", "event", "now", "date",
 }
 
 // BuiltinVariables returns the list of built-in variables always available in templates/CEL
