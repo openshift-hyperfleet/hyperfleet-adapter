@@ -398,6 +398,8 @@ func (ec *ExecutionContext) GetCELVariables() map[string]interface{} {
 		}
 	}
 	result["resources"] = resources
+	result["event"] = ec.EventData
+	result["env"] = buildEnvMap()
 
 	return result
 }

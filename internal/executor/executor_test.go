@@ -2158,6 +2158,234 @@ func TestPostActionBrokenURL404_ReportsError(t *testing.T) {
 		"post-action error should be recorded for a broken URL 404")
 }
 
+// TestGetCELVariables_AllNamespaces verifies that GetCELVariables includes all required namespaces
+func TestGetCELVariables_AllNamespaces(t *testing.T) {
+	t.Setenv("CEL_TEST_VAR", "cel-test-value")
+
+	eventData := map[string]interface{}{
+		"id":   "cluster-abc",
+		"kind": "ManagedCluster",
+	}
+	execCtx := NewExecutionContext(context.Background(), eventData, nil)
+	execCtx.Params["myParam"] = "param-value"
+
+	vars := execCtx.GetCELVariables()
+
+	require.Contains(t, vars, "event", "GetCELVariables must include 'event'")
+	eventMap, ok := vars["event"].(map[string]interface{})
+	require.True(t, ok, "event must be a map")
+	assert.Equal(t, "cluster-abc", eventMap["id"])
+	assert.Equal(t, "ManagedCluster", eventMap["kind"])
+
+	require.Contains(t, vars, "env", "GetCELVariables must include 'env'")
+	envMap, ok := vars["env"].(map[string]interface{})
+	require.True(t, ok, "env must be a map")
+	assert.Equal(t, "cel-test-value", envMap["CEL_TEST_VAR"])
+
+	// params are available as top-level names
+	assert.Equal(t, "param-value", vars["myParam"])
+
+	// existing namespaces must still be present
+	assert.Contains(t, vars, "adapter")
+	assert.Contains(t, vars, "resources")
+}
+
+// TestCELExpression_EnvVariable verifies env.* is accessible in a precondition CEL expression
+func TestCELExpression_EnvVariable(t *testing.T) {
+	t.Setenv("EXPECTED_REGION", "us-east-1")
+
+	config := &configloader.Config{
+		Adapter: configloader.AdapterInfo{Name: "test-adapter", Version: "1.0.0"},
+		Preconditions: []configloader.Precondition{
+			{
+				ActionBase: configloader.ActionBase{Name: "checkRegion"},
+				Expression: `env.EXPECTED_REGION == "us-east-1"`,
+			},
+		},
+	}
+
+	exec, err := NewBuilder().
+		WithConfig(config).
+		WithAPIClient(newMockAPIClient()).
+		WithTransportClient(k8sclient.NewMockK8sClient()).
+		WithLogger(logger.NewTestLogger()).
+		Build()
+	require.NoError(t, err)
+
+	result := exec.Execute(context.Background(), map[string]interface{}{"id": "cluster-env-test"})
+
+	require.Equal(t, StatusSuccess, result.Status, "errors=%v", result.Errors)
+	require.Len(t, result.PreconditionResults, 1)
+	assert.True(t, result.PreconditionResults[0].Matched, "env.EXPECTED_REGION CEL expression should match")
+}
+
+// TestCELExpression_EventVariable verifies event.* is accessible in a precondition CEL expression
+func TestCELExpression_EventVariable(t *testing.T) {
+	config := &configloader.Config{
+		Adapter: configloader.AdapterInfo{Name: "test-adapter", Version: "1.0.0"},
+		Preconditions: []configloader.Precondition{
+			{
+				ActionBase: configloader.ActionBase{Name: "checkEventKind"},
+				Expression: `event.kind == "ManagedCluster"`,
+			},
+		},
+	}
+
+	exec, err := NewBuilder().
+		WithConfig(config).
+		WithAPIClient(newMockAPIClient()).
+		WithTransportClient(k8sclient.NewMockK8sClient()).
+		WithLogger(logger.NewTestLogger()).
+		Build()
+	require.NoError(t, err)
+
+	eventData := map[string]interface{}{
+		"id":   "cluster-event-test",
+		"kind": "ManagedCluster",
+	}
+	result := exec.Execute(context.Background(), eventData)
+
+	require.Equal(t, StatusSuccess, result.Status, "errors=%v", result.Errors)
+	require.Len(t, result.PreconditionResults, 1)
+	assert.True(t, result.PreconditionResults[0].Matched, "event.kind CEL expression should match")
+}
+
+// TestCELExpression_EnvInPostActionWhen verifies env.* works in a post-action when gate
+func TestCELExpression_EnvInPostActionWhen(t *testing.T) {
+	t.Setenv("SKIP_POST_ACTION", "true")
+
+	mockClient := newMockAPIClient()
+	mockClient.PutResponse = &hyperfleetapi.Response{StatusCode: 200, Body: []byte(`{}`)}
+
+	config := &configloader.Config{
+		Adapter: configloader.AdapterInfo{Name: "test-adapter", Version: "1.0.0"},
+		Post: &configloader.PostConfig{
+			PostActions: []configloader.PostAction{
+				{
+					ActionBase: configloader.ActionBase{
+						Name: "conditionalAction",
+						APICall: &configloader.APICall{
+							Method: "PUT",
+							URL:    "/clusters/test/status",
+							Body:   `{}`,
+						},
+					},
+					When: &configloader.PostActionWhen{Expression: `env.SKIP_POST_ACTION == "false"`},
+				},
+			},
+		},
+	}
+
+	exec, err := NewBuilder().
+		WithConfig(config).
+		WithAPIClient(mockClient).
+		WithTransportClient(k8sclient.NewMockK8sClient()).
+		WithLogger(logger.NewTestLogger()).
+		Build()
+	require.NoError(t, err)
+
+	result := exec.Execute(context.Background(), map[string]interface{}{"id": "cluster-env-when"})
+
+	require.Equal(t, StatusSuccess, result.Status, "errors=%v", result.Errors)
+	require.Len(t, result.PostActionResults, 1)
+	assert.True(t, result.PostActionResults[0].Skipped,
+		"post-action should be skipped when env.SKIP_POST_ACTION != \"false\"")
+	assert.Empty(t, mockClient.Requests, "API call should not be made when action is skipped")
+}
+
+// TestCELExpression_EventInPostActionWhen verifies event.* works in a post-action when gate
+func TestCELExpression_EventInPostActionWhen(t *testing.T) {
+	mockClient := newMockAPIClient()
+	mockClient.PutResponse = &hyperfleetapi.Response{StatusCode: 200, Body: []byte(`{}`)}
+
+	config := &configloader.Config{
+		Adapter: configloader.AdapterInfo{Name: "test-adapter", Version: "1.0.0"},
+		Post: &configloader.PostConfig{
+			PostActions: []configloader.PostAction{
+				{
+					ActionBase: configloader.ActionBase{
+						Name: "gatedAction",
+						APICall: &configloader.APICall{
+							Method: "PUT",
+							URL:    "/clusters/test/status",
+							Body:   `{}`,
+						},
+					},
+					When: &configloader.PostActionWhen{Expression: `event.kind == "ManagedCluster"`},
+				},
+			},
+		},
+	}
+
+	exec, err := NewBuilder().
+		WithConfig(config).
+		WithAPIClient(mockClient).
+		WithTransportClient(k8sclient.NewMockK8sClient()).
+		WithLogger(logger.NewTestLogger()).
+		Build()
+	require.NoError(t, err)
+
+	eventData := map[string]interface{}{
+		"id":   "cluster-event-when",
+		"kind": "ManagedCluster",
+	}
+	result := exec.Execute(context.Background(), eventData)
+
+	require.Equal(t, StatusSuccess, result.Status, "errors=%v", result.Errors)
+	require.Len(t, result.PostActionResults, 1)
+	assert.False(t, result.PostActionResults[0].Skipped,
+		"post-action should NOT be skipped when event.kind matches")
+	assert.Len(t, mockClient.Requests, 1, "API call should be made when when-condition is true")
+}
+
+// TestCELExpression_EnvInParamExpression verifies env.* works in a param source.expression
+func TestCELExpression_EnvInParamExpression(t *testing.T) {
+	t.Setenv("CLUSTER_REGION", "eu-west-1")
+
+	config := &configloader.Config{
+		Adapter: configloader.AdapterInfo{Name: "test-adapter", Version: "1.0.0"},
+		Params: []configloader.Parameter{
+			{Name: "region", Source: configloader.ExpressionSource(`env.CLUSTER_REGION`)},
+		},
+	}
+
+	exec, err := NewBuilder().
+		WithConfig(config).
+		WithAPIClient(newMockAPIClient()).
+		WithTransportClient(k8sclient.NewMockK8sClient()).
+		WithLogger(logger.NewTestLogger()).
+		Build()
+	require.NoError(t, err)
+
+	result := exec.Execute(context.Background(), map[string]interface{}{"id": "cluster-env-param"})
+
+	require.Equal(t, StatusSuccess, result.Status, "errors=%v", result.Errors)
+	assert.Equal(t, "eu-west-1", result.Params["region"])
+}
+
+// TestCELExpression_EventInParamExpression verifies event.* works in a param source.expression
+func TestCELExpression_EventInParamExpression(t *testing.T) {
+	config := &configloader.Config{
+		Adapter: configloader.AdapterInfo{Name: "test-adapter", Version: "1.0.0"},
+		Params: []configloader.Parameter{
+			{Name: "derivedID", Source: configloader.ExpressionSource(`"cluster-" + event.id`)},
+		},
+	}
+
+	exec, err := NewBuilder().
+		WithConfig(config).
+		WithAPIClient(newMockAPIClient()).
+		WithTransportClient(k8sclient.NewMockK8sClient()).
+		WithLogger(logger.NewTestLogger()).
+		Build()
+	require.NoError(t, err)
+
+	result := exec.Execute(context.Background(), map[string]interface{}{"id": "abc"})
+
+	require.Equal(t, StatusSuccess, result.Status, "errors=%v", result.Errors)
+	assert.Equal(t, "cluster-abc", result.Params["derivedID"])
+}
+
 func getCounterValue(t *testing.T, families []*dto.MetricFamily, metricName, labelName, labelValue string) float64 {
 	t.Helper()
 	family := findFamily(families, metricName)
