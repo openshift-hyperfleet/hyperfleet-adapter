@@ -2386,6 +2386,86 @@ func TestCELExpression_EventInParamExpression(t *testing.T) {
 	assert.Equal(t, "cluster-abc", result.Params["derivedID"])
 }
 
+// TestGoTemplate_EnvInManifest verifies that {{ .env.X }} resolves in resource manifest templates.
+func TestGoTemplate_EnvInManifest(t *testing.T) {
+	t.Setenv("TPL_REGION", "us-east-1")
+
+	mockClient := k8sclient.NewMockK8sClient()
+	config := &configloader.Config{
+		Adapter: configloader.AdapterInfo{Name: "test", Version: "1.0.0"},
+		Resources: []configloader.Resource{
+			{
+				Name: "testResource",
+				Manifest: map[string]interface{}{
+					"apiVersion": "v1",
+					"kind":       "ConfigMap",
+					"metadata": map[string]interface{}{
+						"name":      "test-cm",
+						"namespace": "{{ .env.TPL_REGION }}",
+					},
+				},
+			},
+		},
+	}
+
+	exec, err := NewBuilder().
+		WithConfig(config).
+		WithAPIClient(newMockAPIClient()).
+		WithTransportClient(mockClient).
+		WithLogger(logger.NewTestLogger()).
+		Build()
+	require.NoError(t, err)
+
+	result := exec.Execute(context.Background(), map[string]interface{}{"id": "cluster-123"})
+
+	require.Equal(t, StatusSuccess, result.Status, "errors=%v", result.Errors)
+	applied := mockClient.Resources["us-east-1/test-cm"]
+	require.NotNil(t, applied, "resource should be applied with rendered namespace")
+	assert.Equal(t, "us-east-1", applied.GetNamespace())
+	assert.Equal(t, "test-cm", applied.GetName())
+}
+
+// TestGoTemplate_EventInManifest verifies that {{ .event.X }} resolves in resource manifest templates.
+func TestGoTemplate_EventInManifest(t *testing.T) {
+	mockClient := k8sclient.NewMockK8sClient()
+	config := &configloader.Config{
+		Adapter: configloader.AdapterInfo{Name: "test", Version: "1.0.0"},
+		Resources: []configloader.Resource{
+			{
+				Name: "testResource",
+				Manifest: map[string]interface{}{
+					"apiVersion": "v1",
+					"kind":       "ConfigMap",
+					"metadata": map[string]interface{}{
+						"name":      "{{ .event.id }}",
+						"namespace": "default",
+					},
+				},
+			},
+		},
+	}
+
+	exec, err := NewBuilder().
+		WithConfig(config).
+		WithAPIClient(newMockAPIClient()).
+		WithTransportClient(mockClient).
+		WithLogger(logger.NewTestLogger()).
+		Build()
+	require.NoError(t, err)
+
+	eventData := map[string]interface{}{
+		"id":   "cluster-123",
+		"kind": "ManagedCluster",
+	}
+	result := exec.Execute(context.Background(), eventData)
+
+	require.Equal(t, StatusSuccess, result.Status, "errors=%v", result.Errors)
+	applied := mockClient.Resources["default/cluster-123"]
+	require.NotNil(t, applied, "resource should be applied with rendered name")
+	assert.Equal(t, "default", applied.GetNamespace())
+	assert.Equal(t, "cluster-123", applied.GetName())
+}
+
 func getCounterValue(t *testing.T, families []*dto.MetricFamily, metricName, labelName, labelValue string) float64 {
 	t.Helper()
 	family := findFamily(families, metricName)
