@@ -241,13 +241,15 @@ func extractFromEnv(envVar string) (interface{}, error) {
 	return value, nil
 }
 
-// addAdapterParams adds adapter info and the full config map to execCtx.Params
+// addAdapterParams adds adapter info, config, env, and event to execCtx.Params
 func addAdapterParams(config *configloader.Config, execCtx *ExecutionContext, configMap map[string]interface{}) {
 	execCtx.Params["adapter"] = map[string]interface{}{
 		"name":    config.Adapter.Name,
 		"version": config.Adapter.Version,
 	}
 	execCtx.Params["config"] = configMap
+	execCtx.Params["env"] = buildEnvMap()
+	execCtx.Params["event"] = execCtx.EventData
 }
 
 // convertParamType converts a value to the specified type.
