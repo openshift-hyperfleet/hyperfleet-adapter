@@ -44,16 +44,18 @@ helm install hyperfleet-adapter oci://REGISTRY/hyperfleet-adapter \
 | autoscaling.minReplicas | int | `1` | Minimum number of replicas |
 | autoscaling.targetCPUUtilizationPercentage | int | `80` | Target CPU utilization percentage |
 | autoscaling.targetMemoryUtilizationPercentage | int | `80` | Target memory utilization percentage |
-| broker | object | `{"create":true,"googlepubsub":{"createSubscriptionIfMissing":false,"createTopicIfMissing":false,"deadLetterTopic":"","projectId":"","subscriptionId":"","topic":""},"rabbitmq":{"exchange":"","exchangeType":"topic","queue":"","url":""},"type":""}` | Broker configuration for event consumption. Supports RabbitMQ and Google Pub/Sub. Use `broker.yaml` for inline config, or set `create: false` and provide `configMapName` to reference an existing ConfigMap. |
+| broker | object | `{"create":true,"googlepubsub":{"createSubscriptionIfMissing":false,"createTopicIfMissing":false,"deadLetterTopic":"","expirationTTL":"","messageRetentionDuration":"","projectId":"","subscriptionId":"","topic":""},"rabbitmq":{"exchange":"","exchangeType":"topic","queue":"","url":""},"type":""}` | Broker configuration for event consumption. Supports RabbitMQ and Google Pub/Sub. Use `broker.yaml` for inline config, or set `create: false` and provide `configMapName` to reference an existing ConfigMap. |
 | broker.create | bool | `true` | Create the broker ConfigMap |
 | broker.type | string | `""` | Broker type (must be `googlepubsub` or `rabbitmq`) |
-| broker.googlepubsub | object | `{"createSubscriptionIfMissing":false,"createTopicIfMissing":false,"deadLetterTopic":"","projectId":"","subscriptionId":"","topic":""}` | Google Pub/Sub configuration |
+| broker.googlepubsub | object | `{"createSubscriptionIfMissing":false,"createTopicIfMissing":false,"deadLetterTopic":"","expirationTTL":"","messageRetentionDuration":"","projectId":"","subscriptionId":"","topic":""}` | Google Pub/Sub configuration |
 | broker.googlepubsub.projectId | string | `""` | GCP project ID |
 | broker.googlepubsub.topic | string | `""` | Pub/Sub topic name |
 | broker.googlepubsub.subscriptionId | string | `""` | Subscription ID |
 | broker.googlepubsub.deadLetterTopic | string | `""` | Dead letter topic name |
 | broker.googlepubsub.createTopicIfMissing | bool | `false` | Auto-create topic if missing (use `false` in production) |
 | broker.googlepubsub.createSubscriptionIfMissing | bool | `false` | Auto-create subscription if missing (use `false` in production) |
+| broker.googlepubsub.messageRetentionDuration | string | `""` | Length to retain unacknowledged messages (e.g. "1d", "12h", "604800s"). Min 10m, max 31d. |
+| broker.googlepubsub.expirationTTL | string | `""` | Inactivity period before subscription is auto-deleted (e.g. "1d"). Must be "0" (never expire) or >= "1d". |
 | broker.rabbitmq | object | `{"exchange":"","exchangeType":"topic","queue":"","url":""}` | RabbitMQ configuration |
 | broker.rabbitmq.url | string | `""` | Connection URL |
 | broker.rabbitmq.queue | string | `""` | Queue name prefix (derived from topic+subscriptionId if omitted) |
