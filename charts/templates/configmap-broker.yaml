@@ -39,6 +39,12 @@ data:
         dead_letter_topic: {{ .Values.broker.googlepubsub.deadLetterTopic | quote }}
         create_topic_if_missing: {{ .Values.broker.googlepubsub.createTopicIfMissing }}
         create_subscription_if_missing: {{ .Values.broker.googlepubsub.createSubscriptionIfMissing }}
+        {{- if .Values.broker.googlepubsub.messageRetentionDuration }}
+        message_retention_duration: {{ .Values.broker.googlepubsub.messageRetentionDuration | quote }}
+        {{- end }}
+        {{- if or .Values.broker.googlepubsub.expirationTTL (eq (.Values.broker.googlepubsub.expirationTTL | toString) "0") }}
+        expiration_ttl: {{ .Values.broker.googlepubsub.expirationTTL | toString | quote }}
+        {{- end }}
       subscriber:
         parallelism: 1
   {{- else if eq $brokerType "rabbitmq" }}

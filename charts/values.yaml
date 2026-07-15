@@ -128,6 +128,10 @@ broker:
     createTopicIfMissing: false
     # -- Auto-create subscription if missing (use `false` in production)
     createSubscriptionIfMissing: false
+    # -- Length to retain unacknowledged messages (e.g. "1d", "12h", "604800s"). Min 10m, max 31d.
+    messageRetentionDuration: ""
+    # -- Inactivity period before subscription is auto-deleted (e.g. "1d"). Must be "0" (never expire) or >= "1d".
+    expirationTTL: ""
   # -- RabbitMQ configuration
   rabbitmq:
     # -- Connection URL

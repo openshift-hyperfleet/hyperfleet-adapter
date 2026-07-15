@@ -308,7 +308,19 @@ Validate that required fields are set for the resolved broker type.
 */}}
 {{- define "hyperfleet-adapter.validateBrokerConfig" -}}
 {{- $brokerType := include "hyperfleet-adapter.brokerType" . -}}
-{{- if eq $brokerType "rabbitmq" -}}
+{{- if eq $brokerType "googlepubsub" -}}
+  {{- $ttl := .Values.broker.googlepubsub.expirationTTL | toString -}}
+  {{- if ne $ttl "" -}}
+    {{- if not (regexMatch "^(0|[1-9][0-9]*[smhd])$" $ttl) -}}
+      {{- fail "broker.googlepubsub.expirationTTL must be \"0\" (never expire) or a duration like \"1d\", \"12h\", \"30m\", \"604800s\"" -}}
+    {{- end -}}
+  {{- end -}}
+  {{- if .Values.broker.googlepubsub.messageRetentionDuration -}}
+    {{- if not (regexMatch "^[1-9][0-9]*[smhd]$" (.Values.broker.googlepubsub.messageRetentionDuration | toString)) -}}
+      {{- fail "broker.googlepubsub.messageRetentionDuration must be a duration like \"1d\", \"12h\", \"30m\", \"604800s\"" -}}
+    {{- end -}}
+  {{- end -}}
+{{- else if eq $brokerType "rabbitmq" -}}
   {{- if not .Values.broker.rabbitmq.url -}}
     {{- fail "broker.rabbitmq.url is required when broker type is rabbitmq" -}}
   {{- end -}}

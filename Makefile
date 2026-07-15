@@ -143,6 +143,8 @@ test-helm: $(KUBECONFORM) verify-helm-docs ## Test Helm charts (lint, template, 
 		--set broker.create=true \
 		--set broker.googlepubsub.subscriptionId=test-sub \
 		--set broker.googlepubsub.topic=test-topic \
+		--set broker.googlepubsub.expirationTTL=1d \
+		--set broker.googlepubsub.messageRetentionDuration=12h \
 		--set broker.type=googlepubsub) \
 		&& echo "$$output" | grep -q 'type: googlepubsub' \
 		|| { echo "ERROR: expected googlepubsub broker type in rendered output"; exit 1; }; \
