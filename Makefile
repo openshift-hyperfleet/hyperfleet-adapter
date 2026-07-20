@@ -2,7 +2,7 @@
 
 GO ?= go
 TOOL_MOD := tools/go.mod
-gotool = GOWORK=off "$(GO)" tool -modfile="$(TOOL_MOD)" $(1)
+gotool = "$(GO)" tool -modfile="$(TOOL_MOD)" $(1)
 GOFMT ?= gofmt
 
 # Binary output directory and name
@@ -359,7 +359,7 @@ lint: ## Run golangci-lint
 
 .PHONY: tools
 tools: ## Ensure tool dependencies are up to date
-	cd tools && GOWORK=off "$(GO)" mod tidy
+	cd tools && "$(GO)" mod tidy
 
 .PHONY: verify-tools
 verify-tools: tools ## Fail if tool module drifted
