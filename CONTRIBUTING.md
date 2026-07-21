@@ -43,7 +43,7 @@ This project follows the [Contributor Covenant Code of Conduct](https://www.cont
 
 ### Prerequisites
 
-- Go 1.24 or later
+- Go 1.26 or later
 - Docker (for building Docker images)
 - `golangci-lint` (for linting)
 - `make` (for running Makefile targets)
@@ -172,7 +172,7 @@ Follow the [commit standard](https://github.com/openshift-hyperfleet/architectur
        }{
            // ... test data
        }
-       
+
        for _, tt := range tests {
            t.Run(tt.name, func(t *testing.T) {
                // test implementation

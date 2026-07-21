@@ -2,7 +2,7 @@
 
 Event-driven Kubernetes resource manager. Consumes CloudEvents from a message broker, executes configured actions (K8s resource apply, HyperFleet API calls, Maestro ManifestWork), and reports status back.
 
-Go 1.25.0 · Cobra CLI · Viper config · golangci-lint (pinned in tools/go.mod) · Tekton CI (Konflux)
+Go 1.26.0 · Cobra CLI · Viper config · golangci-lint (pinned in tools/go.mod) · Tekton CI (Konflux)
 
 ## Setup (fresh clone)
 
