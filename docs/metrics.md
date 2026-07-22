@@ -16,8 +16,8 @@ All adapter metrics include `component`, `version`, and `adapter_name` as consta
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `hyperfleet_adapter_build_info` | Gauge | `component`, `version`, `adapter_name`, `commit` | Build information (always 1) |
-| `hyperfleet_adapter_up` | Gauge | `component`, `version`, `adapter_name` | Whether the adapter is up and running (1=up, 0=shutting down) |
+| `hyperfleet_adapter_build_info` | Gauge | `component`, `version`, `commit` | Build information (always 1) |
+| `hyperfleet_adapter_up` | Gauge | `component`, `version` | Whether the adapter is up and running (1=up, 0=shutting down) |
 
 ### Event Processing Metrics
 
