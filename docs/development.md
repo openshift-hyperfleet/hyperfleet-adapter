@@ -52,7 +52,7 @@ Integration tests use **Testcontainers** with **envtest** — works in any CI/CD
 
 - **Docker or Podman** must be running (both supported)
 - The Makefile automatically detects and configures your container runtime
-- **Podman users**: Corporate proxy settings are auto-detected from Podman machine. Define and export the environment variable : 
+- **Podman users**: Corporate proxy settings are auto-detected from Podman machine. Define and export the environment variable :
 ```bash
 DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock
 ```
@@ -68,13 +68,13 @@ The first run downloads `golang:alpine` and installs envtest (~20-30 seconds). S
 
 </details>
 
-## Tool Dependencies (Bingo)
+## Tool Dependencies
 
-Build tools are pinned via [bingo](https://github.com/bwplotka/bingo) in `.bingo/` manifests:
+Development tools are pinned in `tools/go.mod` using Go 1.24+ tool directives and invoked via `$(call gotool,<name>)` in the Makefile.
 
 ```bash
-bingo get           # Install all tools
-bingo list          # List managed tools
+make tools          # Tidy the tools module
+make verify-tools   # Verify tool module is clean
 ```
 
 ## Container Image
