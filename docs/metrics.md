@@ -10,7 +10,7 @@ The Helm chart includes a **ServiceMonitor** template for automatic discovery by
 
 The adapter exposes Prometheus metrics following the [HyperFleet Metrics Standard](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/metrics.md) with the `hyperfleet_adapter_` prefix.
 
-All adapter metrics include `component`, `version`, and `adapter_name` as constant labels.
+All adapter metrics include `component` and `version` as constant labels. Event-processing and resource-deletion metrics also include `adapter_name`; the baseline metrics (`up`, `build_info`) do not.
 
 ### Baseline Metrics
 
