@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Grafana dashboard for adapter metrics (`charts/dashboards/hyperfleet-adapter.json`) — covers events processed, processing duration, errors by type, resource deletions, and adapter health ([HYPERFLEET-1360](https://issues.redhat.com/browse/HYPERFLEET-1360))
+
 ## [0.2.0] - 2026-03-30
 
 ### Added

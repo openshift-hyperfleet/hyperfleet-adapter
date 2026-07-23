@@ -10,14 +10,14 @@ The Helm chart includes a **ServiceMonitor** template for automatic discovery by
 
 The adapter exposes Prometheus metrics following the [HyperFleet Metrics Standard](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/metrics.md) with the `hyperfleet_adapter_` prefix.
 
-All adapter metrics include `component`, `version`, and `adapter_name` as constant labels.
+All adapter metrics include `component` and `version` as constant labels. Event-processing and resource-deletion metrics also include `adapter_name`; the baseline metrics (`up`, `build_info`) do not.
 
 ### Baseline Metrics
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `hyperfleet_adapter_build_info` | Gauge | `component`, `version`, `adapter_name`, `commit` | Build information (always 1) |
-| `hyperfleet_adapter_up` | Gauge | `component`, `version`, `adapter_name` | Whether the adapter is up and running (1=up, 0=shutting down) |
+| `hyperfleet_adapter_build_info` | Gauge | `component`, `version`, `commit` | Build information (always 1) |
+| `hyperfleet_adapter_up` | Gauge | `component`, `version` | Whether the adapter is up and running (1=up, 0=shutting down) |
 
 ### Event Processing Metrics
 
@@ -120,3 +120,18 @@ These metrics use the `hyperfleet_broker_` prefix and include the adapter's `com
 ## Alerting and Monitoring
 
 For recommended alerting rules, thresholds, and operational PromQL queries, see [alerts.md](alerts.md).
+
+## Dashboard
+
+A pre-built Grafana dashboard is shipped at `charts/dashboards/hyperfleet-adapter.json` (repo root). It covers all `hyperfleet_adapter_*` metrics across 8 panels: events processed rate, adapter status, event processing duration percentiles, error rate by type, resource deletion rate, deletions in progress, deletion duration percentiles, and deletion rate by resource type.
+
+### Importing
+
+1. Navigate to **Grafana > Dashboards > Import**
+2. Upload `charts/dashboards/hyperfleet-adapter.json`
+3. Select your Prometheus datasource from the dropdown
+4. Click **Import**
+
+The dashboard uses a parameterized `datasource` variable (no hardcoded UIDs) and an `adapter_name` multi-select variable to filter most panels by adapter instance. The "Adapter Status" panel always reflects all instances, since the underlying `hyperfleet_adapter_up`/`build_info` metrics carry no `adapter_name` label.
+
+Automated provisioning via `hyperfleet-infra` is tracked in [HYPERFLEET-1363](https://issues.redhat.com/browse/HYPERFLEET-1363).
