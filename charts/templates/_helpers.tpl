@@ -84,38 +84,6 @@ Create the name of the adapter task ConfigMap to use
 {{- end }}
 {{- end }}
 
-{{/*
-Create the name of the broker ConfigMap to use
-*/}}
-{{/*
-Determine if broker config is enabled: either broker.create is true,
-or a non-blank broker.configMapName is provided.
-Fail if neither is set, or if broker.configMapName is defined but blank.
-*/}}
-{{- define "hyperfleet-adapter.helmValidateBrokerIsConfigured" -}}
-{{- if .Values.broker.create -}}
-true
-{{- else if (hasKey .Values.broker "configMapName") -}}
-  {{- if and .Values.broker.configMapName (ne .Values.broker.configMapName "") -}}
-true
-  {{- else -}}
-{{- fail "If .Values.broker.configMapName is specified, it must have a non-blank value." -}}
-  {{- end -}}
-{{- else -}}
-{{- fail "Either .Values.broker.create must be true or a non-blank .Values.broker.configMapName must be provided." -}}
-{{- end -}}
-{{- end }}
-
-
-
-{{- define "hyperfleet-adapter.brokerConfigMapName" -}}
-{{- if .Values.broker.configMapName }}
-{{- .Values.broker.configMapName }}
-{{- else }}
-{{- printf "%s-broker" (include "hyperfleet-adapter.fullname" .) }}
-{{- end }}
-{{- end }}
-
 {{- define "hyperfleet-adapter.helmValidateAdapterIsConfigured" -}}
 {{- if .Values.adapterConfig.create -}}
   {{- $hasYaml := not (empty .Values.adapterConfig.yaml) -}}
@@ -248,32 +216,9 @@ Validate required values that must not remain as placeholders.
 {{- end }}
 
 {{/*
-Validate deprecated snake_case broker keys have not been used.
-Per Helm Chart Conventions Standard section 9 (Deprecation and Migration Pattern).
+Validate deprecated snake_case keys have not been used.
 */}}
 {{- define "hyperfleet-adapter.validateDeprecatedKeys" -}}
-{{- if .Values.broker.googlepubsub }}
-{{- if hasKey .Values.broker.googlepubsub "project_id" }}
-{{- fail "broker.googlepubsub.project_id has been renamed to broker.googlepubsub.projectId (camelCase). Please update your values." }}
-{{- end -}}
-{{- if hasKey .Values.broker.googlepubsub "subscription_id" }}
-{{- fail "broker.googlepubsub.subscription_id has been renamed to broker.googlepubsub.subscriptionId (camelCase). Please update your values." }}
-{{- end -}}
-{{- if hasKey .Values.broker.googlepubsub "dead_letter_topic" }}
-{{- fail "broker.googlepubsub.dead_letter_topic has been renamed to broker.googlepubsub.deadLetterTopic (camelCase). Please update your values." }}
-{{- end -}}
-{{- if hasKey .Values.broker.googlepubsub "create_topic_if_missing" }}
-{{- fail "broker.googlepubsub.create_topic_if_missing has been renamed to broker.googlepubsub.createTopicIfMissing (camelCase). Please update your values." }}
-{{- end -}}
-{{- if hasKey .Values.broker.googlepubsub "create_subscription_if_missing" }}
-{{- fail "broker.googlepubsub.create_subscription_if_missing has been renamed to broker.googlepubsub.createSubscriptionIfMissing (camelCase). Please update your values." }}
-{{- end -}}
-{{- end -}}
-{{- if .Values.broker.rabbitmq }}
-{{- if hasKey .Values.broker.rabbitmq "exchange_type" }}
-{{- fail "broker.rabbitmq.exchange_type has been renamed to broker.rabbitmq.exchangeType (camelCase). Please update your values." }}
-{{- end -}}
-{{- end -}}
 {{- if .Values.adapterConfig }}
 {{- if hasKey .Values.adapterConfig "hyperfleet_api" }}
 {{- fail "adapterConfig.hyperfleet_api has been renamed to adapterConfig.hyperfleetApi (camelCase). Please update your values." }}
@@ -294,42 +239,6 @@ different namespaces never collide on the same cluster-scoped resource name.
 {{- define "hyperfleet-adapter.clusterScopedName" -}}
 {{- printf "%s-%s" (include "hyperfleet-adapter.fullname" .) .Release.Namespace | trunc 63 | trimSuffix "-" }}
 {{- end }}
-
-{{/*
-Determine the broker type.
-broker.type must be set explicitly — inference from sub-keys is not supported.
-*/}}
-{{- define "hyperfleet-adapter.brokerType" -}}
-{{- required "broker.type must be set to one of: googlepubsub, rabbitmq" .Values.broker.type -}}
-{{- end }}
-
-{{/*
-Validate that required fields are set for the resolved broker type.
-*/}}
-{{- define "hyperfleet-adapter.validateBrokerConfig" -}}
-{{- $brokerType := include "hyperfleet-adapter.brokerType" . -}}
-{{- if eq $brokerType "googlepubsub" -}}
-  {{- $ttl := .Values.broker.googlepubsub.expirationTTL | toString -}}
-  {{- if ne $ttl "" -}}
-    {{- if not (regexMatch "^(0|[1-9][0-9]*[smhd])$" $ttl) -}}
-      {{- fail "broker.googlepubsub.expirationTTL must be \"0\" (never expire) or a duration like \"1d\", \"12h\", \"30m\", \"604800s\"" -}}
-    {{- end -}}
-  {{- end -}}
-  {{- if .Values.broker.googlepubsub.messageRetentionDuration -}}
-    {{- if not (regexMatch "^[1-9][0-9]*[smhd]$" (.Values.broker.googlepubsub.messageRetentionDuration | toString)) -}}
-      {{- fail "broker.googlepubsub.messageRetentionDuration must be a duration like \"1d\", \"12h\", \"30m\", \"604800s\"" -}}
-    {{- end -}}
-  {{- end -}}
-{{- else if eq $brokerType "rabbitmq" -}}
-  {{- if not .Values.broker.rabbitmq.url -}}
-    {{- fail "broker.rabbitmq.url is required when broker type is rabbitmq" -}}
-  {{- end -}}
-  {{- if not .Values.broker.rabbitmq.exchange -}}
-    {{- fail "broker.rabbitmq.exchange is required when broker type is rabbitmq" -}}
-  {{- end -}}
-{{- end -}}
-{{- end }}
-
 
 {{/*
 Validate no key collisions between adapterTaskConfig.external and adapterTaskConfig.files

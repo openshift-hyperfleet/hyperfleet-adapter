@@ -43,6 +43,50 @@
             }
           }
         },
+        "clients": {
+          "type": "object",
+          "description": "Client configuration",
+          "properties": {
+            "database": {
+              "type": "object",
+              "description": "PostgreSQL database connection configuration",
+              "properties": {
+                "host": {
+                  "type": "string",
+                  "description": "PostgreSQL host"
+                },
+                "port": {
+                  "type": "integer",
+                  "description": "PostgreSQL port",
+                  "minimum": 1,
+                  "maximum": 65535
+                },
+                "user": {
+                  "type": "string",
+                  "description": "Database user"
+                },
+                "password": {
+                  "type": "string",
+                  "description": "Database password"
+                },
+                "dbname": {
+                  "type": "string",
+                  "description": "Database name"
+                },
+                "sslmode": {
+                  "type": "string",
+                  "description": "SSL mode",
+                  "enum": [
+                    "disable",
+                    "require",
+                    "verify-ca",
+                    "verify-full"
+                  ]
+                }
+              }
+            }
+          }
+        },
         "log": {
           "type": "object",
           "description": "Logging configuration",
@@ -134,95 +178,6 @@
           "description": "Target memory utilization percentage",
           "minimum": 1,
           "maximum": 100
-        }
-      }
-    },
-    "broker": {
-      "type": "object",
-      "description": "Message broker configuration",
-      "properties": {
-        "create": {
-          "type": "boolean",
-          "description": "Create the broker config ConfigMap"
-        },
-        "configMapName": {
-          "type": "string",
-          "description": "Existing ConfigMap name (set create: false)"
-        },
-        "yaml": {
-          "type": "string",
-          "description": "Inline YAML for broker config"
-        },
-        "type": {
-          "type": "string",
-          "description": "Broker type",
-          "enum": [
-            "googlepubsub",
-            "rabbitmq",
-            ""
-          ]
-        },
-        "googlepubsub": {
-          "type": "object",
-          "description": "Google Pub/Sub configuration",
-          "properties": {
-            "projectId": {
-              "type": "string",
-              "description": "GCP project ID"
-            },
-            "topic": {
-              "type": "string",
-              "description": "Pub/Sub topic name"
-            },
-            "subscriptionId": {
-              "type": "string",
-              "description": "Pub/Sub subscription ID"
-            },
-            "deadLetterTopic": {
-              "type": "string",
-              "description": "Dead letter topic for failed messages"
-            },
-            "createTopicIfMissing": {
-              "type": "boolean",
-              "description": "Auto-create topic if missing"
-            },
-            "createSubscriptionIfMissing": {
-              "type": "boolean",
-              "description": "Auto-create subscription if missing"
-            }
-          }
-        },
-        "rabbitmq": {
-          "type": "object",
-          "description": "RabbitMQ configuration",
-          "properties": {
-            "url": {
-              "type": "string",
-              "description": "RabbitMQ connection URL (amqp://user:password@host:port/vhost)"
-            },
-            "queue": {
-              "type": "string",
-              "description": "Queue name (optional \u2014 derived from topic if omitted)"
-            },
-            "exchange": {
-              "type": "string",
-              "description": "Exchange name"
-            },
-            "exchangeType": {
-              "type": "string",
-              "description": "Exchange type",
-              "enum": [
-                "direct",
-                "fanout",
-                "topic",
-                "headers"
-              ]
-            },
-            "routingKey": {
-              "type": "string",
-              "description": "Routing key for message publishing"
-            }
-          }
         }
       }
     },

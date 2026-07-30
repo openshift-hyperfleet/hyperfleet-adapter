@@ -40,6 +40,21 @@ adapterConfig:
       # -- How long the token is cached in memory (`HYPERFLEET_API_AUTH_TOKEN_CACHE_TTL`).
       # Zero means re-read on every request.
       tokenCacheTtl: 30s
+  # -- Database client configuration for the reconciliation queue
+  clients:
+    database:
+      # -- PostgreSQL host
+      host: ""
+      # -- PostgreSQL port
+      port: 5432
+      # -- Database user
+      user: ""
+      # -- Database password
+      password: ""
+      # -- Database name
+      dbname: ""
+      # -- SSL mode (`disable`, `require`, `verify-ca`, `verify-full`)
+      sslmode: "disable"
   # -- Log level for the adapter
   log:
     # -- Log level (`debug`, `info`, `warn`, `error`)
@@ -99,49 +114,6 @@ autoscaling:
   targetCPUUtilizationPercentage: 80
   # -- Target memory utilization percentage
   targetMemoryUtilizationPercentage: 80
-
-# -- Broker configuration for event consumption. Supports RabbitMQ and
-# Google Pub/Sub. Use `broker.yaml` for inline config, or set `create: false`
-# and provide `configMapName` to reference an existing ConfigMap.
-broker:
-  # -- Create the broker ConfigMap
-  create: true
-  # option1
-  # configMapName: ""
-
-  # option2
-  # yaml: ""
-
-  # -- Broker type (must be `googlepubsub` or `rabbitmq`)
-  type: ""
-  # -- Google Pub/Sub configuration
-  googlepubsub:
-    # -- GCP project ID
-    projectId: ""
-    # -- Pub/Sub topic name
-    topic: ""
-    # -- Subscription ID
-    subscriptionId: ""
-    # -- Dead letter topic name
-    deadLetterTopic: ""
-    # -- Auto-create topic if missing (use `false` in production)
-    createTopicIfMissing: false
-    # -- Auto-create subscription if missing (use `false` in production)
-    createSubscriptionIfMissing: false
-    # -- Length to retain unacknowledged messages (e.g. "1d", "12h", "604800s"). Min 10m, max 31d.
-    messageRetentionDuration: ""
-    # -- Inactivity period before subscription is auto-deleted (e.g. "1d"). Must be "0" (never expire) or >= "1d".
-    expirationTTL: ""
-  # -- RabbitMQ configuration
-  rabbitmq:
-    # -- Connection URL
-    url: ""
-    # -- Queue name prefix (derived from topic+subscriptionId if omitted)
-    queue: ""
-    # -- Exchange name
-    exchange: ""
-    # -- Exchange type
-    exchangeType: "topic"
 
 # -- Container command override
 command:
