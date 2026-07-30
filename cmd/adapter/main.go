@@ -618,7 +618,7 @@ func runServe(flags *pflag.FlagSet) error {
 	log.Info(ctx, "Adapter started, waiting for events...")
 
 	// Start queue consumer (blocks until context is canceled)
-	consumerErr := queueConsumer.Start(ctx, kind, func(ctx context.Context, msg *queue.QueueMessage) error {
+	consumerErr := queueConsumer.Start(ctx, kind, config.Adapter.Name, func(ctx context.Context, msg *queue.QueueMessage) error {
 		evt, err := queue.QueueMessageToCloudEvent(msg)
 		if err != nil {
 			errCtx := logger.WithErrorField(ctx, err)

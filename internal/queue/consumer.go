@@ -15,6 +15,7 @@ type QueueMessage struct {
 	ID              string         `gorm:"primaryKey;size:255"`
 	ResourceID      string         `gorm:"size:255;not null"`
 	Kind            string         `gorm:"size:100;not null"`
+	TargetAdapter   string         `gorm:"size:100;not null"`
 	Href            string         `gorm:"size:500"`
 	Generation      int64          `gorm:"not null"`
 	OwnerReferences datatypes.JSON `gorm:"type:jsonb"`
@@ -27,7 +28,7 @@ func (QueueMessage) TableName() string {
 }
 
 type Consumer interface {
-	Start(ctx context.Context, kind string, handler func(ctx context.Context, msg *QueueMessage) error) error
+	Start(ctx context.Context, kind, adapterName string, handler func(ctx context.Context, msg *QueueMessage) error) error
 }
 
 type consumer struct {
@@ -56,8 +57,8 @@ func NewConsumer(db *gorm.DB, log logger.Logger, opts ...ConsumerOption) Consume
 	return c
 }
 
-func (c *consumer) Start(ctx context.Context, kind string, handler func(ctx context.Context, msg *QueueMessage) error) error {
-	c.log.Infof(ctx, "Queue consumer started: kind=%s poll_interval=%s", kind, c.pollInterval)
+func (c *consumer) Start(ctx context.Context, kind, adapterName string, handler func(ctx context.Context, msg *QueueMessage) error) error {
+	c.log.Infof(ctx, "Queue consumer started: kind=%s adapter=%s poll_interval=%s", kind, adapterName, c.pollInterval)
 	ticker := time.NewTicker(c.pollInterval)
 	defer ticker.Stop()
 	for {
@@ -66,17 +67,17 @@ func (c *consumer) Start(ctx context.Context, kind string, handler func(ctx cont
 			c.log.Info(ctx, "Queue consumer shutting down")
 			return ctx.Err()
 		case <-ticker.C:
-			c.processNext(ctx, kind, handler)
+			c.processNext(ctx, kind, adapterName, handler)
 		}
 	}
 }
 
-func (c *consumer) processNext(ctx context.Context, kind string, handler func(ctx context.Context, msg *QueueMessage) error) {
+func (c *consumer) processNext(ctx context.Context, kind, adapterName string, handler func(ctx context.Context, msg *QueueMessage) error) {
 	err := c.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var msg QueueMessage
 		result := tx.Raw(
-			"SELECT * FROM reconciliation_queue WHERE kind = ? ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED",
-			kind,
+			"SELECT * FROM reconciliation_queue WHERE kind = ? AND target_adapter = ? ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED",
+			kind, adapterName,
 		).Scan(&msg)
 		if result.Error != nil {
 			return result.Error
