@@ -17,17 +17,20 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleetapi"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/k8sclient"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/maestroclient"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/queue"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transportclient"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/health"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/metrics"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/telemetry"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/version"
-	"github.com/openshift-hyperfleet/hyperfleet-broker/broker"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"gopkg.in/yaml.v3"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 // Command-line flags
@@ -84,14 +87,14 @@ and HyperFleet API calls.`,
 		Use:   "serve",
 		Short: "Start the adapter and begin processing events",
 		Long: `Start the HyperFleet adapter in serve mode. The adapter will:
-- Connect to the configured message broker
-- Subscribe to the specified topic
+- Connect to the configured PostgreSQL database
+- Poll the reconciliation queue for events
 - Process incoming events according to the adapter configuration
 - Execute Kubernetes operations and HyperFleet API calls
 
 Dry-run mode:
   Pass --dry-run-event to process a single CloudEvent from a JSON file
-  using mock transport clients. No broker, cluster, or API is required.
+  using mock transport clients. No database, cluster, or API is required.
   Optionally pass --dry-run-api-responses to configure mock API responses.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if isDryRun() {
@@ -561,7 +564,7 @@ func runServe(flags *pflag.FlagSet) error {
 		return fmt.Errorf("failed to create executor: %w", err)
 	}
 
-	// Create the event handler and subscribe to broker
+	// Create the event handler
 	handler := executor.AlwaysAck(executor.WithMetrics(exec.CreateHandler(), metricsRecorder, log), log)
 
 	// Handle signals for graceful shutdown
@@ -580,104 +583,67 @@ func runServe(flags *pflag.FlagSet) error {
 		os.Exit(1)
 	}()
 
-	// Get broker config
-	subscriptionID := config.Clients.Broker.SubscriptionID
-	if subscriptionID == "" {
-		err = fmt.Errorf("clients.broker.subscription_id is required")
+	// Connect to PostgreSQL database
+	dbConfig := config.Clients.Database
+	if dbConfig.Host == "" {
+		err = fmt.Errorf("clients.database.host is required")
 		errCtx := logger.WithErrorField(ctx, err)
-		log.Errorf(errCtx, "Missing required broker configuration")
+		log.Errorf(errCtx, "Missing required database configuration")
 		return err
 	}
 
-	topic := config.Clients.Broker.Topic
-	if topic == "" {
-		err = fmt.Errorf("clients.broker.topic is required")
-		errCtx := logger.WithErrorField(ctx, err)
-		log.Errorf(errCtx, "Missing required broker configuration")
-		return err
-	}
-
-	// Create broker metrics recorder
-	brokerMetrics := broker.NewMetricsRecorder(config.Adapter.Name, version.Version, nil)
-
-	// Create broker subscriber and subscribe
-	log.Info(ctx, "Creating broker subscriber...")
-	subscriber, err := broker.NewSubscriber(log, subscriptionID, brokerMetrics)
+	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		dbConfig.Host, dbConfig.Port, dbConfig.User, dbConfig.Password, dbConfig.DBName, dbConfig.SSLMode)
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
+	})
 	if err != nil {
 		errCtx := logger.WithErrorField(ctx, err)
-		log.Errorf(errCtx, "Failed to create subscriber")
-		return fmt.Errorf("failed to create subscriber: %w", err)
+		log.Errorf(errCtx, "Failed to connect to database")
+		return fmt.Errorf("failed to connect to database: %w", err)
 	}
-	log.Info(ctx, "Broker subscriber created successfully")
+	log.Info(ctx, "Connected to PostgreSQL database")
 
-	log.Info(ctx, "Subscribing to broker topic...")
-	err = subscriber.Subscribe(ctx, topic, handler)
-	if err != nil {
-		errCtx := logger.WithErrorField(ctx, err)
-		log.Errorf(errCtx, "Failed to subscribe to topic")
-		return fmt.Errorf("failed to subscribe to topic: %w", err)
-	}
-	log.Info(ctx, "Successfully subscribed to broker topic")
+	// Determine the kind to consume based on adapter name
+	kind := resolveQueueKind(config.Adapter.Name)
+	log.Infof(ctx, "Queue consumer will filter on kind=%s", kind)
+
+	// Create queue consumer
+	queueConsumer := queue.NewConsumer(db, log)
 
 	// Mark as ready
 	healthServer.SetBrokerReady(true)
 	log.Info(ctx, "Adapter is ready to process events")
 
-	// Monitor subscription errors
-	fatalErrCh := make(chan error, 1)
-	go func() {
-		for subErr := range subscriber.Errors() {
-			errCtx := logger.WithErrorField(ctx, subErr)
-			log.Errorf(errCtx, "Subscription error")
-			select {
-			case fatalErrCh <- subErr:
-			default:
-			}
-		}
-	}()
-
 	log.Info(ctx, "Adapter started, waiting for events...")
 
-	// Wait for shutdown signal or fatal subscription error
-	select {
-	case <-ctx.Done():
-		log.Info(ctx, "Context canceled, shutting down...")
-	case err := <-fatalErrCh:
-		errCtx := logger.WithErrorField(ctx, err)
-		log.Errorf(errCtx, "Fatal subscription error, shutting down")
-		healthServer.SetShuttingDown(true)
-		cancel()
-	}
-
-	// Close subscriber gracefully
-	log.Info(ctx, "Closing broker subscriber...")
-	shutdownCtx, shutdownCancel := context.WithTimeout(
-		context.Background(), 30*time.Second,
-	)
-	defer shutdownCancel()
-
-	closeDone := make(chan error, 1)
-	go func() {
-		closeDone <- subscriber.Close()
-	}()
-
-	select {
-	case err := <-closeDone:
+	// Start queue consumer (blocks until context is canceled)
+	consumerErr := queueConsumer.Start(ctx, kind, func(ctx context.Context, msg *queue.QueueMessage) error {
+		evt, err := queue.QueueMessageToCloudEvent(msg)
 		if err != nil {
 			errCtx := logger.WithErrorField(ctx, err)
-			log.Errorf(errCtx, "Error closing subscriber")
-		} else {
-			log.Info(ctx, "Subscriber closed successfully")
+			log.Errorf(errCtx, "Failed to convert queue message to CloudEvent")
+			return err
 		}
-	case <-shutdownCtx.Done():
-		err := fmt.Errorf("subscriber close timed out after 30 seconds")
-		errCtx := logger.WithErrorField(ctx, err)
-		log.Error(errCtx, "Subscriber close timed out")
+		return handler(ctx, evt)
+	})
+	if consumerErr != nil && ctx.Err() == nil {
+		errCtx := logger.WithErrorField(ctx, consumerErr)
+		log.Errorf(errCtx, "Queue consumer error")
 	}
 
 	log.Info(ctx, "Adapter shutdown complete")
 
 	return nil
+}
+
+// resolveQueueKind determines the resource kind to consume based on the adapter name.
+func resolveQueueKind(adapterName string) string {
+	lower := strings.ToLower(adapterName)
+	if strings.Contains(lower, "nodepool") || strings.Contains(lower, "node-pool") || strings.Contains(lower, "node_pool") {
+		return "NodePool"
+	}
+	return "Cluster"
 }
 
 // -----------------------------------------------------------------------------
@@ -862,9 +828,13 @@ func addOverrideFlags(cmd *cobra.Command) {
 	cmd.Flags().String("hyperfleet-api-max-delay", "",
 		"HyperFleet API retry max delay (e.g. 30s). Env: HYPERFLEET_API_MAX_DELAY")
 
-	// Broker override flags
-	cmd.Flags().String("broker-subscription-id", "", "Broker subscription ID. Env: HYPERFLEET_BROKER_SUBSCRIPTION_ID")
-	cmd.Flags().String("broker-topic", "", "Broker topic. Env: HYPERFLEET_BROKER_TOPIC")
+	// Database override flags
+	cmd.Flags().String("db-host", "", "Database host. Env: HYPERFLEET_DB_HOST")
+	cmd.Flags().Int("db-port", 0, "Database port. Env: HYPERFLEET_DB_PORT")
+	cmd.Flags().String("db-user", "", "Database user. Env: HYPERFLEET_DB_USER")
+	cmd.Flags().String("db-password", "", "Database password. Env: HYPERFLEET_DB_PASSWORD")
+	cmd.Flags().String("db-name", "", "Database name. Env: HYPERFLEET_DB_NAME")
+	cmd.Flags().String("db-sslmode", "", "Database SSL mode. Env: HYPERFLEET_DB_SSLMODE")
 
 	// Kubernetes override flags
 	cmd.Flags().String("kubernetes-kube-config-path", "",

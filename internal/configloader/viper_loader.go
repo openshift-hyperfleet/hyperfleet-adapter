@@ -44,8 +44,12 @@ var viperKeyMappings = map[string]string{
 	"clients::hyperfleet_api::max_delay":               "API_MAX_DELAY",
 	"clients::hyperfleet_api::auth::token_path":        "API_AUTH_TOKEN_PATH",
 	"clients::hyperfleet_api::auth::token_cache_ttl":   "API_AUTH_TOKEN_CACHE_TTL",
-	"clients::broker::subscription_id":                 "BROKER_SUBSCRIPTION_ID",
-	"clients::broker::topic":                           "BROKER_TOPIC",
+	"clients::database::host":                          "DB_HOST",
+	"clients::database::port":                          "DB_PORT",
+	"clients::database::user":                          "DB_USER",
+	"clients::database::password":                      "DB_PASSWORD",
+	"clients::database::dbname":                        "DB_NAME",
+	"clients::database::sslmode":                       "DB_SSLMODE",
 	"clients::kubernetes::kube_config_path":            "KUBERNETES_KUBE_CONFIG_PATH",
 	"clients::kubernetes::api_version":                 "KUBERNETES_API_VERSION",
 	"clients::kubernetes::qps":                         "KUBERNETES_QPS",
@@ -78,8 +82,12 @@ var cliFlags = map[string]string{
 	"hyperfleet-api-retry-backoff":       "clients::hyperfleet_api::retry_backoff",
 	"hyperfleet-api-base-delay":          "clients::hyperfleet_api::base_delay",
 	"hyperfleet-api-max-delay":           "clients::hyperfleet_api::max_delay",
-	"broker-subscription-id":             "clients::broker::subscription_id",
-	"broker-topic":                       "clients::broker::topic",
+	"db-host":                            "clients::database::host",
+	"db-port":                            "clients::database::port",
+	"db-user":                            "clients::database::user",
+	"db-password":                        "clients::database::password",
+	"db-name":                            "clients::database::dbname",
+	"db-sslmode":                         "clients::database::sslmode",
 	"kubernetes-kube-config-path":        "clients::kubernetes::kube_config_path",
 	"kubernetes-api-version":             "clients::kubernetes::api_version",
 	"kubernetes-qps":                     "clients::kubernetes::qps",
@@ -166,18 +174,6 @@ func loadAdapterConfigWithViper(
 		envVar := EnvPrefix + "_" + envSuffix
 		if val := os.Getenv(envVar); val != "" {
 			v.Set(configPath, val)
-		}
-	}
-
-	// Legacy broker env vars without HYPERFLEET_ prefix (kept for compatibility)
-	if os.Getenv(EnvPrefix+"_BROKER_SUBSCRIPTION_ID") == "" {
-		if val := os.Getenv("BROKER_SUBSCRIPTION_ID"); val != "" {
-			v.Set("clients::broker::subscription_id", val)
-		}
-	}
-	if os.Getenv(EnvPrefix+"_BROKER_TOPIC") == "" {
-		if val := os.Getenv("BROKER_TOPIC"); val != "" {
-			v.Set("clients::broker::topic", val)
 		}
 	}
 

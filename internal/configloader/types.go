@@ -650,10 +650,20 @@ type AdapterConfig struct {
 	DebugConfig bool          `yaml:"debug_config,omitempty" mapstructure:"debug_config"`
 }
 
+// DatabaseConfig contains PostgreSQL database configuration
+type DatabaseConfig struct {
+	Host     string `yaml:"host,omitempty" mapstructure:"host"`
+	Port     int    `yaml:"port,omitempty" mapstructure:"port"`
+	User     string `yaml:"user,omitempty" mapstructure:"user"`
+	Password string `yaml:"password,omitempty" mapstructure:"password"`
+	DBName   string `yaml:"dbname,omitempty" mapstructure:"dbname"`
+	SSLMode  string `yaml:"sslmode,omitempty" mapstructure:"sslmode"`
+}
+
 // ClientsConfig contains configuration for all external clients
 type ClientsConfig struct {
 	Maestro       *MaestroClientConfig `yaml:"maestro,omitempty" mapstructure:"maestro"`
-	Broker        BrokerConfig         `yaml:"broker,omitempty" mapstructure:"broker"`
+	Database      DatabaseConfig       `yaml:"database,omitempty" mapstructure:"database"`
 	Kubernetes    KubernetesConfig     `yaml:"kubernetes" mapstructure:"kubernetes"`
 	HyperfleetAPI HyperfleetAPIConfig  `yaml:"hyperfleet_api" mapstructure:"hyperfleet_api"`
 }
