@@ -1,0 +1,12 @@
+{{- if .Values.monitoring.dashboard.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hyperfleet-adapter.fullname" . }}-grafana-dashboard
+  labels:
+    {{- include "hyperfleet-adapter.labels" . | nindent 4 }}
+    grafana_dashboard: "1"
+data:
+  hyperfleet-adapter.json: |-
+    {{- .Files.Get "dashboards/hyperfleet-adapter.json" | nindent 4 }}
+{{- end }}

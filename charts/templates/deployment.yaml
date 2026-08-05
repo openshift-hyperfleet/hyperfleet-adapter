@@ -104,7 +104,7 @@ spec:
             - name: HYPERFLEET_BROKER_TOPIC
               value: {{ .Values.broker.googlepubsub.topic | quote }}
             {{- end }}
-            {{- with .Values.tracing }}
+            {{- with .Values.monitoring.tracing }}
             - name: HYPERFLEET_TRACING_ENABLED
               value: {{ .enabled | quote }}
             {{- if .enabled }}

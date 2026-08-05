@@ -4,7 +4,7 @@
 
 All metrics are exposed on the `/metrics` endpoint (port 9090) in Prometheus format. No additional configuration is needed.
 
-The Helm chart includes a **ServiceMonitor** template for automatic discovery by the [Prometheus Operator](https://github.com/prometheus-operator/prometheus-operator). It is enabled by default (`serviceMonitor.enabled: true`) and scrapes the `/metrics` endpoint every 30s with `honorLabels: true` to preserve the adapter's `component`, `version`, and `adapter_name` labels. The template is only rendered when the Prometheus Operator CRDs (`monitoring.coreos.com/v1/ServiceMonitor`) are available on the cluster; otherwise it is silently skipped. See the Helm `values.yaml` for configuration options (interval, scrapeTimeout, labels, namespaceSelector).
+The Helm chart includes a **ServiceMonitor** template for automatic discovery by the [Prometheus Operator](https://github.com/prometheus-operator/prometheus-operator). It is disabled by default (`monitoring.serviceMonitor.enabled: false`) and scrapes the `/metrics` endpoint every 30s with `honorLabels: true` to preserve the adapter's `component`, `version`, and `adapter_name` labels. The template is only rendered when the Prometheus Operator CRDs (`monitoring.coreos.com/v1/ServiceMonitor`) are available on the cluster; otherwise it is silently skipped. See the Helm `values.yaml` for configuration options (interval, scrapeTimeout, labels, namespaceSelector).
 
 ## Adapter Metrics
 

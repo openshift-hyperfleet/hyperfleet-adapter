@@ -1,6 +1,6 @@
 # hyperfleet-adapter
 
-![Version: 2.1.0](https://img.shields.io/badge/Version-2.1.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.0.0-dev](https://img.shields.io/badge/AppVersion-0.0.0--dev-informational?style=flat-square)
+![Version: 2.2.0](https://img.shields.io/badge/Version-2.2.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.0.0-dev](https://img.shields.io/badge/AppVersion-0.0.0--dev-informational?style=flat-square)
 
 HyperFleet Adapter - Event-driven adapter services for HyperFleet cluster provisioning
 
@@ -126,23 +126,26 @@ helm install hyperfleet-adapter oci://REGISTRY/hyperfleet-adapter \
 | strategy.type | string | `"RollingUpdate"` | Strategy type (`RollingUpdate` or `Recreate`) |
 | terminationGracePeriodSeconds | int | `30` | Termination grace period in seconds |
 | tolerations | list | `[]` | Tolerations for pod scheduling |
-| serviceMonitor | object | `{"enabled":true,"honorLabels":true,"interval":"30s","labels":{},"metricRelabeling":[],"namespace":"","namespaceSelector":{},"scrapeTimeout":"10s"}` | ServiceMonitor for Prometheus Operator scrape configuration. Defaults to enabled. On clusters without Prometheus Operator CRDs, the resource is silently skipped. |
-| serviceMonitor.enabled | bool | `true` | Create a ServiceMonitor resource |
-| serviceMonitor.interval | string | `"30s"` | Scrape interval |
-| serviceMonitor.scrapeTimeout | string | `"10s"` | Scrape timeout (must be less than interval) |
-| serviceMonitor.labels | object | `{}` | Additional labels for ServiceMonitor discovery |
-| serviceMonitor.honorLabels | bool | `true` | Honor labels from the target to avoid overwriting |
-| serviceMonitor.metricRelabeling | list | `[]` | Metric relabel configs applied before ingestion |
-| serviceMonitor.namespaceSelector | object | `{}` | Namespace selector for cross-namespace monitoring |
-| serviceMonitor.namespace | string | `""` | Override the namespace where ServiceMonitor is created (defaults to release namespace) |
-| tracing | object | `{"enabled":false,"otlpEndpoint":"","otlpProtocol":"grpc","propagators":"tracecontext,baggage","sampler":"parentbased_traceidratio","samplerArg":"1.0","serviceName":"hyperfleet-adapter"}` | Distributed tracing configuration (OpenTelemetry) |
-| tracing.enabled | bool | `false` | Enable trace export |
-| tracing.serviceName | string | `"hyperfleet-adapter"` | Service name reported in traces |
-| tracing.otlpEndpoint | string | `""` | OTLP exporter endpoint (traces go to stdout when empty) |
-| tracing.otlpProtocol | string | `"grpc"` | OTLP protocol (`grpc` or `http/protobuf`) |
-| tracing.sampler | string | `"parentbased_traceidratio"` | Sampler type |
-| tracing.samplerArg | string | `"1.0"` | Sampling rate (`1.0` for dev, `0.01` for production) |
-| tracing.propagators | string | `"tracecontext,baggage"` | Context propagation formats |
+| monitoring | object | `{"dashboard":{"enabled":false},"serviceMonitor":{"enabled":false,"honorLabels":true,"interval":"30s","labels":{},"metricRelabeling":[],"namespace":"","namespaceSelector":{},"scrapeTimeout":"10s"},"tracing":{"enabled":false,"otlpEndpoint":"","otlpProtocol":"grpc","propagators":"tracecontext,baggage","sampler":"parentbased_always_on","samplerArg":"","serviceName":"hyperfleet-adapter"}}` | Monitoring and observability configuration |
+| monitoring.serviceMonitor | object | `{"enabled":false,"honorLabels":true,"interval":"30s","labels":{},"metricRelabeling":[],"namespace":"","namespaceSelector":{},"scrapeTimeout":"10s"}` | ServiceMonitor for Prometheus Operator scrape configuration. Disabled by default. On clusters without Prometheus Operator CRDs, the resource is silently skipped. |
+| monitoring.serviceMonitor.enabled | bool | `false` | Create a ServiceMonitor resource |
+| monitoring.serviceMonitor.interval | string | `"30s"` | Scrape interval |
+| monitoring.serviceMonitor.scrapeTimeout | string | `"10s"` | Scrape timeout (must be less than interval) |
+| monitoring.serviceMonitor.labels | object | `{}` | Additional labels for ServiceMonitor discovery |
+| monitoring.serviceMonitor.honorLabels | bool | `true` | Honor labels from the target to avoid overwriting |
+| monitoring.serviceMonitor.metricRelabeling | list | `[]` | Metric relabel configs applied before ingestion |
+| monitoring.serviceMonitor.namespaceSelector | object | `{}` | Namespace selector for cross-namespace monitoring |
+| monitoring.serviceMonitor.namespace | string | `""` | Override the namespace where ServiceMonitor is created (defaults to release namespace) |
+| monitoring.dashboard | object | `{"enabled":false}` | Grafana dashboard provisioning via sidecar ConfigMap |
+| monitoring.dashboard.enabled | bool | `false` | Create a ConfigMap with the Grafana dashboard JSON |
+| monitoring.tracing | object | `{"enabled":false,"otlpEndpoint":"","otlpProtocol":"grpc","propagators":"tracecontext,baggage","sampler":"parentbased_always_on","samplerArg":"","serviceName":"hyperfleet-adapter"}` | Distributed tracing configuration (OpenTelemetry) |
+| monitoring.tracing.enabled | bool | `false` | Enable trace export |
+| monitoring.tracing.serviceName | string | `"hyperfleet-adapter"` | Service name reported in traces |
+| monitoring.tracing.otlpEndpoint | string | `""` | OTLP exporter endpoint (traces go to stdout when empty) |
+| monitoring.tracing.otlpProtocol | string | `"grpc"` | OTLP protocol (`grpc` or `http/protobuf`) |
+| monitoring.tracing.sampler | string | `"parentbased_always_on"` | Sampler type |
+| monitoring.tracing.samplerArg | string | `""` | Sampling rate (only used with ratio-based samplers) |
+| monitoring.tracing.propagators | string | `"tracecontext,baggage"` | Context propagation formats |
 
 ----------------------------------------------
 Autogenerated from chart metadata using [helm-docs](https://github.com/norwoodj/helm-docs)

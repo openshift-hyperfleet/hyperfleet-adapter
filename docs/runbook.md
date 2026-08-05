@@ -258,7 +258,7 @@ Non-retryable: forbidden, unauthorized, bad request, invalid, gone, method not s
    ```bash
    kubectl exec <pod> -- curl -s http://otel-collector:4317
    ```
-4. Check Helm values: `tracing.enabled`, `tracing.otlpEndpoint`, `tracing.otlpProtocol`
+4. Check Helm values: `monitoring.tracing.enabled`, `monitoring.tracing.otlpEndpoint`, `monitoring.tracing.otlpProtocol`
 
 ---
 

@@ -197,13 +197,13 @@ The chart automatically sets these environment variables from Helm values:
 | `HYPERFLEET_BROKER_TOPIC` | `broker.googlepubsub.topic` | When broker type is `googlepubsub` |
 | `BROKER_URL` | `broker.rabbitmq.url` | When broker type is `rabbitmq` |
 | `BROKER_QUEUE` | `broker.rabbitmq.queue` | When broker type is `rabbitmq` |
-| `HYPERFLEET_TRACING_ENABLED` | `tracing.enabled` | Always |
-| `OTEL_SERVICE_NAME` | `tracing.serviceName` | When tracing is enabled |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `tracing.otlpEndpoint` | When tracing is enabled |
-| `OTEL_EXPORTER_OTLP_PROTOCOL` | `tracing.otlpProtocol` | When tracing is enabled |
-| `OTEL_TRACES_SAMPLER` | `tracing.sampler` | When tracing is enabled |
-| `OTEL_TRACES_SAMPLER_ARG` | `tracing.samplerArg` | When tracing is enabled |
-| `OTEL_PROPAGATORS` | `tracing.propagators` | When tracing is enabled |
+| `HYPERFLEET_TRACING_ENABLED` | `monitoring.tracing.enabled` | Always |
+| `OTEL_SERVICE_NAME` | `monitoring.tracing.serviceName` | When tracing is enabled |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `monitoring.tracing.otlpEndpoint` | When tracing is enabled |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `monitoring.tracing.otlpProtocol` | When tracing is enabled |
+| `OTEL_TRACES_SAMPLER` | `monitoring.tracing.sampler` | When tracing is enabled |
+| `OTEL_TRACES_SAMPLER_ARG` | `monitoring.tracing.samplerArg` | When tracing is enabled |
+| `OTEL_PROPAGATORS` | `monitoring.tracing.propagators` | When tracing is enabled |
 | `K8S_NAMESPACE` | Pod field `metadata.namespace` | When tracing is enabled |
 | `OTEL_RESOURCE_ATTRIBUTES` | Hardcoded `k8s.namespace.name=$(K8S_NAMESPACE)` | When tracing is enabled |
 
@@ -337,9 +337,10 @@ env:
       fieldRef:
         fieldPath: metadata.namespace
 
-tracing:
-  enabled: true
-  otlpEndpoint: http://otel-collector:4317
+monitoring:
+  tracing:
+    enabled: true
+    otlpEndpoint: http://otel-collector:4317
 
 rbac:
   resources:

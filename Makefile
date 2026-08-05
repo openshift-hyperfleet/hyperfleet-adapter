@@ -220,7 +220,7 @@ test-helm: verify-helm-docs ## Test Helm charts (lint, template, validate, kubec
 		--set broker.type=googlepubsub \
 		--set broker.googlepubsub.subscriptionId=test-sub \
 		--set broker.googlepubsub.topic=test-topic \
-		--set serviceMonitor.enabled=true \
+		--set monitoring.serviceMonitor.enabled=true \
 		--api-versions monitoring.coreos.com/v1/ServiceMonitor) \
 		&& echo "$$output" | grep -q 'kind: ServiceMonitor' \
 		|| { echo "ERROR: ServiceMonitor not rendered"; exit 1; }; \
@@ -237,7 +237,7 @@ test-helm: verify-helm-docs ## Test Helm charts (lint, template, validate, kubec
 		--set broker.type=googlepubsub \
 		--set broker.googlepubsub.subscriptionId=test-sub \
 		--set broker.googlepubsub.topic=test-topic \
-		--set serviceMonitor.enabled=true) \
+		--set monitoring.serviceMonitor.enabled=true) \
 		&& ! echo "$$output" | grep -q 'kind: ServiceMonitor' \
 		|| { echo "ERROR: ServiceMonitor rendered without CRD"; exit 1; }; \
 		echo "$$output" | $(call gotool,kubeconform) $(KUBECONFORM_FLAGS)
@@ -253,7 +253,7 @@ test-helm: verify-helm-docs ## Test Helm charts (lint, template, validate, kubec
 		--set broker.type=googlepubsub \
 		--set broker.googlepubsub.subscriptionId=test-sub \
 		--set broker.googlepubsub.topic=test-topic \
-		--set serviceMonitor.enabled=false \
+		--set monitoring.serviceMonitor.enabled=false \
 		--api-versions monitoring.coreos.com/v1/ServiceMonitor) \
 		&& ! echo "$$output" | grep -q 'kind: ServiceMonitor' \
 		|| { echo "ERROR: ServiceMonitor rendered while disabled"; exit 1; }; \
