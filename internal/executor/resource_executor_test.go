@@ -9,7 +9,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/k8sclient"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/transportclient"
-	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -37,7 +36,6 @@ func TestResourceExecutor_ExecuteAll_DiscoveryFailure(t *testing.T) {
 
 	config := &ExecutorConfig{
 		TransportClient: mock,
-		Logger:          logger.NewTestLogger(),
 	}
 	re := newResourceExecutor(config)
 
@@ -140,7 +138,6 @@ func TestResourceExecutor_ExecuteAll_StoresNestedDiscoveriesByName(t *testing.T)
 
 	re := newResourceExecutor(&ExecutorConfig{
 		TransportClient: mock,
-		Logger:          logger.NewTestLogger(),
 	})
 
 	resource := configloader.Resource{
@@ -201,9 +198,7 @@ func TestResourceExecutor_ExecuteAll_StoresNestedDiscoveriesByName(t *testing.T)
 }
 
 func TestRenderToBytes_StringManifest(t *testing.T) {
-	re := newResourceExecutor(&ExecutorConfig{
-		Logger: logger.NewTestLogger(),
-	})
+	re := newResourceExecutor(&ExecutorConfig{})
 
 	tests := []struct {
 		name         string
@@ -328,9 +323,7 @@ metadata:
 
 func TestRenderToBytes_StringManifestWithSubnetList(t *testing.T) {
 	// Test the customer's original use case: generating a list of subnets
-	re := newResourceExecutor(&ExecutorConfig{
-		Logger: logger.NewTestLogger(),
-	})
+	re := newResourceExecutor(&ExecutorConfig{})
 
 	manifest := `apiVersion: v1
 kind: ConfigMap
@@ -361,9 +354,7 @@ data:
 }
 
 func TestRenderToBytes_StringManifestEdgeCases(t *testing.T) {
-	re := newResourceExecutor(&ExecutorConfig{
-		Logger: logger.NewTestLogger(),
-	})
+	re := newResourceExecutor(&ExecutorConfig{})
 
 	t.Run("plain YAML string without templates", func(t *testing.T) {
 		// Backward compatibility: plain YAML ref files (no templates) still work
@@ -485,7 +476,6 @@ func TestResourceExecutor_ExecuteAll_StringManifest(t *testing.T) {
 
 	re := newResourceExecutor(&ExecutorConfig{
 		TransportClient: mock,
-		Logger:          logger.NewTestLogger(),
 	})
 
 	// Use a string manifest with structural Go templates
@@ -728,7 +718,6 @@ func TestResourceExecutor_LifecycleCreate_WhenTrue_ResourceNotFound_Applied(t *t
 
 	re := newResourceExecutor(&ExecutorConfig{
 		TransportClient: mock,
-		Logger:          logger.NewTestLogger(),
 	})
 
 	resource := newResourceWithLifecycleCreate("shouldCreate")
@@ -751,7 +740,6 @@ func TestResourceExecutor_LifecycleCreate_WhenFalse_ResourceNotFound_Skipped(t *
 
 	re := newResourceExecutor(&ExecutorConfig{
 		TransportClient: mock,
-		Logger:          logger.NewTestLogger(),
 	})
 
 	resource := newResourceWithLifecycleCreate("shouldCreate")
@@ -780,7 +768,6 @@ func TestResourceExecutor_LifecycleCreate_WhenCELError_ExecutionFails(t *testing
 
 	re := newResourceExecutor(&ExecutorConfig{
 		TransportClient: mock,
-		Logger:          logger.NewTestLogger(),
 	})
 
 	// Invalid CEL syntax — evaluateLifecycleWhen will error.
@@ -818,7 +805,6 @@ func TestResourceExecutor_LifecycleCreate_ResourceAlreadyExists_IgnoresWhen(t *t
 
 	re := newResourceExecutor(&ExecutorConfig{
 		TransportClient: mock,
-		Logger:          logger.NewTestLogger(),
 	})
 
 	resource := newResourceWithLifecycleCreate("shouldCreate")
@@ -852,7 +838,6 @@ func TestResourceExecutor_LifecycleCreate_Absent_NormalApply(t *testing.T) {
 
 	re := newResourceExecutor(&ExecutorConfig{
 		TransportClient: mock,
-		Logger:          logger.NewTestLogger(),
 	})
 
 	resource := configloader.Resource{
@@ -977,7 +962,6 @@ func TestResourceExecutor_LifecycleDelete_WhenTrue_ResourceFound_InstantDelete(t
 
 	re := newResourceExecutor(&ExecutorConfig{
 		TransportClient: mock,
-		Logger:          logger.NewTestLogger(),
 	})
 
 	resource := newResourceWithLifecycle("deleted_time != null", "Background")
@@ -1020,7 +1004,6 @@ func TestResourceExecutor_LifecycleDelete_WhenTrue_ResourceFound_WithFinalizers(
 
 	re := newResourceExecutor(&ExecutorConfig{
 		TransportClient: mock,
-		Logger:          logger.NewTestLogger(),
 	})
 
 	resource := newResourceWithLifecycle("deleted_time != null", "Background")
@@ -1051,7 +1034,6 @@ func TestResourceExecutor_LifecycleDelete_WhenTrue_ResourceNotFound(t *testing.T
 
 	re := newResourceExecutor(&ExecutorConfig{
 		TransportClient: mock,
-		Logger:          logger.NewTestLogger(),
 	})
 
 	resource := newResourceWithLifecycle("deleted_time != null", "Background")
@@ -1082,7 +1064,6 @@ func TestResourceExecutor_LifecycleDelete_WhenFalse_NormalApply(t *testing.T) {
 
 	re := newResourceExecutor(&ExecutorConfig{
 		TransportClient: mock,
-		Logger:          logger.NewTestLogger(),
 	})
 
 	// deleted_time is null → expression "deleted_time != null" is false
@@ -1116,7 +1097,6 @@ func TestResourceExecutor_LifecycleDelete_NoLifecycle_NormalApply(t *testing.T) 
 
 	re := newResourceExecutor(&ExecutorConfig{
 		TransportClient: mock,
-		Logger:          logger.NewTestLogger(),
 	})
 
 	resource := configloader.Resource{
@@ -1148,7 +1128,6 @@ func TestResourceExecutor_LifecycleDelete_NoExpression_DefaultsFalse(t *testing.
 
 	re := newResourceExecutor(&ExecutorConfig{
 		TransportClient: mock,
-		Logger:          logger.NewTestLogger(),
 	})
 
 	resource := newResourceWithLifecycle("", "Foreground")
@@ -1188,7 +1167,6 @@ func TestResourceExecutor_LifecycleDelete_OrderingViaResources_InstantDelete(t *
 
 	re := newResourceExecutor(&ExecutorConfig{
 		TransportClient: mock,
-		Logger:          logger.NewTestLogger(),
 	})
 
 	clusterJob := configloader.Resource{
@@ -1265,7 +1243,6 @@ func TestResourceExecutor_LifecycleDelete_OrderingViaResources_WithFinalizers(t 
 
 	re := newResourceExecutor(&ExecutorConfig{
 		TransportClient: mock,
-		Logger:          logger.NewTestLogger(),
 	})
 
 	clusterJob := configloader.Resource{
@@ -1340,7 +1317,6 @@ func TestResourceExecutor_LifecycleDelete_OrderingSecondReconciliation(t *testin
 
 	re := newResourceExecutor(&ExecutorConfig{
 		TransportClient: mock2,
-		Logger:          logger.NewTestLogger(),
 	})
 
 	clusterJob := configloader.Resource{
@@ -1411,7 +1387,6 @@ func TestResourceExecutor_LifecycleDelete_DeleteError(t *testing.T) {
 
 	re := newResourceExecutor(&ExecutorConfig{
 		TransportClient: mock,
-		Logger:          logger.NewTestLogger(),
 	})
 
 	resource := newResourceWithLifecycle("deleted_time != null", "Background")
@@ -1461,7 +1436,6 @@ func TestResourceExecutor_LifecycleDelete_InvalidCELExpression(t *testing.T) {
 
 	re := newResourceExecutor(&ExecutorConfig{
 		TransportClient: mock,
-		Logger:          logger.NewTestLogger(),
 	})
 
 	// "deleted_time != null &&" is a dangling logical-AND — invalid CEL syntax.
@@ -1488,7 +1462,6 @@ func TestResourceExecutor_LifecycleDelete_CELUndeclaredVariable(t *testing.T) {
 
 	re := newResourceExecutor(&ExecutorConfig{
 		TransportClient: mock,
-		Logger:          logger.NewTestLogger(),
 	})
 
 	// "not_captured_var" is intentionally absent from execCtx.Params.
@@ -1535,7 +1508,6 @@ func TestResourceExecutor_LifecycleDelete_PropagationPolicy(t *testing.T) {
 
 			re := newResourceExecutor(&ExecutorConfig{
 				TransportClient: mock,
-				Logger:          logger.NewTestLogger(),
 			})
 
 			resource := newResourceWithLifecycle("deleted_time != null", tt.policy)
@@ -1579,7 +1551,6 @@ func TestResourceExecutor_LifecycleDelete_PreDeleteDiscoveryError(t *testing.T) 
 
 	re := newResourceExecutor(&ExecutorConfig{
 		TransportClient: mock,
-		Logger:          logger.NewTestLogger(),
 	})
 
 	resource := newResourceWithLifecycle("deleted_time != null", "Background")
@@ -1611,7 +1582,6 @@ func TestResourceExecutor_LifecycleDelete_DeleteConfigNil(t *testing.T) {
 
 	re := newResourceExecutor(&ExecutorConfig{
 		TransportClient: mock,
-		Logger:          logger.NewTestLogger(),
 	})
 
 	resource := configloader.Resource{
@@ -1659,7 +1629,6 @@ func TestResourceExecutor_LifecycleDelete_Maestro_AsyncDeletion(t *testing.T) {
 
 	re := newResourceExecutor(&ExecutorConfig{
 		TransportClient: mock,
-		Logger:          logger.NewTestLogger(),
 	})
 
 	resource := configloader.Resource{
@@ -1760,7 +1729,6 @@ func TestResourceExecutor_ExecuteAll_ContinuesAfterDeleteFailure(t *testing.T) {
 
 	re := newResourceExecutor(&ExecutorConfig{
 		TransportClient: mock,
-		Logger:          logger.NewTestLogger(),
 	})
 
 	resourceA := newResourceWithLifecycle("deleted_time != null", "Background")
@@ -1800,7 +1768,6 @@ func TestResourceExecutor_ExecuteAll_ContinuesAfterCELEvalError(t *testing.T) {
 
 	re := newResourceExecutor(&ExecutorConfig{
 		TransportClient: mock,
-		Logger:          logger.NewTestLogger(),
 	})
 
 	// resourceA has an invalid CEL expression — evaluateLifecycleDeleteWhen will error.
@@ -1915,7 +1882,6 @@ func TestResourceExecutor_LifecycleDelete_BySelectors(t *testing.T) {
 
 	re := newResourceExecutor(&ExecutorConfig{
 		TransportClient: mock,
-		Logger:          logger.NewTestLogger(),
 	})
 
 	resource := configloader.Resource{
