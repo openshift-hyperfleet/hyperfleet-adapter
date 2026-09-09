@@ -34,11 +34,11 @@ const (
 // Client Configuration
 // -----------------------------------------------------------------------------
 
-// AuthConfig holds optional JWT bearer token authentication configuration.
-// When set, a bearer token is read from TokenPath and injected as an
-// Authorization header on every outbound request.
+// AuthConfig holds optional ServiceAccount authentication configuration.
+// When set, a token is read from TokenPath and injected using the
+// ServiceAccount authorization scheme on every outbound request.
 type AuthConfig struct {
-	// TokenPath is the absolute path to a file containing the bearer token.
+	// TokenPath is the absolute path to a file containing the ServiceAccount token.
 	TokenPath string `yaml:"token_path,omitempty" mapstructure:"token_path"`
 	// TokenCacheTTL controls how long the token is cached in memory.
 	// Zero means the file is re-read on every request.
@@ -49,7 +49,7 @@ type AuthConfig struct {
 type ClientConfig struct {
 	// DefaultHeaders are headers added to all requests
 	DefaultHeaders map[string]string `yaml:"default_headers,omitempty" mapstructure:"default_headers"`
-	// Auth configures optional JWT bearer token authentication.
+	// Auth configures optional ServiceAccount authentication.
 	// When nil, requests are sent without an Authorization header.
 	Auth *AuthConfig `yaml:"auth,omitempty" mapstructure:"auth"`
 	// BaseURL is the base URL for all API requests (must be set by caller)

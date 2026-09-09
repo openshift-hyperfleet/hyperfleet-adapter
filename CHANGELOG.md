@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Use the `ServiceAccount` authorization scheme for HyperFleet API requests ([HYPERFLEET-1480](https://issues.redhat.com/browse/HYPERFLEET-1480))
 - Migrate CEL dependency from `github.com/google/cel-go` to its renamed module path `cel.dev/cel-go` (v0.32.0), unblocking Renovate dependency-update PRs that were failing `go get -t ./...` ([HYPERFLEET-1578](https://issues.redhat.com/browse/HYPERFLEET-1578))
 
 ## [0.2.0] - 2026-03-30

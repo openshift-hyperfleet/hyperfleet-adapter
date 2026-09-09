@@ -557,7 +557,7 @@ func TestExecuteAPICall(t *testing.T) {
 				Method: "GET",
 				URL:    "http://api.example.com/clusters",
 				Headers: []configloader.Header{
-					{Name: "Authorization", Value: "Bearer {{ .token }}"},
+					{Name: "Authorization", Value: "ServiceAccount {{ .token }}"},
 					{Name: "X-Request-ID", Value: "{{ .requestId }}"},
 				},
 			},

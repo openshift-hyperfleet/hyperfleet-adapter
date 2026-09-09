@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// fileTokenSource reads a bearer token from disk on every call, or caches it
+// fileTokenSource reads a ServiceAccount token from disk on every call, or caches it
 // for cacheTTL when cacheTTL > 0. A zero cacheTTL disables caching and causes
 // the file to be re-read on every request. It is safe for concurrent use.
 type fileTokenSource struct {

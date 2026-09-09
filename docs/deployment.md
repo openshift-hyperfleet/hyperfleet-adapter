@@ -84,7 +84,7 @@ These fields have first-class Helm values that the chart injects as environment 
 | `adapterConfig.log.level` | Log level (`debug`, `info`, `warn`, `error`) | `LOG_LEVEL` | `info` |
 | `adapterConfig.hyperfleetApi.baseUrl` | HyperFleet API base URL | `HYPERFLEET_API_BASE_URL` | `http://hyperfleet-api:8000` |
 | `adapterConfig.hyperfleetApi.version` | API version | `HYPERFLEET_API_VERSION` | `v1` |
-| `adapterConfig.hyperfleetApi.auth.enabled` | Enable JWT bearer token auth | — (controls volume + env vars) | `false` |
+| `adapterConfig.hyperfleetApi.auth.enabled` | Enable ServiceAccount token auth | — (controls volume + env vars) | `false` |
 | `adapterConfig.hyperfleetApi.auth.tokenPath` | Absolute path to the token file | `HYPERFLEET_API_AUTH_TOKEN_PATH` | `/var/run/secrets/hyperfleet/token` |
 | `adapterConfig.hyperfleetApi.auth.tokenCacheTtl` | In-memory token cache TTL | `HYPERFLEET_API_AUTH_TOKEN_CACHE_TTL` | `30s` |
 | `adapterConfig.hyperfleetApi.auth.audience` | ServiceAccount token audience | — (used in projected volume) | `hyperfleet-api` |
@@ -147,12 +147,12 @@ When using individual properties, `broker.type` must be set to `googlepubsub` or
 
 ## HyperFleet API Authentication
 
-The adapter can authenticate to the HyperFleet API using a Kubernetes projected ServiceAccount token (JWT bearer token). Authentication is **disabled by default** — existing deployments are unaffected.
+The adapter can authenticate to the HyperFleet API using a Kubernetes projected ServiceAccount token. Authentication is **disabled by default** — existing deployments are unaffected.
 
 When enabled, the Helm chart:
 1. Mounts a projected `serviceAccountToken` volume at the configured `tokenPath` directory.
 2. Sets `HYPERFLEET_API_AUTH_TOKEN_PATH` and `HYPERFLEET_API_AUTH_TOKEN_CACHE_TTL` env vars.
-3. The adapter reads the token file and attaches `Authorization: Bearer <token>` to every HyperFleet API request.
+3. The adapter reads the token file and attaches `Authorization: ServiceAccount <token>` to every HyperFleet API request.
 
 ```yaml
 adapterConfig:
