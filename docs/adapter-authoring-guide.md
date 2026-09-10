@@ -272,7 +272,7 @@ File-sourced params can be referenced in `api_call` headers via Go Templates:
       url: "/clusters/{{ .clusterId }}"
       headers:
         - name: "Authorization"
-          value: "Bearer {{ .k8sToken }}"
+          value: "ServiceAccount {{ .k8sToken }}"
 ```
 
 > **Security:** File-sourced tokens rendered into headers carry credentials. Ensure request/response logging (including reverse proxies and service meshes) does not capture `Authorization` or other sensitive headers.

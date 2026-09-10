@@ -115,7 +115,7 @@ clients:
 - `base_delay` (duration string): Initial retry delay. Default: `1s`.
 - `max_delay` (duration string): Maximum retry delay. Default: `30s`.
 - `default_headers` (map[string]string): Headers added to all API requests.
-- `auth.token_path` (string): Absolute path to a file containing a JWT bearer token. When set, the token is read from this file and attached as `Authorization: Bearer <token>` on every request. Typically a Kubernetes projected ServiceAccount token. Must be an absolute path.
+- `auth.token_path` (string): Absolute path to a file containing a ServiceAccount token. When set, the token is read from this file and attached as `Authorization: ServiceAccount <token>` on every request. Typically a Kubernetes projected ServiceAccount token. Must be an absolute path.
 - `auth.token_cache_ttl` (duration string): How long the token is cached in memory before re-reading the file. Zero (default) means re-read on every request.
 
 ### Broker (`clients.broker`)

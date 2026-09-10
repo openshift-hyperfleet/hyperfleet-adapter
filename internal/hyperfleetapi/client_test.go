@@ -208,7 +208,7 @@ func TestClientWithHeaders(t *testing.T) {
 	defer server.Close()
 
 	client, err := NewClient(WithBaseURL(server.URL),
-		WithDefaultHeader("Authorization", "Bearer default-token"))
+		WithDefaultHeader("Authorization", "ServiceAccount default-token"))
 	require.NoError(t, err, "failed to create client")
 	ctx := context.Background()
 
@@ -218,8 +218,8 @@ func TestClientWithHeaders(t *testing.T) {
 	)
 	require.NoError(t, err, "unexpected error")
 
-	if receivedAuth != "Bearer default-token" {
-		t.Errorf("expected Authorization header 'Bearer default-token', got %q", receivedAuth)
+	if receivedAuth != "ServiceAccount default-token" {
+		t.Errorf("expected Authorization header 'ServiceAccount default-token', got %q", receivedAuth)
 	}
 
 	if receivedCustom != "custom-value" {
@@ -665,10 +665,10 @@ func TestAPIErrorInRetryExhausted(t *testing.T) {
 	}
 }
 
-func TestClientBearerTokenAuth(t *testing.T) {
+func TestClientServiceAccountTokenAuth(t *testing.T) {
 	dir := t.TempDir()
 	tokenFile := filepath.Join(dir, "token")
-	if err := os.WriteFile(tokenFile, []byte("test-jwt-token"), 0600); err != nil {
+	if err := os.WriteFile(tokenFile, []byte("test-token"), 0600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -688,8 +688,8 @@ func TestClientBearerTokenAuth(t *testing.T) {
 	_, err = client.Get(context.Background(), "/test")
 	require.NoError(t, err)
 
-	if receivedAuth != "Bearer test-jwt-token" {
-		t.Errorf("Authorization = %q, want %q", receivedAuth, "Bearer test-jwt-token")
+	if receivedAuth != "ServiceAccount test-token" {
+		t.Errorf("Authorization = %q, want %q", receivedAuth, "ServiceAccount test-token")
 	}
 }
 

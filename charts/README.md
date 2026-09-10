@@ -32,8 +32,8 @@ helm install hyperfleet-adapter oci://REGISTRY/hyperfleet-adapter \
 | adapterConfig.hyperfleetApi | object | `{"auth":{"audience":"hyperfleet-api","enabled":false,"expirationSeconds":3600,"tokenCacheTtl":"30s","tokenPath":"/var/run/secrets/hyperfleet/token"},"baseUrl":"http://hyperfleet-api:8000","version":"v1"}` | HyperFleet API connection settings injected as environment variables |
 | adapterConfig.hyperfleetApi.baseUrl | string | `"http://hyperfleet-api:8000"` | API base URL (`HYPERFLEET_API_BASE_URL`) |
 | adapterConfig.hyperfleetApi.version | string | `"v1"` | API version (`HYPERFLEET_API_VERSION`) |
-| adapterConfig.hyperfleetApi.auth | object | `{"audience":"hyperfleet-api","enabled":false,"expirationSeconds":3600,"tokenCacheTtl":"30s","tokenPath":"/var/run/secrets/hyperfleet/token"}` | JWT bearer token authentication via Kubernetes projected ServiceAccount token |
-| adapterConfig.hyperfleetApi.auth.enabled | bool | `false` | Enable bearer token auth (`HYPERFLEET_API_AUTH_TOKEN_PATH`) |
+| adapterConfig.hyperfleetApi.auth | object | `{"audience":"hyperfleet-api","enabled":false,"expirationSeconds":3600,"tokenCacheTtl":"30s","tokenPath":"/var/run/secrets/hyperfleet/token"}` | ServiceAccount authentication via Kubernetes projected ServiceAccount token |
+| adapterConfig.hyperfleetApi.auth.enabled | bool | `false` | Enable ServiceAccount token auth (`HYPERFLEET_API_AUTH_TOKEN_PATH`) |
 | adapterConfig.hyperfleetApi.auth.audience | string | `"hyperfleet-api"` | ServiceAccount token audience (used for the projected volume) |
 | adapterConfig.hyperfleetApi.auth.tokenPath | string | `"/var/run/secrets/hyperfleet/token"` | Absolute path where the token file is mounted |
 | adapterConfig.hyperfleetApi.auth.expirationSeconds | int | `3600` | Token lifetime in seconds for the projected ServiceAccount token |

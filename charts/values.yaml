@@ -27,9 +27,9 @@ adapterConfig:
     baseUrl: http://hyperfleet-api:8000
     # -- API version (`HYPERFLEET_API_VERSION`)
     version: v1
-    # -- JWT bearer token authentication via Kubernetes projected ServiceAccount token
+    # -- ServiceAccount authentication via Kubernetes projected ServiceAccount token
     auth:
-      # -- Enable bearer token auth (`HYPERFLEET_API_AUTH_TOKEN_PATH`)
+      # -- Enable ServiceAccount token auth (`HYPERFLEET_API_AUTH_TOKEN_PATH`)
       enabled: false
       # -- ServiceAccount token audience (used for the projected volume)
       audience: hyperfleet-api
