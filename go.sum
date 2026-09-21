@@ -281,8 +281,8 @@ github.com/opencontainers/go-digest v1.0.0 h1:apOUWs51W5PlhuyGyz9FCeeBIOUDA/6nW8
 github.com/opencontainers/go-digest v1.0.0/go.mod h1:0JzlMkj0TRzQZfJkVvzbP0HBR3IKzErnv2BNG4W4MAM=
 github.com/opencontainers/image-spec v1.1.1 h1:y0fUlFfIZhPF1W537XOLg0/fcx6zcHCJwooC2xJA040=
 github.com/opencontainers/image-spec v1.1.1/go.mod h1:qpqAh3Dmcf36wStyyWU+kCeDgrGnAve2nCC8+7h8Q0M=
-github.com/openshift-hyperfleet/hyperfleet-applier v0.0.0-20260827133207-94b7a4d56697 h1:9DFSlPuXlMY4zshztT4/MEnY6QAgu0WoVY1KFtVE9fg=
-github.com/openshift-hyperfleet/hyperfleet-applier v0.0.0-20260827133207-94b7a4d56697/go.mod h1:tDZnkLwpVO5ksfPm3NH9dy5Yl0ZBSfbtOA3hj2wrmHc=
+github.com/openshift-hyperfleet/hyperfleet-applier v0.1.0-rc1 h1:eXH6KEqYJ5ClOb3VcLrypUCE7iraDuXJXsPJKIx9tGw=
+github.com/openshift-hyperfleet/hyperfleet-applier v0.1.0-rc1/go.mod h1:yGXPuYAynjW/DLMmHdU8NwywVmHYp+ekxRb19hetTgY=
 github.com/openshift-hyperfleet/hyperfleet-broker v1.1.2-0.20260805201321-4ebbef72d0d2 h1:c5qyV3DjaBOMaxa/Aq2Ch3i4fh3kAXh2bo4z+EJq+Fs=
 github.com/openshift-hyperfleet/hyperfleet-broker v1.1.2-0.20260805201321-4ebbef72d0d2/go.mod h1:KKePw5NRbxNxdUK9KL4Cnhi9YI9TnKJUEkdaggyDRA4=
 github.com/openshift-hyperfleet/hyperfleet-logger v0.0.0-20260811173525-c9f9e282d029 h1:c3GdD3EUdR9lRjNot+aBIxVbAXbOSTtiQpWVTHnFHaU=
