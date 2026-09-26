@@ -1,6 +1,7 @@
 package desireclient
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,12 +30,11 @@ type TransportContext struct {
 	Resource string
 }
 
-// ErrNotSyncedYet indicates the read desire's mirror has not yet been
-// populated by the applier — a transient, non-terminal outcome distinct from
-// a confirmed-absent resource (reported via apierrors.NewNotFound). Per the
-// eventual-consistency contract (docs/adapter-authoring-guide.md), callers
-// should treat this as "not converged yet" rather than a failure. Use
-// errors.Is to check for it.
+// ErrNotSyncedYet indicates the read mirror cannot establish current state,
+// or active apply/delete work prevents absence from being conclusive. It is a
+// transient, non-terminal outcome distinct from confirmed absence (reported
+// via apierrors.NewNotFound). Callers should treat it as "not converged yet"
+// rather than a failure. Use errors.Is to check for it.
 var ErrNotSyncedYet = errors.New("desireclient: resource not synced yet")
 
 // ErrDeletionPending indicates that the desire transport has not yet
@@ -79,6 +79,26 @@ func buildIdentity(
 		return desire.Identity{}, fmt.Errorf("desireclient: invalid identity: %w", err)
 	}
 	return id, nil
+}
+
+// hasActiveApplyDesire reports whether an apply desire currently exists for
+// the target, treating desire.ErrNotFound as "no active apply".
+func (c *Client) hasActiveApplyDesire(
+	ctx context.Context, tc *TransportContext, gvk schema.GroupVersionKind, namespace, name string,
+) (bool, error) {
+	applyID, err := buildIdentity(tc, desire.TypeApply, gvk, namespace, name)
+	if err != nil {
+		return false, err
+	}
+	_, err = c.store.GetApplyDesire(ctx, applyID)
+	switch {
+	case err == nil:
+		return true, nil
+	case errors.Is(err, desire.ErrNotFound):
+		return false, nil
+	default:
+		return false, fmt.Errorf("desireclient: failed to get apply desire for %s/%s: %w", namespace, name, err)
+	}
 }
 
 // generationFromKubeContent extracts the hyperfleet.io/generation annotation
