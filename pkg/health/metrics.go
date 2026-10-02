@@ -20,9 +20,10 @@ type MetricsServer struct {
 
 // MetricsConfig holds configuration for metrics registration.
 type MetricsConfig struct {
-	Component string
-	Version   string
-	Commit    string
+	Component   string
+	Version     string
+	Commit      string
+	AdapterName string
 }
 
 // NewMetricsServer creates a new metrics server with required HyperFleet metrics.
@@ -33,7 +34,7 @@ func NewMetricsServer(port string, cfg MetricsConfig) *MetricsServer {
 			Name: "hyperfleet_adapter_build_info",
 			Help: "Build information for the adapter",
 		},
-		[]string{"component", "version", "commit"},
+		[]string{"component", "version", "commit", "adapter_name"},
 	)
 
 	// Create up metric per HyperFleet metrics standard
@@ -42,8 +43,9 @@ func NewMetricsServer(port string, cfg MetricsConfig) *MetricsServer {
 			Name: "hyperfleet_adapter_up",
 			Help: "Whether the adapter is up and running",
 			ConstLabels: prometheus.Labels{
-				"component": cfg.Component,
-				"version":   cfg.Version,
+				"component":    cfg.Component,
+				"version":      cfg.Version,
+				"adapter_name": cfg.AdapterName,
 			},
 		},
 	)
@@ -53,7 +55,7 @@ func NewMetricsServer(port string, cfg MetricsConfig) *MetricsServer {
 	prometheus.MustRegister(upGauge)
 
 	// Set build_info to 1 (this is an info metric)
-	buildInfo.WithLabelValues(cfg.Component, cfg.Version, cfg.Commit).Set(1)
+	buildInfo.WithLabelValues(cfg.Component, cfg.Version, cfg.Commit, cfg.AdapterName).Set(1)
 
 	// Set up to 1 (adapter is running)
 	upGauge.Set(1)

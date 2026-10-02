@@ -216,7 +216,7 @@
             "uid": "${datasource}"
           },
           "expr": "hyperfleet_adapter_up",
-          "legendFormat": "Adapter Status",
+          "legendFormat": "{{adapter_name}} - Up",
           "refId": "A"
         },
         {
@@ -225,12 +225,12 @@
             "uid": "${datasource}"
           },
           "expr": "hyperfleet_adapter_build_info",
-          "legendFormat": "Build: {{version}}",
+          "legendFormat": "{{adapter_name}} - Build: {{version}}",
           "refId": "B"
         }
       ],
       "title": "Adapter Status",
-      "description": "Reflects all scraped adapter instances — not filtered by the adapter_name variable, since hyperfleet_adapter_up/build_info carry no adapter_name label.",
+      "description": "Reflects all scraped adapter instances. The baseline metrics include the adapter_name label for identifying each instance.",
       "type": "stat"
     },
     {
@@ -971,7 +971,7 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values(hyperfleet_adapter_events_processed_total, adapter_name)",
+        "definition": "label_values(hyperfleet_adapter_build_info, adapter_name)",
         "hide": 0,
         "includeAll": true,
         "label": "Adapter Name",
@@ -979,7 +979,7 @@
         "name": "adapter_name",
         "options": [],
         "query": {
-          "query": "label_values(hyperfleet_adapter_events_processed_total, adapter_name)",
+          "query": "label_values(hyperfleet_adapter_build_info, adapter_name)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,

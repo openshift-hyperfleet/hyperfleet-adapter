@@ -38,6 +38,33 @@ func TestLoadConfigRejectsTaskSchemaBeforeRuntimeSetup(t *testing.T) {
 	require.ErrorContains(t, err, "schema_version must be a string")
 }
 
+func TestAdapterNameForMetrics(t *testing.T) {
+	tests := []struct {
+		component string
+		want      string
+		wantError bool
+	}{
+		{component: "test-adapter", want: "test"},
+		{component: "adapter-", wantError: true},
+		{component: "hyperfleet-adapter-", wantError: true},
+		{component: "adapter- ", wantError: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.component, func(t *testing.T) {
+			got, err := adapterNameForMetrics(tt.component)
+			if tt.wantError {
+				require.ErrorContains(t, err, tt.component)
+				require.ErrorContains(t, err, "produces an empty metrics identity")
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestDryRunLogOptionsHonorsLevelOverride(t *testing.T) {
 	t.Setenv("LOG_LEVEL", "debug")
 

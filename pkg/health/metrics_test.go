@@ -42,21 +42,22 @@ func TestBrokerMetricsExposedOnMetricsEndpoint(t *testing.T) {
 			Name: "hyperfleet_adapter_build_info",
 			Help: "Build information for the adapter",
 		},
-		[]string{"component", "version", "commit"},
+		[]string{"component", "version", "commit", "adapter_name"},
 	)
 	upGauge := prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Name: "hyperfleet_adapter_up",
 			Help: "Whether the adapter is up and running",
 			ConstLabels: prometheus.Labels{
-				"component": "test-adapter",
-				"version":   "v0.1.0-test",
+				"component":    "test-adapter",
+				"version":      "v0.1.0-test",
+				"adapter_name": "test",
 			},
 		},
 	)
 	registry.MustRegister(buildInfo)
 	registry.MustRegister(upGauge)
-	buildInfo.WithLabelValues("test-adapter", "v0.1.0-test", "abc123").Set(1)
+	buildInfo.WithLabelValues("test-adapter", "v0.1.0-test", "abc123", "test").Set(1)
 	upGauge.Set(1)
 
 	// Register broker metrics with the same registry (same as main.go does via DefaultRegisterer)
@@ -85,6 +86,8 @@ func TestBrokerMetricsExposedOnMetricsEndpoint(t *testing.T) {
 	// Verify adapter baseline metrics are present
 	assert.Contains(t, metricsOutput, "hyperfleet_adapter_build_info")
 	assert.Contains(t, metricsOutput, "hyperfleet_adapter_up")
+	assert.Regexp(t, `hyperfleet_adapter_build_info\{[^}]*adapter_name="test"`, metricsOutput)
+	assert.Regexp(t, `hyperfleet_adapter_up\{[^}]*adapter_name="test"`, metricsOutput)
 
 	// Verify broker metrics are registered and exposed
 	assert.Contains(t, metricsOutput, "hyperfleet_broker_messages_consumed_total",
@@ -104,21 +107,22 @@ func TestAdapterMetricsExposedOnMetricsEndpoint(t *testing.T) {
 			Name: "hyperfleet_adapter_build_info",
 			Help: "Build information for the adapter",
 		},
-		[]string{"component", "version", "commit"},
+		[]string{"component", "version", "commit", "adapter_name"},
 	)
 	upGauge := prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Name: "hyperfleet_adapter_up",
 			Help: "Whether the adapter is up and running",
 			ConstLabels: prometheus.Labels{
-				"component": "test-adapter",
-				"version":   "v0.1.0-test",
+				"component":    "test-adapter",
+				"version":      "v0.1.0-test",
+				"adapter_name": "test",
 			},
 		},
 	)
 	registry.MustRegister(buildInfo)
 	registry.MustRegister(upGauge)
-	buildInfo.WithLabelValues("test-adapter", "v0.1.0-test", "abc123").Set(1)
+	buildInfo.WithLabelValues("test-adapter", "v0.1.0-test", "abc123", "test").Set(1)
 	upGauge.Set(1)
 
 	// Register adapter event metrics using the same registry
@@ -149,6 +153,8 @@ func TestAdapterMetricsExposedOnMetricsEndpoint(t *testing.T) {
 	// Verify baseline metrics
 	assert.Contains(t, metricsOutput, "hyperfleet_adapter_build_info")
 	assert.Contains(t, metricsOutput, "hyperfleet_adapter_up")
+	assert.Regexp(t, `hyperfleet_adapter_build_info\{[^}]*adapter_name="test"`, metricsOutput)
+	assert.Regexp(t, `hyperfleet_adapter_up\{[^}]*adapter_name="test"`, metricsOutput)
 
 	// Verify new adapter metrics
 	assert.Contains(t, metricsOutput, "hyperfleet_adapter_events_processed_total",
