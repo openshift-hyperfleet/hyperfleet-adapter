@@ -99,8 +99,9 @@ resource_states.?x.orValue("") == "confirmed_deleted"
 ## Examples
 
 ```cel
-// Precondition: check cluster is ready
-resources.managedCluster.status.conditions.exists(c, c.type == "Ready" && c.status == "True")
+// Post-phase: check a discovered resource reports Ready=True
+resource_states.?myResource.orValue("") == "present"
+  && resources.?myResource.?status.?conditions.orValue([]).exists(c, c.type == "Ready" && c.status == "True")
 
 // Post-action gate: check execution status
 adapter.?executionStatus.orValue("") == "success"
