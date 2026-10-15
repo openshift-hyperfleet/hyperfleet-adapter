@@ -17,12 +17,6 @@ const (
 	// Example value: "5" (integer as string)
 	LabelGeneration = "hyperfleet.io/generation"
 
-	// Deprecated: will be removed in the next major release.
-	AnnotationClusterID = "hyperfleet.io/cluster-id"
-
-	// Deprecated: will be removed in the next major release.
-	LabelClusterID = "hyperfleet.io/cluster-id"
-
 	// AnnotationAdapter is the annotation key for adapter identification.
 	// Identifies which adapter created or manages the resource.
 	// Format: "hyperfleet.io/adapter"
