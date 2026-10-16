@@ -18,6 +18,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/configloader"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleetapi"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/k8sclient"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/logctx"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/metrics"
 )
 
@@ -165,6 +166,8 @@ func TestExecutor_PostActionAuthFailureLogsAreContextualAndRedacted(t *testing.T
 		name               string
 		resourceID         string
 		kind               string
+		ownerID            string
+		ownerKind          string
 		statusCode         int
 		expectAuthLog      bool
 		expectResponseBody bool
@@ -183,6 +186,16 @@ func TestExecutor_PostActionAuthFailureLogsAreContextualAndRedacted(t *testing.T
 			kind:          "NodePool",
 			statusCode:    http.StatusForbidden,
 			sentinel:      "qe-auth-response-body-403-must-not-be-logged",
+			expectAuthLog: true,
+		},
+		{
+			name:          "403 forbidden for a nodepool owned by a cluster",
+			resourceID:    "nodepool-owned-auth-403",
+			kind:          "NodePool",
+			ownerKind:     "Cluster",
+			ownerID:       "cluster-owner-nodepool-auth-403",
+			statusCode:    http.StatusForbidden,
+			sentinel:      "qe-owned-nodepool-auth-response-body-must-not-be-logged",
 			expectAuthLog: true,
 		},
 		{
@@ -213,6 +226,7 @@ func TestExecutor_PostActionAuthFailureLogsAreContextualAndRedacted(t *testing.T
 				hyperfleetlogger.WithLevel(slog.LevelDebug),
 				hyperfleetlogger.WithFormat(hyperfleetlogger.FormatText),
 				hyperfleetlogger.WithOutput(&logs),
+				hyperfleetlogger.WithContextFields(logctx.ContextFields()...),
 			)))
 			t.Cleanup(func() { slog.SetDefault(previous) })
 
@@ -235,10 +249,17 @@ func TestExecutor_PostActionAuthFailureLogsAreContextualAndRedacted(t *testing.T
 				Build()
 			require.NoError(t, err)
 
-			result := exec.Execute(t.Context(), map[string]interface{}{
+			eventData := map[string]interface{}{
 				"id":   tt.resourceID,
 				"kind": tt.kind,
-			})
+			}
+			if tt.ownerKind != "" {
+				eventData["owner_references"] = map[string]interface{}{
+					"kind": tt.ownerKind,
+					"id":   tt.ownerID,
+				}
+			}
+			result := exec.Execute(t.Context(), eventData)
 			require.Equal(t, StatusFailed, result.Status, "post-action API failure must fail the execution")
 
 			captured := logs.String()
@@ -274,9 +295,14 @@ func TestExecutor_PostActionAuthFailureLogsAreContextualAndRedacted(t *testing.T
 			for line := range strings.SplitSeq(captured, "\n") {
 				if strings.Contains(line, "hyperfleet api authentication or authorization failed") {
 					matchedAuthLog = true
-					assert.Contains(t, line, "resource_id="+tt.resourceID)
+					assert.Contains(t, line, " resource_id="+tt.resourceID)
 					assert.Contains(t, line, "kind="+tt.kind)
-					assert.Equal(t, 1, strings.Count(line, "resource_id="), "resource_id must not be duplicated")
+					assert.Equal(t, 1, strings.Count(line, " resource_id="), "resource_id must not be duplicated")
+					if tt.ownerKind != "" {
+						assert.Contains(t, line, " resource_type="+tt.kind)
+						assert.Contains(t, line, " owner_resource_type="+tt.ownerKind)
+						assert.Contains(t, line, " owner_resource_id="+tt.ownerID)
+					}
 				}
 			}
 			assert.True(t, matchedAuthLog, "expected the auth-failure log line")
