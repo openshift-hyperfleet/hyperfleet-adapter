@@ -1,6 +1,6 @@
 # Executor Package
 
-The `executor` package is the core event processing engine for the HyperFleet Adapter. It orchestrates the execution of CloudEvents according to the adapter configuration, coordinating parameter extraction, precondition evaluation, Kubernetes resource management, and post-action execution.
+The `executor` package is the core event processing engine for the HyperFleet Adapter. It runs the adapter task on one event payload, coordinating parameter extraction, precondition evaluation, Kubernetes resource management, and post-action execution.
 
 ## Key Concepts
 
@@ -27,7 +27,7 @@ The executor implements a four-phase execution pipeline:
 │                        Event Processing Pipeline                     │
 ├──────────────────────────────────────────────────────────────────────┤
 │                                                                      │
-│  CloudEvent ──► Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4 ──► Done │
+│  Event data ──► Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4 ──► Done │
 │                Extract    Precond.   Resources   Post-Act.           │
 │                Params     Eval.      Create      Execute             │
 │                                                                      │
@@ -79,11 +79,8 @@ if err != nil {
     return err
 }
 
-// Create handler for broker subscription
-handler := exec.CreateHandler()
-
-// Or execute directly
-result := exec.Execute(ctx, cloudEvent)
+// Execute directly
+result := exec.Execute(ctx, eventData)
 if result.Status == executor.StatusFailed {
     log.Errorf("Execution failed: %v", result.Errors)
 } else if result.ResourcesSkipped {
@@ -504,7 +501,7 @@ exec, _ := executor.NewBuilder().
     Build()
 
 // Subscribe with executor handler
-broker_consumer.Subscribe(ctx, subscriber, topic, exec.CreateHandler())
+subscriber.Subscribe(ctx, topic, eventhandler.AlwaysAck(eventhandler.WithMetrics(eventhandler.CreateHandler(exec), metricsRecorder)))
 ```
 
 </details>
