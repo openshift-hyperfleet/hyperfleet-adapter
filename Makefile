@@ -1,10 +1,12 @@
 .DEFAULT_GOAL := help
 
-# CGO_ENABLED=0 is not FIPS compliant. large commercial vendors and FedRAMP require FIPS compliant crypto
-# Use ?= so callers can override on the command line, e.g. CGO_ENABLED=0 make build for a non-FIPS static binary
+# Keep CGO enabled for the supported production image; GOFIPS140 selects
+# Go's native, validated FIPS 140-3 module and enables FIPS mode by default.
+# Explicitly disable the incompatible BoringCrypto experiment, even when
+# it was persisted in the toolchain with "go env -w".
 CGO_ENABLED ?= 1
-GOEXPERIMENT ?= boringcrypto
-GOFIPS140 ?= off
+GOEXPERIMENT ?= noboringcrypto
+GOFIPS140 ?= v1.0.0
 
 GO ?= go
 TOOL_MOD := tools/go.mod
@@ -77,7 +79,7 @@ clean: ## Remove build artifacts
 
 .PHONY: test
 test: test-alerts ## Run unit tests with race detection
-	$(GO) test -v -race -coverprofile=coverage.out -timeout $(TEST_TIMEOUT) \
+	GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) test -v -race -coverprofile=coverage.out -timeout $(TEST_TIMEOUT) \
 		$$($(GO) list ./... | grep -v /test/)
 
 .PHONY: promtool
@@ -97,7 +99,7 @@ test-coverage: test ## Run tests and show coverage
 
 .PHONY: test-integration
 test-integration: ## Run integration tests (requires Docker/Podman)
-	@TEST_TIMEOUT=$(TEST_TIMEOUT) bash scripts/run-integration-tests.sh
+	@TEST_TIMEOUT=$(TEST_TIMEOUT) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) bash scripts/run-integration-tests.sh
 
 .PHONY: image-integration-test
 image-integration-test: ## Build integration test image with envtest

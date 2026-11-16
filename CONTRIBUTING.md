@@ -73,6 +73,8 @@ This project follows the [Contributor Covenant Code of Conduct](https://www.cont
 
 ### Building the Project
 
+Production builds and tests use Go's native FIPS 140-3 module (`GOFIPS140=v1.0.0`). `GOEXPERIMENT=noboringcrypto` explicitly disables the incompatible legacy BoringCrypto experiment; the Dockerfile checks the selected module with `go version -m`.
+
 ```bash
 # Build the binary
 make build
