@@ -79,15 +79,15 @@ clean: ## Remove build artifacts
 
 .PHONY: test
 test: test-alerts ## Run unit tests with race detection
-	GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) test -v -race -coverprofile=coverage.out -timeout $(TEST_TIMEOUT) \
-		$$(GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) list ./... | grep -v /test/)
+	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) test -v -race -coverprofile=coverage.out -timeout $(TEST_TIMEOUT) \
+		$$(CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) list ./... | grep -v /test/)
 
 .PHONY: promtool
 promtool: ## Build the pinned promtool binary
 	@mkdir -p $(BIN_DIR)
 	$(GO) mod download $(PROMTOOL)
 	cd "$$($(GO) env GOMODCACHE)/$(PROMTOOL)" && \
-		GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) build -o "$(CURDIR)/$(BIN_DIR)/promtool" ./cmd/promtool
+		CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) build -o "$(CURDIR)/$(BIN_DIR)/promtool" ./cmd/promtool
 
 .PHONY: test-alerts
 test-alerts: promtool ## Test Prometheus alert rules
@@ -99,7 +99,7 @@ test-coverage: test ## Run tests and show coverage
 
 .PHONY: test-integration
 test-integration: ## Run integration tests (requires Docker/Podman)
-	@TEST_TIMEOUT=$(TEST_TIMEOUT) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) bash scripts/run-integration-tests.sh
+	@TEST_TIMEOUT=$(TEST_TIMEOUT) CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) bash scripts/run-integration-tests.sh
 
 .PHONY: image-integration-test
 image-integration-test: ## Build integration test image with envtest
