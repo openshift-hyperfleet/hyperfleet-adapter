@@ -80,14 +80,14 @@ clean: ## Remove build artifacts
 .PHONY: test
 test: test-alerts ## Run unit tests with race detection
 	GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) test -v -race -coverprofile=coverage.out -timeout $(TEST_TIMEOUT) \
-		$$($(GO) list ./... | grep -v /test/)
+		$$(GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) list ./... | grep -v /test/)
 
 .PHONY: promtool
 promtool: ## Build the pinned promtool binary
 	@mkdir -p $(BIN_DIR)
 	$(GO) mod download $(PROMTOOL)
 	cd "$$($(GO) env GOMODCACHE)/$(PROMTOOL)" && \
-		$(GO) build -o "$(CURDIR)/$(BIN_DIR)/promtool" ./cmd/promtool
+		GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) build -o "$(CURDIR)/$(BIN_DIR)/promtool" ./cmd/promtool
 
 .PHONY: test-alerts
 test-alerts: promtool ## Test Prometheus alert rules
