@@ -85,8 +85,8 @@ test: test-alerts ## Run unit tests with race detection
 .PHONY: promtool
 promtool: ## Build the pinned promtool binary
 	@mkdir -p $(BIN_DIR)
-	$(GO) mod download $(PROMTOOL)
-	cd "$$($(GO) env GOMODCACHE)/$(PROMTOOL)" && \
+	GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) mod download $(PROMTOOL)
+	cd "$$(GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) env GOMODCACHE)/$(PROMTOOL)" && \
 		CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) build -o "$(CURDIR)/$(BIN_DIR)/promtool" ./cmd/promtool
 
 .PHONY: test-alerts
