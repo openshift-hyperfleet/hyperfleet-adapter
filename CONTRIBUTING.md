@@ -80,7 +80,10 @@ selects `GOFIPS140=v1.0.0` and builds with `-tags=fips,no_openssl`:
 `no_openssl` selects Go's native crypto backend on Red Hat Go. The image build
 checks the selected module, the compiled FIPS default, and startup with
 `GOLANG_FIPS=1`. Do not disable TLS 1.2 EMS enforcement with `fips140ems=0`;
-the compiled-default check also rejects that override.
+the build check rejects compiled overrides only. Neither that check nor the
+runtime FIPS-mode guard detects a deployment-time `GODEBUG=fips140ems=0`
+override; deployment configuration must be reviewed separately. The prohibition
+also applies to module/workspace defaults and main-package directives.
 
 ```bash
 # Build the binary
