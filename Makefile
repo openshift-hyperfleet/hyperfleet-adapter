@@ -1,28 +1,16 @@
 .DEFAULT_GOAL := help
 
-# Keep CGO enabled for the supported production image. GOFIPS140 selects
-# Go's native, validated FIPS 140-3 module; the godebug fips140=on directive
-# in go.mod enables FIPS mode by default, because the Red Hat Go toolset does
-# not enable it merely by selecting the module. Go rejects an active
-# BoringCrypto experiment when GOFIPS140 is set, so noboringcrypto is not a
-# guard: it keeps builds working where the legacy experiment was persisted
-# with "go env -w".
+# Use native FIPS even when boringcrypto was persisted with go env -w.
+# go.mod's godebug fips140=on enables FIPS mode on Red Hat Go too.
 CGO_ENABLED ?= 1
-# An empty value falls back to a persisted `go env -w CGO_ENABLED`, so pin it.
-ifeq ($(strip $(CGO_ENABLED)),)
-override CGO_ENABLED := 1
-endif
 GOEXPERIMENT ?= noboringcrypto
 GOFIPS140 ?= v1.0.0
-# An empty value falls back to the persisted `go env -w` setting, so pin both.
-ifeq ($(strip $(GOEXPERIMENT)),)
-override GOEXPERIMENT := noboringcrypto
-endif
-ifeq ($(strip $(GOFIPS140)),)
-override GOFIPS140 := v1.0.0
-endif
+export CGO_ENABLED GOEXPERIMENT GOFIPS140
 
 GO ?= go
+# Honor this module's godebug directive, not an enclosing workspace's defaults.
+override GOWORK := off
+export GOWORK
 TOOL_MOD := tools/go.mod
 gotool = "$(GO)" tool -modfile="$(TOOL_MOD)" $(1)
 GOFMT ?= gofmt
@@ -40,20 +28,9 @@ GIT_DIRTY ?= $(shell [ -z "$$(git status --porcelain 2>/dev/null)" ] || echo "-m
 APP_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
 
 # Go build flags
-GOFLAGS ?= -trimpath
-# Red Hat Go toolsets use the OpenSSL crypto backend by default on linux+cgo.
-# That backend aborts at startup on FIPS-enabled hosts once a fips140 GODEBUG
-# value is set, so those toolchains must build with Go's native backend.
-ifneq (,$(findstring Red Hat,$(shell $(GO) version 2>/dev/null)))
-# A second -tags flag replaces the first, so merge with any caller-supplied list.
-# Repeated -tags options keep the last list, so merge into that one.
-GOFLAGS_CALLER_TAGS := $(patsubst -tags=%,%,$(lastword $(filter -tags=%,$(GOFLAGS))))
-ifeq (,$(GOFLAGS_CALLER_TAGS))
-override GOFLAGS += -tags=no_openssl
-else
-override GOFLAGS := $(filter-out -tags=%,$(GOFLAGS)) -tags=$(GOFLAGS_CALLER_TAGS),no_openssl
-endif
-endif
+GOFLAGS ?= -trimpath -tags=no_openssl
+# Keep the backend tag in tests without exporting production-only -trimpath.
+GO_TEST_TAGS ?= no_openssl
 VERSION_PKG := github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/version
 LDFLAGS := -s -w \
            -X $(VERSION_PKG).Version=$(APP_VERSION) \
@@ -91,11 +68,11 @@ help: ## Display this help
 .PHONY: build
 build: ## Build the adapter binary
 	@mkdir -p $(BIN_DIR)
-	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) ./cmd/adapter
+	$(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) ./cmd/adapter
 
 .PHONY: install
 install: build ## Build and install binary to GOPATH/bin
-	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) install $(GOFLAGS) -ldflags "$(LDFLAGS)" ./cmd/adapter
+	$(GO) install $(GOFLAGS) -ldflags "$(LDFLAGS)" ./cmd/adapter
 
 .PHONY: clean
 clean: ## Remove build artifacts
@@ -106,15 +83,15 @@ clean: ## Remove build artifacts
 
 .PHONY: test
 test: test-alerts ## Run unit tests with race detection
-	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) test -v -race -coverprofile=coverage.out -timeout $(TEST_TIMEOUT) \
-		$$(CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) list ./... | grep -v /test/)
+	$(GO) test -tags="$(GO_TEST_TAGS)" -v -race -coverprofile=coverage.out -timeout $(TEST_TIMEOUT) \
+		$$($(GO) list ./... | grep -v /test/)
 
 .PHONY: promtool
 promtool: ## Build the pinned promtool binary
 	@mkdir -p $(BIN_DIR)
-	GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) mod download $(PROMTOOL)
-	cd "$$(GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) env GOMODCACHE)/$(PROMTOOL)" && \
-		CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) build -o "$(CURDIR)/$(BIN_DIR)/promtool" ./cmd/promtool
+	$(GO) mod download $(PROMTOOL)
+	cd "$$($(GO) env GOMODCACHE)/$(PROMTOOL)" && \
+		$(GO) build -o "$(CURDIR)/$(BIN_DIR)/promtool" ./cmd/promtool
 
 .PHONY: test-alerts
 test-alerts: promtool ## Test Prometheus alert rules
@@ -126,7 +103,7 @@ test-coverage: test ## Run tests and show coverage
 
 .PHONY: test-integration
 test-integration: ## Run integration tests (requires Docker/Podman)
-	@TEST_TIMEOUT=$(TEST_TIMEOUT) CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) bash scripts/run-integration-tests.sh
+	@GO="$(GO)" GO_TEST_TAGS="$(GO_TEST_TAGS)" TEST_TIMEOUT=$(TEST_TIMEOUT) bash scripts/run-integration-tests.sh
 
 .PHONY: image-integration-test
 image-integration-test: ## Build integration test image with envtest
