@@ -73,7 +73,7 @@ fi
 
 # Run tests
 cd "$PROJECT_ROOT"
-"${GO:-go}" test -v -count=1 -tags="integration,${GO_TEST_TAGS:-}" ./test/integration/... -timeout "$TEST_TIMEOUT"
+make test-integration-run TEST_TIMEOUT="$TEST_TIMEOUT"
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

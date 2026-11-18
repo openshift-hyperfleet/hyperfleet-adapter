@@ -31,6 +31,7 @@ APP_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo 
 GOFLAGS ?= -trimpath -tags=no_openssl
 # Keep the backend tag in tests without exporting production-only -trimpath.
 GO_TEST_TAGS ?= no_openssl
+export GO_TEST_TAGS
 VERSION_PKG := github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/version
 LDFLAGS := -s -w \
            -X $(VERSION_PKG).Version=$(APP_VERSION) \
@@ -83,7 +84,7 @@ clean: ## Remove build artifacts
 
 .PHONY: test
 test: test-alerts ## Run unit tests with race detection
-	$(GO) test -tags="$(GO_TEST_TAGS)" -v -race -coverprofile=coverage.out -timeout $(TEST_TIMEOUT) \
+	$(GO) test -tags="$${GO_TEST_TAGS}" -v -race -coverprofile=coverage.out -timeout $(TEST_TIMEOUT) \
 		$$($(GO) list ./... | grep -v /test/)
 
 .PHONY: promtool
@@ -103,7 +104,12 @@ test-coverage: test ## Run tests and show coverage
 
 .PHONY: test-integration
 test-integration: ## Run integration tests (requires Docker/Podman)
-	@GO="$(GO)" GO_TEST_TAGS="$(GO_TEST_TAGS)" TEST_TIMEOUT=$(TEST_TIMEOUT) bash scripts/run-integration-tests.sh
+	@GO="$(GO)" TEST_TIMEOUT=$(TEST_TIMEOUT) bash scripts/run-integration-tests.sh
+
+.PHONY: test-integration-run
+test-integration-run: ## Run integration Go tests after container setup (used by integration scripts).
+	@test_tags=$$(printf '%s' "$${GO_TEST_TAGS}" | tr '[:space:]' ','); \
+	$(GO) test -v -count=1 -tags="integration,$$test_tags" ./test/integration/... -timeout $(TEST_TIMEOUT)
 
 .PHONY: image-integration-test
 image-integration-test: ## Build integration test image with envtest
