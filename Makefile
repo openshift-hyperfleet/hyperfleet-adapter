@@ -1,16 +1,10 @@
 .DEFAULT_GOAL := help
 
-# Use native FIPS even when boringcrypto was persisted with go env -w.
-# go.mod's godebug fips140=on enables FIPS mode on Red Hat Go too.
+# FIPS mode is turned on only in the container image build. See the Dockerfile.
 CGO_ENABLED ?= 1
-GOEXPERIMENT ?= noboringcrypto
-GOFIPS140 ?= v1.0.0
-export CGO_ENABLED GOEXPERIMENT GOFIPS140
+export CGO_ENABLED
 
 GO ?= go
-# Honor this module's godebug directive, not an enclosing workspace's defaults.
-override GOWORK := off
-export GOWORK
 TOOL_MOD := tools/go.mod
 gotool = "$(GO)" tool -modfile="$(TOOL_MOD)" $(1)
 GOFMT ?= gofmt
@@ -28,10 +22,7 @@ GIT_DIRTY ?= $(shell [ -z "$$(git status --porcelain 2>/dev/null)" ] || echo "-m
 APP_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
 
 # Go build flags
-GOFLAGS ?= -trimpath -tags=no_openssl
-# Keep the backend tag in tests without exporting production-only -trimpath.
-GO_TEST_TAGS ?= no_openssl
-export GO_TEST_TAGS
+GOFLAGS ?= -trimpath
 VERSION_PKG := github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/version
 LDFLAGS := -s -w \
            -X $(VERSION_PKG).Version=$(APP_VERSION) \
@@ -84,7 +75,7 @@ clean: ## Remove build artifacts
 
 .PHONY: test
 test: test-alerts ## Run unit tests with race detection
-	$(GO) test -tags="$${GO_TEST_TAGS}" -v -race -coverprofile=coverage.out -timeout $(TEST_TIMEOUT) \
+	$(GO) test -v -race -coverprofile=coverage.out -timeout $(TEST_TIMEOUT) \
 		$$($(GO) list ./... | grep -v /test/)
 
 .PHONY: promtool
@@ -108,8 +99,7 @@ test-integration: ## Run integration tests (requires Docker/Podman)
 
 .PHONY: test-integration-run
 test-integration-run: ## Run integration Go tests after container setup (used by integration scripts).
-	@test_tags=$$(printf '%s' "$${GO_TEST_TAGS}" | tr '[:space:]' ','); \
-	$(GO) test -v -count=1 -tags="integration,$$test_tags" ./test/integration/... -timeout $(TEST_TIMEOUT)
+	$(GO) test -v -count=1 -tags=integration ./test/integration/... -timeout $(TEST_TIMEOUT)
 
 .PHONY: image-integration-test
 image-integration-test: ## Build integration test image with envtest

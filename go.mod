@@ -2,8 +2,6 @@ module github.com/openshift-hyperfleet/hyperfleet-adapter
 
 go 1.26.0
 
-godebug fips140=on
-
 require (
 	cel.dev/cel-go v0.32.0
 	github.com/Masterminds/semver/v3 v3.5.0
