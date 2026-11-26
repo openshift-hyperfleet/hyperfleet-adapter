@@ -15,9 +15,11 @@ import (
 	"cel.dev/cel-go/cel"
 	"github.com/Masterminds/semver/v3"
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/net/http/httpguts"
 
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/criteria"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/manifest"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/desirestore"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/utils"
 )
 
@@ -134,10 +136,17 @@ func (v *AdapterConfigValidator) validateTransportRegistry() error {
 	for _, name := range storeNames {
 		store := v.config.Stores[name]
 		path := fmt.Sprintf("%s.%s", FieldStores, name)
+		if store.Type != StoreTypeAPI && (store.TokenPath != "" || store.TokenScheme != "" || store.CAFile != "") {
+			return fmt.Errorf("%s.token_path, token_scheme and ca_file are only valid for api stores", path)
+		}
 		switch store.Type {
 		case StoreTypeMemory:
 			if store.URL != "" {
 				return fmt.Errorf("%s.url is not valid for memory store", path)
+			}
+		case StoreTypeAPI:
+			if err := validateAPIStore(path, store); err != nil {
+				return err
 			}
 		case StoreTypeRedis:
 			if strings.TrimSpace(store.URL) == "" {
@@ -152,8 +161,8 @@ func (v *AdapterConfigValidator) validateTransportRegistry() error {
 				return fmt.Errorf("%s.url must use rediss:// when credentials are configured", path)
 			}
 		default:
-			return fmt.Errorf("%s.type %q is unsupported (supported: %s, %s)",
-				path, store.Type, StoreTypeMemory, StoreTypeRedis)
+			return fmt.Errorf("%s.type %q is unsupported (supported: %s, %s, %s)",
+				path, store.Type, StoreTypeMemory, StoreTypeRedis, StoreTypeAPI)
 		}
 	}
 
@@ -201,6 +210,26 @@ func (v *AdapterConfigValidator) validateTransportRegistry() error {
 		}
 	}
 
+	return nil
+}
+
+func validateAPIStore(path string, store StoreDefinition) error {
+	if strings.TrimSpace(store.URL) == "" {
+		return fmt.Errorf("%s.url is required for %s store", path, StoreTypeAPI)
+	}
+	if _, err := desirestore.ParseBaseURL(store.URL); err != nil {
+		return fmt.Errorf("%s.url is invalid for %s store: %w", path, StoreTypeAPI, err)
+	}
+	if store.TokenPath != "" && !filepath.IsAbs(store.TokenPath) {
+		return fmt.Errorf("%s.token_path must be an absolute path, got %q", path, store.TokenPath)
+	}
+	if store.CAFile != "" && !filepath.IsAbs(store.CAFile) {
+		return fmt.Errorf("%s.ca_file must be an absolute path, got %q", path, store.CAFile)
+	}
+	if store.TokenScheme != "" && !httpguts.ValidHeaderFieldName(store.TokenScheme) {
+		return fmt.Errorf("%s.token_scheme must be a single word of HTTP token characters, got %q",
+			path, store.TokenScheme)
+	}
 	return nil
 }
 
